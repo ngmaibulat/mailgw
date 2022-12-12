@@ -1,0 +1,16 @@
+{
+    "name": "ngmipfilter",
+    "base": {},
+    "timeout": 30,
+    "hasPackageJson": false,
+    "plugin_path": "/path/to/mailrouter/plugins/ngmipfilter.js",
+    "config": {
+        "root_path": "/usr/local/lib/node_modules/Haraka/config",
+        "overrides_path": "/path/to/mailrouter/config"
+    },
+    "hooks": {
+        "connect": [
+            "hook_connect"
+        ]
+    }
+}

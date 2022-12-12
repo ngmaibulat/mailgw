@@ -1,0 +1,2 @@
+
+bash send.sh ~/sa

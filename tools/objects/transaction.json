@@ -1,0 +1,62 @@
+{
+    "uuid": "26CB4E7F-3CB2-4C50-A39A-D6A3BE21E844.1",
+    "cfg": {
+      "main": {
+        "daemonize": false,
+        "strict_rfc1869": false,
+        "smtputf8": true,
+        "graceful_shutdown": false,
+        "listen": "0.0.0.0:25",
+        "nodes": 1,
+        "inactivity_timeout": 300,
+        "daemon_log_file": "/var/log/haraka.log",
+        "daemon_pid_file": "/var/run/haraka.pid",
+        "force_shutdown_timeout": 30,
+        "smtps_port": 465
+      },
+      "headers": {
+        "add_received": true,
+        "show_version": true,
+        "clean_auth_results": true,
+        "max_lines": 1000,
+        "max_received": 100
+      }
+    },
+    "mail_from": {
+      "original": "<addr@test.com>",
+      "original_host": "test.com",
+      "host": "test.com",
+      "user": "addr"
+    },
+    "rcpt_to": [
+      {
+        "original": "<addr@ngm.com>",
+        "original_host": "[Unknown]",
+        "host": "[Unknown]",
+        "user": "[Unknown]"
+      }
+    ],
+    "header_lines": "[Unknown]",
+    "data_lines": "[Unknown]",
+    "attachment_start_hooks": "[Unknown]",
+    "banner": "[Unknown]",
+    "body_filters": "[Unknown]",
+    "data_bytes": "[Unknown]",
+    "header_pos": "[Unknown]",
+    "found_hb_sep": "[Unknown]",
+    "body": "[Unknown]",
+    "parse_body": "[Unknown]",
+    "notes": "[Unknown]",
+    "header": "[Unknown]",
+    "message_stream": "[Unknown]",
+    "discard_data": "[Unknown]",
+    "resetting": "[Unknown]",
+    "rcpt_count": "[Unknown]",
+    "msg_status": "[Unknown]",
+    "data_post_start": "[Unknown]",
+    "data_post_delay": "[Unknown]",
+    "encoding": "[Unknown]",
+    "mime_part_count": "[Unknown]",
+    "results": "[Unknown]"
+  }
+  
