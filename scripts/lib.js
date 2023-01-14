@@ -1,7 +1,38 @@
+import { writeFileSync } from "fs";
+const files = [
+    "deny_includes_uuid",
+    "host_list",
+    "me",
+    "smtp.ini",
+    "smtpgreeting",
+];
+export function genLogIni() {
+    const log_level = process.env.LOG_LEVEL;
+    const log_timestamps = process.env.LOG_TIMESTAMPS;
+    const log_format = process.env.LOG_FORMAT;
+    const res = `
+[main]
+
+; level=data, protocol, debug, info, notice, warn, error, crit, alert, emerg
+level=${log_level}
+
+; prepend timestamps to log entries? This setting does NOT affect logs emitted
+; by logging plugins (like syslog).
+timestamps=${log_timestamps}
+
+;  format=default, logfmt, json
+format=${log_format}
+`;
+    return res;
+}
+export function genSmtpIni() {
+    const cpus = process.env.NODEJS_CPU_CORES;
+    const port = process.env.SMTP_PORT;
+    const res = `
 ; address to listen on (default: all IPv6 and IPv4 addresses, port 25)
 ; use "[::0]:25" to listen on IPv6 and IPv4 (not all OSes)
 
-listen=0.0.0.0:25
+listen=0.0.0.0:${port}
 
 ; Note you can listen on multiple IPs/ports using commas:
 ;listen=127.0.0.1:2529,127.0.0.2:2529,127.0.0.3:2530
@@ -26,7 +57,7 @@ listen=0.0.0.0:25
 
 ; nodes=cpus
 
-nodes=1
+nodes=${cpus}
 
 
 ; Daemonize
@@ -67,3 +98,10 @@ max_lines=1000
 
 ; replace max_received_count
 max_received=100
+`;
+    return res;
+}
+export function genConfigs() {
+    writeFileSync("config/log.ini", genLogIni());
+    writeFileSync("config/smtp.ini", genSmtpIni());
+}

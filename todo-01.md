@@ -1,0 +1,8 @@
+- initial config script
+- test run
+- docker build
+- docker hub
+- kubernetes
+- tls
+- logging plugin
+- logger service

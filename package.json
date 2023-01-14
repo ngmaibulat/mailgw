@@ -3,8 +3,11 @@
   "version": "0.0.1",
   "description": "mail router based on haraka",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "test": "node --test",
+    "build": "tsc",
+    "build:watch": "tsc -w",
     "minor": "git add . ; git commit -a -m minor; git push",
     "client": "swaks -s 127.0.0.1 -f mail@devbook.local -t mail@devbook.local",
     "plugin-cfg": "haraka -o -c .",
@@ -14,8 +17,12 @@
   "license": "MIT",
   "dependencies": {
     "Haraka": "^2.8.28",
+    "dotenv": "^16.0.3",
     "mailparser": "^3.5.0",
     "mimelib": "^0.3.1",
     "node-fetch": "^3.2.4"
+  },
+  "devDependencies": {
+    "@types/node": "^18.11.18"
   }
 }
