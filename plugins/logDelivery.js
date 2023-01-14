@@ -1,15 +1,12 @@
-const fs = require('fs');
-const fetch = require("node-fetch");
+const fs = require("fs");
+// const fetch = require("node-fetch");
 const functions = require("./functions");
-
 
 const url_delivery = "http://localhost:3000/api/delivery";
 const url_conn = "http://localhost:3000/api/connection";
 const url_queue = "http://localhost:3000/api/queue";
 
-
 exports.hook_delivered = function (next, hmail, params) {
-
     let host = params[0];
     let ip = params[1];
     let response = params[2];
@@ -37,17 +34,15 @@ exports.hook_delivered = function (next, hmail, params) {
         response: response,
         delay: delay,
         // params: params
-    }
+    };
 
     functions.httplog(logdata, url_delivery);
     // httplog(JSON.stringify("+++++++++++++++++++++++++"))
     // httplog(params);
 
     return next();
-}
-
-exports.register = function()
-{
-    // this.register_hook('delivered', 'hook_delivered');
 };
 
+exports.register = function () {
+    // this.register_hook('delivered', 'hook_delivered');
+};

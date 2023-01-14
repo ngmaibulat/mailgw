@@ -158,9 +158,8 @@ export function genInternalCmdKey() {
 
 export function genHostList() {
     const value = process.env.ACCEPTED_DOMAINS || "localhost";
-    const res = `
-${value}
-`;
+    const lines = value.replaceAll(",", "\n");
+    const res = lines + "\n";
     return res;
 }
 

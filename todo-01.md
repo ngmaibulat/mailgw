@@ -1,6 +1,7 @@
 ### Basic
 
 - initial config script
+- generate json configs with secrets/addrs/ports from .env
 - test run: from npm package
 
 ### Docker

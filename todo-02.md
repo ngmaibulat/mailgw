@@ -1,0 +1,7 @@
+- copy json files
+- generate json files based on .env: hosts/ports/secrets/usernames
+- test mailflow to mailtrap
+- tls cert via mkcert
+- npm package
+- docker
+- kuber

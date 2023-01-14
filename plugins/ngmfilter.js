@@ -1,7 +1,6 @@
-const fs = require('fs');
+const fs = require("fs");
 
-const logfile = '/tmp/haraka/haraka-conn.log';
-
+const logfile = "./log/ngmfilter.log";
 
 /*
 
@@ -47,9 +46,8 @@ connection.transaction.mail_from
 
 */
 
-exports.hook_connect = function (next, connection)
-{
-    const cfg = this.config.get('ngmfilter.json', 'json');
+exports.hook_connect = function (next, connection) {
+    const cfg = this.config.get("ngmfilter.json", "json");
 
     // let data = JSON.stringify(cfg.allowed) + "\n\n\n";
     // log(data);
@@ -61,25 +59,20 @@ exports.hook_connect = function (next, connection)
         let msg = `${connection.uuid}: allow: ${connection.remote.ip}`;
         log(msg);
         return next(OK);
-    }
-    else {
+    } else {
         let msg = `${connection.uuid}: deny: ${connection.remote.ip}`;
         log(msg);
         return next(DENYDISCONNECT);
     }
-}
+};
 
-exports.hook_rcpt = function (next, connection, params)
-{
+exports.hook_rcpt = function (next, connection, params) {
     if (Array.isArray(params)) {
-        
-        params.forEach(rcpt => {
-
-            let domain  = rcpt.host;
+        params.forEach((rcpt) => {
+            let domain = rcpt.host;
             if (domain) {
                 log(`${connection.uuid}: ${domain}`);
             }
-            
         });
     }
 
@@ -87,22 +80,24 @@ exports.hook_rcpt = function (next, connection, params)
     // return next();
 };
 
-exports.hook_queue_outbound = function(next, connection)
-{
+exports.hook_queue_outbound = function (next, connection) {
     log("hook_queue_outbound: " + connection.transaction.uuid);
 
     jsonlog(connection.transaction.rcpt_to);
 
     return next(CONT);
-}
+};
 
-
-exports.hook_send_email = function(next, hmail)
-{
-    log("send mail: " + hmail.todo.uuid + " to: " + hmail.todo.rcpt_to[0].original);
+exports.hook_send_email = function (next, hmail) {
+    log(
+        "send mail: " +
+            hmail.todo.uuid +
+            " to: " +
+            hmail.todo.rcpt_to[0].original
+    );
     // jsonlog(hmail.todo.rcpt_to[0]);
     return next(DENY);
-}
+};
 
 // exports.register = function()
 // {
@@ -111,35 +106,37 @@ exports.hook_send_email = function(next, hmail)
 //     this.register_hook('rcpt', 'hook_rcpt');
 // };
 
-
-function log(msg)
-{
-    fs.appendFile(logfile, msg + "\n", err => {
+function log(msg) {
+    fs.appendFile(logfile, msg + "\n", (err) => {
         if (err) {
         }
         //file written successfully
-    });    
+    });
 }
 
 function censor(censor) {
     var i = 0;
-    
-    return function(key, value) {
-      if(i !== 0 && typeof(censor) === 'object' && typeof(value) == 'object' && censor == value) 
-        return '[Circular]'; 
-      
-      if(i >= 29) // seems to be a harded maximum of 30 serialized objects?
-        return '[Unknown]';
-      
-      ++i; // so we know we aren't using the original object anymore
-      
-      return value;  
-    }
+
+    return function (key, value) {
+        if (
+            i !== 0 &&
+            typeof censor === "object" &&
+            typeof value == "object" &&
+            censor == value
+        )
+            return "[Circular]";
+
+        if (i >= 29)
+            // seems to be a harded maximum of 30 serialized objects?
+            return "[Unknown]";
+
+        ++i; // so we know we aren't using the original object anymore
+
+        return value;
+    };
 }
 
-
-function jsonlog(obj)
-{
+function jsonlog(obj) {
     let str = JSON.stringify(obj, censor(obj));
     log(str);
     return str;

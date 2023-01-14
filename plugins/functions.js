@@ -1,61 +1,52 @@
-const fs = require('fs');
+const fs = require("fs");
 
-exports.httplog = function (obj, url)
-{
+exports.httplog = function (obj, url) {
     let jsondata = JSON.stringify(obj);
     // let jsondata = JSON.stringify(obj, censor(obj));
 
     let req = {
-        method: 'POST',
+        method: "POST",
         headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
+            Accept: "application/json",
+            "Content-Type": "application/json",
         },
-        body: jsondata
+        body: jsondata,
     };
 
     return fetch(url, req).catch((err) => {});
-}
+};
 
-
-exports.getAddr = function (addr)
-{
+exports.getAddr = function (addr) {
     let res = addr.user + "@" + addr.host;
     return res;
-}
+};
 
-exports.getAddrList = function(arr)
-{
-    let res = ""
-    arr.forEach(addr =>{
+exports.getAddrList = function (arr) {
+    let res = "";
+    arr.forEach((addr) => {
         if (!res) {
             res += exports.getAddr(addr);
-        }
-        else {
+        } else {
             res += "," + exports.getAddr(addr);
         }
     });
 
     return res;
-}
+};
 
-
-exports.log = function (msg, logfile = '/tmp/haraka/haraka.log')
-{
-    fs.appendFile(logfile, msg + "\n", err => {
+exports.log = function (msg, logfile = "/tmp/haraka/haraka.log") {
+    fs.appendFile(logfile, msg + "\n", (err) => {
         if (err) {
         }
         //file written successfully
-    });    
-}
-  
+    });
+};
 
-exports.log_transaction = function(txn, url)
-{
+exports.log_transaction = function (txn, url) {
     let obj;
 
     if (!txn) {
-        module.exports.httplog({status: "empty"}, url);
+        module.exports.httplog({ status: "empty" }, url);
         return;
     }
 
@@ -73,7 +64,7 @@ exports.log_transaction = function(txn, url)
         // rcpt_list: module.exports.getAddrList(txn.rcpt_to),
         rcpt_to: txn.rcpt_to,
         // rawHeaders: txn.header_lines,
-        
+
         // config items:
         // parse_body: txn.parse_body,
         // notes: txn.notes,
@@ -86,10 +77,9 @@ exports.log_transaction = function(txn, url)
     };
 
     module.exports.httplog(obj, url);
-}
+};
 
-exports.log_connection = function (connection, url)
-{
+exports.log_connection = function (connection, url) {
     let obj = {
         uuid: connection.uuid,
         dt: connection.start_time,
@@ -143,7 +133,6 @@ exports.log_connection = function (connection, url)
 
         // not really usefull info:
         // esmtp: connection.esmtp,
- 
 
         rcpt_count_accept: connection.rcpt_count.accept,
         rcpt_count_tempfail: connection.rcpt_count.tempfail,
@@ -159,40 +148,39 @@ exports.log_connection = function (connection, url)
 
     //prepare logging object from connection object!
     module.exports.httplog(obj, url);
-}
-
-
+};
 
 function censor(censor) {
     var i = 0;
-    
-    return function(key, value) {
-      if(i !== 0 && typeof(censor) === 'object' && typeof(value) == 'object' && censor == value) 
-        return '[Circular]'; 
-      
-      if(i >= 29) // seems to be a harded maximum of 30 serialized objects?
-        return '[Unknown]';
-      
-      ++i; // so we know we aren't using the original object anymore
-      
-      return value;  
-    }
+
+    return function (key, value) {
+        if (
+            i !== 0 &&
+            typeof censor === "object" &&
+            typeof value == "object" &&
+            censor == value
+        )
+            return "[Circular]";
+
+        if (i >= 29)
+            // seems to be a harded maximum of 30 serialized objects?
+            return "[Unknown]";
+
+        ++i; // so we know we aren't using the original object anymore
+
+        return value;
+    };
 }
 
-
-function jsonlog(obj)
-{
+function jsonlog(obj) {
     let str = JSON.stringify(obj, censor(obj));
     log(str);
     return str;
 }
 
-
-function getDomain(addr)
-{
-    let domain = addr.substring(addr.lastIndexOf('@') + 1);
+function getDomain(addr) {
+    let domain = addr.substring(addr.lastIndexOf("@") + 1);
     return domain;
 }
-
 
 /////////////////////////////

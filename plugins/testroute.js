@@ -1,10 +1,9 @@
-const fs = require('fs');
+const fs = require("fs");
 
-const cfgrouting = '../config/routing.json';
-const cfgrelays  = '../config/relays.json';
+const cfgrouting = "../config/routing.json";
+const cfgrelays = "../config/relays.json";
 
-function showUsageExit()
-{
+function showUsageExit() {
     console.error("Sender is not specified");
     console.log(`
     Usage:
@@ -13,15 +12,12 @@ function showUsageExit()
     process.exit(1);
 }
 
-function getDomain(addr)
-{
-    let domain = addr.substring(addr.lastIndexOf('@') + 1);
+function getDomain(addr) {
+    let domain = addr.substring(addr.lastIndexOf("@") + 1);
     return domain;
 }
 
-
-function getRelays(path)
-{
+function getRelays(path) {
     let jsoncfg = fs.readFileSync(path);
     let cfg_relays = JSON.parse(jsoncfg);
 
@@ -36,24 +32,27 @@ function getRelays(path)
     // return relays;
 }
 
-function getRoutes(path)
-{
+function getRoutes(path) {
     let jsoncfg = fs.readFileSync(path);
     let cfg = JSON.parse(jsoncfg);
 
     let routes = new Array();
 
-    cfg.forEach(param => {
-        let route = new Route(param.relay, param.sender, param.sender_domain, param.rcpt, param.rcpt_domain);
+    cfg.forEach((param) => {
+        let route = new Route(
+            param.relay,
+            param.sender,
+            param.sender_domain,
+            param.rcpt,
+            param.rcpt_domain
+        );
         routes.push(route);
     });
 
     return routes;
 }
 
-
-class Route
-{
+class Route {
     //should have a constructor
     //and 4 variables of function type
     //variables are created in consctructor
@@ -67,40 +66,37 @@ class Route
     checkRcpt;
     checkRcptDomain;
 
-    match(sender, rcpt)
-    {
+    match(sender, rcpt) {
         let senderdomain = getDomain(sender);
         let rcptdomain = getDomain(rcpt);
 
-        let res = this.checkSender(sender) &&
-                this.checkSenderDomain(senderdomain) &&
-                this.checkRcpt(rcpt) &&
-                this.checkRcptDomain(rcptdomain);
-        
+        let res =
+            this.checkSender(sender) &&
+            this.checkSenderDomain(senderdomain) &&
+            this.checkRcpt(rcpt) &&
+            this.checkRcptDomain(rcptdomain);
+
         return res;
     }
 
-    getCheckerFunction(param)
-    {
+    getCheckerFunction(param) {
         param = param.toString();
 
         if (param) {
-            return function(val) {
+            return function (val) {
                 if (val == param) {
                     return true;
                 }
                 return false;
-            }
-        }
-        else {
-            return function(val) {
+            };
+        } else {
+            return function (val) {
                 return true;
-            }            
+            };
         }
     }
 
-    constructor(relay, sender, sender_domain, rcpt, rcpt_domain)
-    {
+    constructor(relay, sender, sender_domain, rcpt, rcpt_domain) {
         this.relay = relay;
         this.checkSender = this.getCheckerFunction(sender);
         this.checkSenderDomain = this.getCheckerFunction(sender_domain);
@@ -111,25 +107,20 @@ class Route
 
 /////////////////////////////
 
-class RoutingTable
-{
+class RoutingTable {
     routes = [];
     relays = [];
 
-    constructor(relays, routes)
-    {
+    constructor(relays, routes) {
         this.relays = relays;
         this.routes = routes;
     }
 
-
-    findRoute(sender, rcpt)
-    {
-        function findFn(route)
-        {
+    findRoute(sender, rcpt) {
+        function findFn(route) {
             let matched = route.match(sender, rcpt);
             return matched;
-        };
+        }
 
         let foundRoute = routes.find(findFn);
 
@@ -142,17 +133,16 @@ class RoutingTable
 
         if (!relayexists) {
             console.error("Configuration Error!");
-            console.error(`Relay "${relayname}" defined in Routing \nBut cannot be found among relays \nPlease review configuration!\n`);
+            console.error(
+                `Relay "${relayname}" defined in Routing \nBut cannot be found among relays \nPlease review configuration!\n`
+            );
             return false;
-        }
-        else {
+        } else {
             let foundRelay = relays[relayname];
             return foundRelay;
         }
     }
 }
-
-
 
 //params: sender rcpt
 //get params
@@ -167,7 +157,6 @@ if (!sender) {
 if (!rcpt) {
     showUsageExit();
 }
-
 
 // let cfg = getConfig(cfgrouting);
 let relays = getRelays(cfgrelays);

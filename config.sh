@@ -2,5 +2,6 @@
 
 rm -fr config
 rm -fr queue
+rm -fr log
 
-node scripts/config.js
+node scripts/config.mjs
