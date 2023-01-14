@@ -1,31 +1,25 @@
+import fs from "node:fs";
+import fsp from "node:fs/promises";
 import dotenv from "dotenv";
 
 import { genConfigs } from "./lib.js";
 
 dotenv.config();
 
-// SMTP_PORT="25"
-// SMTP_RELAY_NAME="devbook.local"
-// SMTP_GREETING="NGM Mail Gateway"
+//exit if config dir exists
+if (fs.existsSync("config")) {
+    console.error("config folder exists");
+    console.log("exiting...");
+    process.exit(1);
+}
 
-// DENY_INCLUDES_UUID="1"
-// ACCEPTED_DOMAINS="devbook.local,ngm.dev"
+//mkdir config
+await fsp.mkdir("config");
 
-// LOG_LEVEL="notice"
-// LOG_TIMESTAMPS="true"
-// LOG_FORMAT="json"
+//mkdir queue
+await fsp.mkdir("queue");
 
-// NODEJS_CPU_CORES="1"
-
-const files = [
-    "deny_includes_uuid",
-    "host_list",
-    "log.ini",
-    "me",
-    "smtp.ini",
-    "smtpgreeting",
-];
-
-console.log(process.env);
-
+//generate configs
 genConfigs();
+
+//properly gen accepted domains
