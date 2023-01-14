@@ -109,7 +109,19 @@ max_received=100
     return res;
 }
 
+export function genDenyIncludesUuid() {
+    const value = process.env.DENY_INCLUDES_UUID || "1";
+    return value;
+}
+
+export function genSmtpName() {
+    const value = process.env.SMTP_RELAY_NAME || "smtp-relay";
+    return value;
+}
+
 export function genConfigs() {
     writeFileSync("config/log.ini", genLogIni());
     writeFileSync("config/smtp.ini", genSmtpIni());
+    writeFileSync("config/deny_includes_uuid", genDenyIncludesUuid());
+    writeFileSync("config/me", genSmtpName());
 }
