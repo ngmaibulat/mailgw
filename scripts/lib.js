@@ -109,9 +109,45 @@ export function genSmtpName() {
     const value = process.env.SMTP_RELAY_NAME || "smtp-relay";
     return value;
 }
+export function genSmtpGreeting() {
+    const value = process.env.SMTP_GREETING || "NGM Mail Gateway";
+    return value;
+}
+export function genSmtpForwardIni() {
+    const value = `
+enable_outbound=false
+host=127.0.0.1
+port=2525
+connect_timeout=60
+timeout=60
+max_connections=1000
+`;
+    return value;
+}
+export function genPlugins() {
+    const value = `
+#ngmfilter
+
+dnsbl
+helo.checks
+headers
+
+#ngmFilterAttach
+
+ngmroute
+    `;
+    return value;
+}
+export function genInternalCmdKey() {
+    return "231699a65eb9474718b3dd8c18108d550f34279fe86aace09dd04f2b11e61da4";
+}
 export function genConfigs() {
     writeFileSync("config/log.ini", genLogIni());
     writeFileSync("config/smtp.ini", genSmtpIni());
     writeFileSync("config/deny_includes_uuid", genDenyIncludesUuid());
     writeFileSync("config/me", genSmtpName());
+    writeFileSync("config/smtpgreeting", genSmtpGreeting());
+    writeFileSync("config/smtp_forward.ini", genSmtpForwardIni());
+    writeFileSync("config/plugins", genPlugins());
+    writeFileSync("config/internalcmd_key", genInternalCmdKey());
 }
