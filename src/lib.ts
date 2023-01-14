@@ -156,6 +156,14 @@ export function genInternalCmdKey() {
     return "231699a65eb9474718b3dd8c18108d550f34279fe86aace09dd04f2b11e61da4";
 }
 
+export function genHostList() {
+    const value = process.env.ACCEPTED_DOMAINS || "localhost";
+    const res = `
+${value}
+`;
+    return res;
+}
+
 export function genConfigs() {
     writeFileSync("config/log.ini", genLogIni());
     writeFileSync("config/smtp.ini", genSmtpIni());
@@ -165,4 +173,5 @@ export function genConfigs() {
     writeFileSync("config/smtp_forward.ini", genSmtpForwardIni());
     writeFileSync("config/plugins", genPlugins());
     writeFileSync("config/internalcmd_key", genInternalCmdKey());
+    writeFileSync("config/host_list", genHostList());
 }
