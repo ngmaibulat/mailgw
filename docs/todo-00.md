@@ -11,8 +11,6 @@
 
 ### Initial Run Script
 
-- get env and generate configs
-- use dotenv package, so if env vars are not set - they would be loaded from .env
 - get tls certs from env and save to files
 
 ### Container
@@ -26,8 +24,3 @@
 
 - load from env and save to file
 - use Kuber Secrets
-
-### Logger
-
-- NPM package for logging plugin
-- load configs from env: destination url, etc

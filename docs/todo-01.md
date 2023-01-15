@@ -1,21 +1,19 @@
-### Basic
+### Scafolder:
 
-- initial config script
-- generate json configs with secrets/addrs/ports from .env
-
-### Scaffolder:
-
+- check git, pm2, pnpm
 - check env vars
-- check if smtp destinations are reachable
-- check if git, node, pnpm, pm2 tools are installed
-- generate bash code at the end
-- run via eval `npx toolname`
-- bash code should:
+- check db connection
+- mailgw: - check if smtp destinations are reachable
 - clone repo
-- rm -rf .git
-- pnpm install
+- clean .git
+- install deps
+- run migrations
+- add pm2 job
+- save pm2 jobs
 - show help to run haraka
 - show help to update smtp routing
+- generate bash code at the end
+- run via `eval $(npx tool)`
 
 ### Docker
 
@@ -27,7 +25,11 @@
 - kubernetes
 - tls
 
-### Logging
+### Web UI:
 
-- logging plugin
-- logger service
+- Sessions
+- Auth
+- Fonts
+- Hide unused menus
+- Deploy
+- Docker
