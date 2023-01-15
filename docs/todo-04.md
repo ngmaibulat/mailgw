@@ -1,9 +1,6 @@
 ### Logger Service:
 
-- separate from web ui
-- separate repo
 - typescript
-- migrations: sequelize
 - docs
 - docker
 
@@ -23,7 +20,6 @@
 ### Log others:
 
 - connection
-- mails?
 
 ### Hash lookups Service:
 
