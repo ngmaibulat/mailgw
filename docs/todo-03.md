@@ -1,4 +1,4 @@
-- Scaffolder
+- Scaffolder: mailgw, logger service, logger webui. Menu
 - Upgrade script
 
 ### Web UI:

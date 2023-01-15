@@ -24,3 +24,9 @@
 
 - connection
 - mails?
+
+### Hash lookups Service:
+
+- separate repo
+- typescript
+- log requests
