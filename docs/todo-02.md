@@ -1,4 +1,3 @@
-- generate json files based on .env: hosts/ports/secrets/usernames
 - test via git clone
 - npm package: scaffolder
 - docker

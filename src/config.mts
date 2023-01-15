@@ -23,8 +23,8 @@ await fsp.mkdir("queue");
 await fsp.mkdir("log");
 
 //copy json files from sample folder
-await fsp.copyFile("sample/relays.json", "config/relays.json");
-await fsp.copyFile("sample/routing.json", "config/routing.json");
+// await fsp.copyFile("sample/relays.json", "config/relays.json");
+// await fsp.copyFile("sample/routing.json", "config/routing.json");
 
 //generate configs
 genConfigs();

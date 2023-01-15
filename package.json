@@ -13,13 +13,15 @@
     "plugin-cfg": "haraka -o -c .",
     "start": "haraka  -c .",
     "dev": "MODE=DEV haraka  -c .",
-    "cfg": "bash config.sh"
+    "cfgdev": "bash cfg-dev.sh",
+    "cfg": "bash cfg-prod.sh"
   },
   "author": "Aibulat",
   "license": "MIT",
   "dependencies": {
     "Haraka": "^2.8.28",
     "dotenv": "^16.0.3",
+    "envsub": "^4.1.0",
     "mailparser": "^3.5.0",
     "mimelib": "^0.3.1"
   },
