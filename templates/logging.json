@@ -1,0 +1,5 @@
+{
+  "url_delivery": "${LOG_PLUGIN_BASE_URL}delivery",
+  "url_conn": "${LOG_PLUGIN_BASE_URL}connection",
+  "url_queue": "${LOG_PLUGIN_BASE_URL}queue"
+}

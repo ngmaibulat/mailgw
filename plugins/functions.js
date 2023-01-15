@@ -13,7 +13,9 @@ exports.httplog = function (obj, url) {
         body: jsondata,
     };
 
-    return fetch(url, req).catch((err) => {});
+    return fetch(url, req).catch((err) => {
+        exports.log(err.toString());
+    });
 };
 
 exports.getAddr = function (addr) {
@@ -34,7 +36,7 @@ exports.getAddrList = function (arr) {
     return res;
 };
 
-exports.log = function (msg, logfile = "/tmp/haraka/haraka.log") {
+exports.log = function (msg, logfile = "./log/error.log") {
     fs.appendFile(logfile, msg + "\n", (err) => {
         if (err) {
         }

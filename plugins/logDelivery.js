@@ -2,11 +2,20 @@ const fs = require("fs");
 // const fetch = require("node-fetch");
 const functions = require("./functions");
 
-const url_delivery = "http://localhost:3000/api/delivery";
-const url_conn = "http://localhost:3000/api/connection";
-const url_queue = "http://localhost:3000/api/queue";
+const logfile = "./log/logDelivery.log";
+
+exports.getConfig = function () {
+    const path = "logging.json";
+    const config = this.config.get(path, "json");
+    return config;
+};
 
 exports.hook_delivered = function (next, hmail, params) {
+    const config = exports.getConfig();
+    const url_delivery = config.url_delivery;
+
+    functions.log(JSON.stringify(config), logfile);
+
     let host = params[0];
     let ip = params[1];
     let response = params[2];
