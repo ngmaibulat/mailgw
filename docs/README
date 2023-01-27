@@ -1,20 +1,14 @@
-### Bundled Haraka Mail Server
+### NGM Mail Router
 
--   Experimental package!!!
+-   based on Haraka
+-   copy example.env to .env and ediit
+-   run: `node scripts/config.mjs`
+-   `npm run start`
+-   allow inbound 25/tcp
+-   add task to pm2 for robust process management
 
--   config
-    This directory contains configuration files for Haraka. The
-    directory contains the default configuration. You probably want
-    to modify some files in here, particularly `smtp.ini`.
--   plugins
-    This directory contains custom plugins which you write to run in
-    Haraka. The plugins which ship with Haraka are still available
-    to use.
--   docs/plugins
-    This directory contains documentation for your plugins.
+### Other Packages:
 
-Documentation for Haraka is available via `haraka -h <name> where the name
-is either the name of a plugin (without the .js extension) or the name of
-a core Haraka module, such as `Connection`or`Transaction`.
-
-To get documentation on writing a plugin type `haraka -h Plugins`.
+-   Log Database
+-   Log Service
+-   Web UI
