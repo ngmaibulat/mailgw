@@ -2,7 +2,7 @@
 
 const path = require("path");
 const functions = require("./functions");
-const AttachChecker = require("../plugins/AttachChecker");
+const AttachChecker = require("./AttachChecker");
 
 const url_conn = "http://localhost:3000/api/connection";
 const url_queue = "http://localhost:3000/api/queue";

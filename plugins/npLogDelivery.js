@@ -45,7 +45,19 @@ exports.hook_delivered = function (next, hmail, params) {
         // params: params
     };
 
-    functions.httplog(logdata, url_delivery);
+    functions.httplog(logdata, url_delivery).then((response) => {
+        const tm = Date.now();
+        const dt = new Date(tm);
+        const logTime = dt.toISOString();
+
+        const logdata = {
+            tm: logTime,
+            status: response.status,
+            statusText: response.statusText,
+        };
+
+        functions.log(JSON.stringify(logdata), logfile);
+    });
     // httplog(JSON.stringify("+++++++++++++++++++++++++"))
     // httplog(params);
 

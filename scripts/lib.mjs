@@ -134,8 +134,8 @@ headers
 
 #ngmFilterAttach
 
-ngmRoute
-logDelivery
+npRoute
+npLogDelivery
     `;
     return value;
 }
