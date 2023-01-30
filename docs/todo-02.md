@@ -1,4 +1,0 @@
-- test via git clone
-- npm package: scaffolder
-- docker
-- kuber

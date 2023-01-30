@@ -1,2 +1,0 @@
-- Scaffolder: mailgw, logger service, logger webui. Menu
-- Upgrade script

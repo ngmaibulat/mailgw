@@ -4,6 +4,7 @@
 - stop pm2 job
 - update nodejs
 - update pm2
+
 - create folder for blue deployment
 - use scaffolder for the deployment
 - copy the config json files

@@ -1,9 +1,3 @@
-### Logger Service:
-
-- typescript
-- docs
-- docker
-
 ### Log others:
 
 - connection
