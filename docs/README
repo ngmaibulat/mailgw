@@ -25,11 +25,22 @@ npm run start
 ### Link to new Version
 
 ```bash
-pm2 stop mailgw # if we have pm2 task
+pm2 stop mailgw
+pm2 delete mailgw
+
 rm -f /opt/mailgw
 sudo ln -s /opt/mailgw-version /opt/mailgw
 sudo chown $USER:$USER . -R
-pm2 start mailgw # if we have pm2 task
+```
+
+### PM2 tasks
+
+```bash
+cd /opt/mailgw
+pm2 start 'npm run start' -n mailgw
+pm2 save
+pm2 ls
+pm2 startup
 ```
 
 ### Manage Networking
@@ -42,17 +53,7 @@ bash nft/nft.sh
 
 ```bash
 nc -zv addr 25
-swaks -s addr:25 -f from@domain.com -t to@domain.com
-```
-
-### PM2 tasks
-
-```bash
-cd /opt/mailgw
-pm2 start 'npm run start' -n mailgw
-pm2 save
-pm2 ls
-pm2 startup
+swaks -s localhost -f from@domain.com -t to@domain.com
 ```
 
 ### PM2 Daemon
