@@ -2,6 +2,16 @@
 
 pnpm install
 
+if test -f ".env"; then
+    echo ".env file exists: continue work"
+else
+    echo "file not found: .env"
+    echo "please create it or link it via"
+    echo -e "\t ln -s target .env"
+    echo "exiting..."
+    exit
+fi
+
 node scripts/config.mjs
 
 

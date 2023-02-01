@@ -1,12 +1,7 @@
 ### Install Packages
 
 ```bash
-sudo apt install nala
-
-sudo nala install vim tcpdump swaks
-
-sudo npm install -g pnpm
-sudo npm install -g pm2
+bash scripts/update-pkg.sh
 ```
 
 ### Download/Unpack
