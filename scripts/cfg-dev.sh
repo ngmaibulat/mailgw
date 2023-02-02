@@ -13,6 +13,7 @@ fi
 rm -fr config
 rm -fr queue
 rm -fr log
+rm -fr node_modules
 
 pnpm install
 
