@@ -2,6 +2,8 @@
 
 sudo apt install nala
 sudo nala install podman
+sudo nala install cockpit
+sudo nala install cockpit-podman
 
 ### Pull
 
