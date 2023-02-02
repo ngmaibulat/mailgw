@@ -1,14 +1,20 @@
 {
   "name": "@aibulat/mailgw",
   "version": "0.0.4",
-  "description": "Mail router based on haraka",
+  "description": "mail router based on haraka",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
+    "test": "node --test",
+    "build": "tsc",
+    "build:watch": "tsc -w",
+    "minor": "git add . ; git commit -a -m minor; git push",
     "client": "swaks -s 127.0.0.1 -f mail@devbook.local -t mail@devbook.local",
     "plugin-cfg": "haraka -o -c .",
     "start": "haraka  -c .",
-    "dev": "MODE=DEV haraka  -c ."
+    "dev": "MODE=DEV haraka  -c .",
+    "cfgdev": "bash cfg-dev.sh",
+    "cfg": "bash cfg-prod.sh"
   },
   "author": "Aibulat",
   "license": "MIT",
