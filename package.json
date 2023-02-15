@@ -13,7 +13,7 @@
   "author": "Aibulat",
   "license": "MIT",
   "dependencies": {
-    "Haraka": "^2.8.28",
+    "Haraka": "^3.0.1",
     "mailparser": "^3.5.0",
     "mimelib": "^0.3.1"
   }
