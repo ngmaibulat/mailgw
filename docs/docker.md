@@ -1,7 +1,3 @@
-### Build
-
-docker build . -t ngmaibulat/mailgw
-
 ### Interactive Run
 
 ```bash
@@ -26,8 +22,3 @@ docker rm $name
 docker run --name mailgw \
  --mount type=bind,source=$dir/config,target=/opt/mailgw/config \
  -d ngmaibulat/mailgw
-
-### Push
-
-docker tag ngmaibulat/mailgw ngmaibulat/mailgw
-docker push ngmaibulat/mailgw
