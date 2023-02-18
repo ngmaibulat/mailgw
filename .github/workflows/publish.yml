@@ -22,6 +22,14 @@ jobs:
             - run: npm -g install pnpm
             - run: pnpm install
             - run: docker build . -t ngmaibulat/mailgw
+            - name: Login to Docker Hub
+              uses: docker/login-action@v2
+              with:
+                  username: ${{ vars.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+            - run: docker tag ngmaibulat/mailgw ngmaibulat/mailgw
+            - run: docker push ngmaibulat/mailgw
             - run: env
               env:
                   AWS_ACCESS_KEY_ID: ${{secrets.AWS_ACCESS_KEY_ID}}
