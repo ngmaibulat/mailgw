@@ -24,9 +24,11 @@ jobs:
 
             - run: pnpm install
 
+            - run: echo $GITHUB_REF
+
             - name: Extract Git tag
               id: extract_tag
-              run: echo "::set-output name=tag::${{ github.ref/refs\/tags\// }}"
+              run: echo "::set-output name=tag::$GITHUB_REF"
 
             - run: docker build . -t ngmaibulat/mailgw
 
