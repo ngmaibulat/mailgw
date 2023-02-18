@@ -1,6 +1,6 @@
 {
   "name": "@aibulat/mailgw",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Mail router based on haraka",
   "main": "index.js",
   "type": "commonjs",
