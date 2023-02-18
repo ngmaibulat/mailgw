@@ -30,6 +30,8 @@ jobs:
               id: extract_tag
               run: export VER=`npm pkg get version | sed 's/"//g'`
 
+            - run: echo "GITHUB_REF_NAME: $GITHUB_REF_NAME"
+
             - run: docker build . -t ngmaibulat/mailgw
 
             - name: Login to Docker Hub
