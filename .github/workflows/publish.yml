@@ -44,6 +44,5 @@ jobs:
 
             - name: Tag Docker image
               run: docker tag ngmaibulat/mailgw ngmaibulat/mailgw:$GITHUB_REF_NAME
-            #   run: docker tag my-image:latest my-registry/my-image:${{ steps.extract_tag.outputs.tag }}
 
             - run: docker push ngmaibulat/mailgw
