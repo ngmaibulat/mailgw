@@ -16,12 +16,20 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v3
+
             - uses: actions/setup-node@v3
               with:
                   node-version: 18
             - run: npm -g install pnpm
+
             - run: pnpm install
+
+            - name: Extract Git tag
+              id: extract_tag
+              run: echo "::set-output name=tag::${{ github.ref/refs\/tags\// }}"
+
             - run: docker build . -t ngmaibulat/mailgw
+
             - name: Login to Docker Hub
               uses: docker/login-action@v2
               with:
@@ -29,10 +37,9 @@ jobs:
                   password: ${{ secrets.DOCKERHUB_TOKEN }}
 
             - run: docker tag ngmaibulat/mailgw ngmaibulat/mailgw
+
+            - name: Tag Docker image
+              run: docker tag ngmaibulat/mailgw ngmaibulat/mailgw:${{ steps.extract_tag.outputs.tag }}
+            #   run: docker tag my-image:latest my-registry/my-image:${{ steps.extract_tag.outputs.tag }}
+
             - run: docker push ngmaibulat/mailgw
-            - run: env
-              env:
-                  AWS_ACCESS_KEY_ID: ${{secrets.AWS_ACCESS_KEY_ID}}
-                  AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
-                  AWS_REGION: ${{vars.AWS_REGION}}
-                  S3_BUCKET: ${{vars.S3_BUCKET}}
