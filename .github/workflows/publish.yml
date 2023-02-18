@@ -28,7 +28,7 @@ jobs:
 
             - name: Extract Git tag
               id: extract_tag
-              run: echo "::set-output name=tag::$GITHUB_REF"
+              run: export VER=`npm pkg get version | sed 's/"//g'`
 
             - run: docker build . -t ngmaibulat/mailgw
 
@@ -38,10 +38,10 @@ jobs:
                   username: ${{ vars.DOCKERHUB_USERNAME }}
                   password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-            - run: docker tag ngmaibulat/mailgw ngmaibulat/mailgw
+            # - run: docker tag ngmaibulat/mailgw ngmaibulat/mailgw
 
             - name: Tag Docker image
-              run: docker tag ngmaibulat/mailgw ngmaibulat/mailgw:${{ steps.extract_tag.outputs.tag }}
+              run: docker tag ngmaibulat/mailgw ngmaibulat/mailgw:$VER
             #   run: docker tag my-image:latest my-registry/my-image:${{ steps.extract_tag.outputs.tag }}
 
             - run: docker push ngmaibulat/mailgw
