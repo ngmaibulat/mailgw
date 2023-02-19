@@ -24,8 +24,6 @@ jobs:
 
             - run: pnpm install
 
-            - run: echo $GITHUB_REF
-
             - name: Extract NPM Version
               id: extract_tag
               run: export VER=`npm pkg get version | sed 's/"//g'`; echo $VER
@@ -45,4 +43,4 @@ jobs:
             - name: Tag Docker image
               run: docker tag ngmaibulat/mailgw:$GITHUB_REF_NAME ngmaibulat/mailgw:latest
 
-            - run: docker push ngmaibulat/mailgw:$GITHUB_REF_NAME
+            - run: docker push --all-tags ngmaibulat/mailgw
