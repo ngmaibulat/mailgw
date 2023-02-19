@@ -43,6 +43,9 @@ jobs:
             - name: Tag Docker image
               run: docker tag ngmaibulat/mailgw:$GITHUB_REF_NAME ngmaibulat/mailgw:latest
 
+            - name: List Docker Images
+              run: docker images
+
             # - name: Tag Docker image
             #   run: docker tag ngmaibulat/mailgw:$GITHUB_REF_NAME ngmaibulat/mailgw:other
 
