@@ -32,7 +32,7 @@ jobs:
 
             - run: echo "GITHUB_REF_NAME $GITHUB_REF_NAME"
 
-            - run: docker build . -t ngmaibulat/mailgw
+            - run: docker build . -t ngmaibulat/mailgw:$GITHUB_REF_NAME
 
             - name: Login to Docker Hub
               uses: docker/login-action@v2
@@ -43,6 +43,6 @@ jobs:
             # - run: docker tag ngmaibulat/mailgw ngmaibulat/mailgw
 
             - name: Tag Docker image
-              run: docker tag ngmaibulat/mailgw ngmaibulat/mailgw:$GITHUB_REF_NAME
+              run: docker tag ngmaibulat/mailgw:$GITHUB_REF_NAME ngmaibulat/mailgw:latest
 
             - run: docker push ngmaibulat/mailgw:$GITHUB_REF_NAME
