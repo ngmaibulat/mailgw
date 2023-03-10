@@ -17,16 +17,12 @@ jobs:
         steps:
             - uses: actions/checkout@v3
 
-            - uses: actions/setup-node@v3
-              with:
-                  node-version: 18
-            - run: npm -g install pnpm
+            # - uses: actions/setup-node@v3
+            #   with:
+            #       node-version: 18
+            # - run: npm -g install pnpm
 
-            - run: pnpm install
-
-            - name: Extract NPM Version
-              id: extract_tag
-              run: export VER=`npm pkg get version | sed 's/"//g'`; echo $VER
+            # - run: pnpm install
 
             - run: echo "GITHUB_REF_NAME $GITHUB_REF_NAME"
 
