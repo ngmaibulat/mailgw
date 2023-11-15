@@ -45,25 +45,50 @@ exports.hook_delivered = function (next, hmail, params) {
         // params: params
     };
 
-    functions.httplog(logdata, url_delivery).then((response) => {
-        const tm = Date.now();
-        const dt = new Date(tm);
-        const logTime = dt.toISOString();
+    functions
+        .httplog(logdata, url_delivery)
+        .then((response) => {
+            const tm = Date.now();
+            const dt = new Date(tm);
+            const logTime = dt.toISOString();
 
-        const logdata = {
-            tm: logTime,
-            status: response.status,
-            statusText: response.statusText,
-        };
+            if (response && response.status) {
+                const logSuccess = {
+                    tm: logTime,
+                    status: response.status,
+                    statusText: response.statusText,
+                };
 
-        functions.log(JSON.stringify(logdata), logfile);
-    });
-    // httplog(JSON.stringify("+++++++++++++++++++++++++"))
-    // httplog(params);
+                functions.log(JSON.stringify(logSuccess), logfile);
+            } else {
+                // Handle cases where response is undefined, null, or missing a status
+                const errorLogData = {
+                    tm: logTime,
+                    error: "HTTP Logfail, please review logs on Logger side",
+                    logdata: logdata,
+                };
+
+                functions.log(JSON.stringify(errorLogData), logfile);
+            }
+        })
+        .catch((error) => {
+            const tm = Date.now();
+            const dt = new Date(tm);
+            const logTime = dt.toISOString();
+
+            const errorLogData = {
+                tm: logTime,
+                error: "HTTP Logfail, please review logs on Logger side",
+                httperror: error,
+                logdata: logdata,
+            };
+
+            functions.log(JSON.stringify(errorLogData), logfile);
+        });
 
     return next();
 };
 
 exports.register = function () {
-    // this.register_hook('delivered', 'hook_delivered');
+    // this.register_hook("delivered", "hook_delivered");
 };
