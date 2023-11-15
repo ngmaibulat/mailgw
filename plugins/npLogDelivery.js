@@ -78,7 +78,7 @@ exports.hook_delivered = function (next, hmail, params) {
 
             const errorLogData = {
                 tm: logTime,
-                error: "HTTP Logfail, please review logs on Logger side",
+                error: "HTTP Error",
                 httperror: error,
                 logdata: logdata,
             };
