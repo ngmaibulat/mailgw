@@ -2,6 +2,8 @@ const fs = require("fs");
 // const fetch = require("node-fetch");
 const functions = require("./functions");
 
+const version = "0.0.16";
+
 const logfile = "./log/logDelivery.log";
 
 exports.getConfig = function () {
@@ -55,6 +57,7 @@ exports.hook_delivered = function (next, hmail, params) {
             if (response && response.status) {
                 const logSuccess = {
                     tm: logTime,
+                    version: version,
                     status: response.status,
                     statusText: response.statusText,
                 };
@@ -64,6 +67,7 @@ exports.hook_delivered = function (next, hmail, params) {
                 // Handle cases where response is undefined, null, or missing a status
                 const errorLogData = {
                     tm: logTime,
+                    version: version,
                     error: "HTTP Logfail, please review logs on Logger side",
                     logdata: logdata,
                 };
@@ -78,7 +82,8 @@ exports.hook_delivered = function (next, hmail, params) {
 
             const errorLogData = {
                 tm: logTime,
-                error: "HTTP Error",
+                version: version,
+                error: "HTTP Connect Error",
                 httperror: error,
                 logdata: logdata,
             };
