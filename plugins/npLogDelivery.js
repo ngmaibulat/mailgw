@@ -2,7 +2,7 @@ const fs = require("fs");
 // const fetch = require("node-fetch");
 const functions = require("./functions");
 
-const version = "0.0.16";
+const version = "0.0.17";
 
 const logfile = "./log/logDelivery.log";
 
