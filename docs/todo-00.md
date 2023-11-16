@@ -1,6 +1,5 @@
 ### Common
 
-- docker
 - test on kubernetes
 - test on cloud run
 - tls
@@ -13,9 +12,7 @@
 
 ### Container
 
-- initial run script
 - kubernetes
-- test config env
 - test secrets: tls
 
 ### TLS

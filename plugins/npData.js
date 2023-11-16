@@ -3,7 +3,7 @@ const fs = require("fs");
 const functions = require("./functions");
 
 const version = "0.0.21";
-const logfile = "./log/log-connection.log";
+const logfile = "./log/log-data.log";
 
 exports.getConfig = function () {
     const path = "logging.json";
@@ -11,13 +11,13 @@ exports.getConfig = function () {
     return config;
 };
 
-exports.hook_connect = function (next, connection) {
+exports.hook_data = function (next, connection) {
     let obj = {
         uuid: connection.uuid,
         dt: connection.start_time,
 
         // always should be == 5 for hook_data
-        // state: connection.state,
+        state: connection.state,
 
         encoding: connection.encoding,
         remoteAddr: connection.client.remoteAddress,
@@ -61,7 +61,7 @@ exports.hook_connect = function (next, connection) {
 
         // not sure what it is:
         // early_talker: connection.early_talker,
-        // pipelining: connection.pipelining,
+        pipelining: connection.pipelining,
 
         // not really usefull info:
         // esmtp: connection.esmtp,
@@ -78,62 +78,13 @@ exports.hook_connect = function (next, connection) {
         // last_rcpt_msg: connection.last_rcpt_msg,
     };
 
-    const remoteIP = obj.remoteAddr;
     functions.log(functions.toJson(obj), logfile);
 
-    // You can implement various checks here, like IP whitelisting or blacklisting
-    if (isBlacklistedIP(remoteIP)) {
-        // If the IP is blacklisted, reject the connection
-        return next(DENY, "Denied by IP blacklist");
-    } else {
-        // If the IP is not blacklisted, allow the connection
-        return next();
-    }
-};
-
-function isBlacklistedIP(ip) {
-    // Implement your logic to check if an IP is blacklisted
-    // This is just a placeholder function
-    return false; // Replace with actual check
-}
-
-exports.hook_delivered1 = function (next, hmail, params) {
     const config = exports.getConfig();
-    const url_delivery = config.url_delivery;
-
-    functions.log(JSON.stringify(config), logfile);
-
-    let host = params[0];
-    let ip = params[1];
-    let response = params[2];
-    let delay = params[3];
-    let port = params[4];
-    let mode = params[5];
-    let ok_recips = params[6];
-    let secured = params[7];
-    let authenticated = params[8];
-
-    let logdata = {
-        uuid: hmail.todo.uuid,
-        dt: hmail.todo.queue_time,
-        sender: functions.getAddr(hmail.todo.mail_from),
-        rcpt_domain: hmail.todo.domain,
-        rcpt_list: functions.getAddrList(hmail.todo.rcpt_to),
-        rcpt_accepted: functions.getAddrList(ok_recips),
-        tls_forced: hmail.force_tls,
-        tls: secured,
-        auth: authenticated,
-        // todo: hmail.todo,
-        host: host,
-        ip: ip,
-        port: port,
-        response: response,
-        delay: delay,
-        // params: params
-    };
+    const url = config.url_conn;
 
     functions
-        .httplog(logdata, url_delivery)
+        .httplog(obj, url)
         .then((response) => {
             const tm = Date.now();
             const dt = new Date(tm);
@@ -172,13 +123,8 @@ exports.hook_delivered1 = function (next, hmail, params) {
                 httperror: error,
                 logdata: logdata,
             };
-
             functions.log(JSON.stringify(errorLogData), logfile);
         });
 
     return next();
-};
-
-exports.register = function () {
-    // this.register_hook("delivered", "hook_delivered");
 };
