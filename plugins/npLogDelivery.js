@@ -2,9 +2,9 @@ const fs = require("fs");
 // const fetch = require("node-fetch");
 const functions = require("./functions");
 
-const version = "0.0.18";
+const version = "0.0.19";
 
-const logfile = "./log/logDelivery.log";
+const logfile = "./log/log-delivery.log";
 
 exports.getConfig = function () {
     const path = "logging.json";
