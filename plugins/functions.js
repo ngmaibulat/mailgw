@@ -180,6 +180,11 @@ function jsonlog(obj) {
     return str;
 }
 
+exports.toJson = function (obj) {
+    let str = JSON.stringify(obj, censor(obj));
+    return str;
+};
+
 function getDomain(addr) {
     let domain = addr.substring(addr.lastIndexOf("@") + 1);
     return domain;
