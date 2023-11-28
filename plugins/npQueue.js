@@ -107,7 +107,7 @@ exports.hook_queue_outbound = function (next, connection) {
                     tm: logTime,
                     version: version,
                     error: "HTTP Logfail, please review logs on Logger side",
-                    logdata: logdata,
+                    logdata: obj,
                 };
 
                 functions.log(JSON.stringify(errorLogData), logfile);
@@ -123,7 +123,7 @@ exports.hook_queue_outbound = function (next, connection) {
                 version: version,
                 error: "HTTP Connect Error",
                 httperror: error,
-                logdata: logdata,
+                logdata: obj,
             };
             functions.log(JSON.stringify(errorLogData), logfile);
         });
