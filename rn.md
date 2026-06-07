@@ -8,6 +8,7 @@
 - run: `docker buildx version`: `github.com/docker/buildx 0.34.1 e0b0e77d18d3379bc1e0d55f3b37de288d36fe47`
 - build and push via buildx
 - use pnpm to get version automatically: `pnpm pkg get version`
+- use `pnpm version patch` to bump version
 
 ### Todo
 

@@ -2,5 +2,8 @@
 
 #docker build --network=host -t v0.0.24  .
 
-docker buildx build --network=host -t v0.0.24  --load .
+pnpm version patch
 
+VER=`pnpm pkg get version`
+
+docker buildx build --network=host -t v${VER}  --load .
