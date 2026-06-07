@@ -1,0 +1,6 @@
+# vars.yml
+do_api_token: "place-holder-token"
+
+mysql_pw: "place-holder-pw"
+db_name: "mailgw"
+db_user: "mailgw"

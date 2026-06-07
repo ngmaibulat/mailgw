@@ -1,0 +1,12 @@
+# Step 1: Use an official Node.js runtime as a parent image
+FROM alpine
+
+# Step 2: Set the working directory inside the container
+WORKDIR /opt
+
+# RUN apk update && apk add mysql-client
+RUN apk update && apk add mariadb-client
+
+COPY ./containers/mysql-cli/run.sh /opt/run.sh
+
+CMD ["/bin/sh", "/opt/run.sh"]

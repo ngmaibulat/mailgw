@@ -1,0 +1,16 @@
+{
+  "uuid": "5FC4B813-6760-49FD-B130-E3CA7883CD77.1.1",
+  "dt": 1700114298096,
+  "sender": "test@demo.com",
+  "rcpt_domain": "demo1.com",
+  "rcpt_list": "demo1@demo1.com",
+  "rcpt_accepted": "demo1@demo1.com",
+  "tls_forced": false,
+  "tls": true,
+  "auth": true,
+  "host": "sandbox.smtp.mailtrap.io",
+  "ip": "54.158.84.126",
+  "port": "2525",
+  "response": "Ok: queued",
+  "delay": 3.476
+}

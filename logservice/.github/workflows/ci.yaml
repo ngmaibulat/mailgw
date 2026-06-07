@@ -1,0 +1,41 @@
+name: Demo
+
+on:
+    workflow_dispatch:
+    push:
+        tags:
+            - "*"
+
+jobs:
+    Run:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+
+            - uses: actions/setup-node@v3
+              with:
+                  node-version: 19
+
+            - uses: actions/setup-python@v4
+              with:
+                  python-version: "3.11"
+
+            - name: echo
+              run: echo Hi
+
+            - name: PythonVersion
+              run: python --version
+
+            - name: multiline
+              run: |
+                  echo Salam
+                  echo Hello
+                  pwd
+                  mkdir demo
+                  ls -la
+                  cd ..
+                  ls -la
+                  uname
+                  df -h
+                  ip addr
+                  sudo ls

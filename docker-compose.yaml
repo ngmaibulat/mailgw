@@ -1,0 +1,41 @@
+services:
+    mailgw:
+        image: ngmaibulat/mailgw:latest
+        container_name: dev-mailgw
+        restart: unless-stopped
+        ports:
+            - "25:25"
+        volumes:
+            - ./plugins:/opt/mailgw/plugins
+            - /opt/mailgw/config:/opt/mailgw/config
+            - /opt/mailgw/log:/opt/mailgw/log
+            - /opt/mailgw/queue:/opt/mailgw/queue
+
+    mariadb:
+        image: mariadb:12
+        container_name: dev-mailgw-db
+        restart: unless-stopped
+        ports:
+            - "3306:3306"
+        environment:
+            MARIADB_ROOT_PASSWORD: P@ssw0rd
+            MARIADB_DATABASE: mailgw
+            MARIADB_USER: mailgw
+            MARIADB_PASSWORD: P@ssw0rd
+        volumes:
+            - mariadb_data:/var/lib/mysql
+            - /run/mysqld:/run/mysqld
+
+    db-migrator:
+        image: ngmaibulat/db-migrator:latest
+        environment:
+            NODE_ENV: production
+            PORT: 3000
+            DB_DRIVER: mysql
+            DB_HOST: dev-mailgw-db
+            DB_NAME: mailgw
+            DB_USER: mailgw
+            DB_PASS: P@ssw0rd
+
+volumes:
+    mariadb_data:
