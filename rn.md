@@ -19,6 +19,7 @@
 - Send test emails
 - Apply Customer configs
 - Make Docker compose files
+- Start using Claude Code
 
 ### Document
 
