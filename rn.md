@@ -12,16 +12,15 @@
 - use: `pnpm config set minimum-release-age 1440`
 - set: `blockExoticSubdeps: true`
 - added trivy scan
+- `connection.ini` is now mandatory. Use config examples: `https://github.com/haraka/Haraka/blob/master/config/connection.ini`
 
 ### Todo
 
-- Deploy on Ubuntu 26.04
-- Send test emails
-- Apply Customer configs
-- Make Docker compose files
+- Test on Ubuntu 26.04
 - Start using Claude Code
 
 ### Document
 
-- https://pnpm.io/supply-chain-security
 - `pnpm clean --lockfile`
+- https://pnpm.io/supply-chain-security
+- https://github.com/haraka/Haraka/blob/master/config/connection.ini
