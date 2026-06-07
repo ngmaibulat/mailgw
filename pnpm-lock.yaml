@@ -9,14 +9,11 @@ importers:
   .:
     dependencies:
       Haraka:
-        specifier: ^3.0.2
+        specifier: ^3.2.1
         version: 3.2.1
       mailparser:
-        specifier: ^3.5.0
+        specifier: ^3.9.9
         version: 3.9.9
-      mimelib:
-        specifier: ^0.3.1
-        version: 0.3.1
 
 packages:
 
@@ -133,9 +130,6 @@ packages:
   address-rfc2822@2.2.4:
     resolution: {integrity: sha512-jgN5ntU50F9cwwSkeeg7Ppznr4kiywukTVQTt+oNqM3ZeXubP7Ij5vOu/SIFLD90xR5geDAjLtTEo59GE82bvQ==}
 
-  addressparser@1.0.1:
-    resolution: {integrity: sha512-aQX7AISOMM7HFE0iZ3+YnD07oIeJqWGVnJ+ZIKaBZAk03ftmVYVqsGas/rbXKR21n4D/hKCSHypvcyOkds/xzg==}
-
   binary-data@0.6.0:
     resolution: {integrity: sha512-HGiT0ir03tS1u7iWdW5xjJfbPpvxH2qJbPFxXW0I3P5iOzkbjN/cJy5GlpAwmjHW5CiayGOxZ/ytLzXmYgdgqQ==}
     engines: {node: '>=6'}
@@ -177,9 +171,6 @@ packages:
   encoding-japanese@2.2.0:
     resolution: {integrity: sha512-EuJWwlHPZ1LbADuKTClvHtwbaFn4rOD+dRAbWysqEOXRc2Uui0hJInNJrsdH0c+OhJA4nrCBdSkW4DD5YxAo6A==}
     engines: {node: '>=8.10.0'}
-
-  encoding@0.1.13:
-    resolution: {integrity: sha512-ETBauow1T35Y/WZMkio9jiM0Z5xjHHmJ4XmjZOq1l/dXz3lr2sRn87nJy20RupqSh1F2m3HHPSp8ShIPQJrJ3A==}
 
   entities@4.5.0:
     resolution: {integrity: sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw==}
@@ -352,10 +343,6 @@ packages:
   htmlparser2@10.1.0:
     resolution: {integrity: sha512-VTZkM9GWRAtEpveh7MSF6SjjrpNVNNVJfFup7xTY3UpFtm67foy9HDVXneLtFVt4pMz5kZtgNcvCniNFb1hlEQ==}
 
-  iconv-lite@0.6.3:
-    resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
-    engines: {node: '>=0.10.0'}
-
   iconv-lite@0.7.2:
     resolution: {integrity: sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw==}
     engines: {node: '>=0.10.0'}
@@ -404,10 +391,6 @@ packages:
   maxmind@5.0.6:
     resolution: {integrity: sha512-5bvd/u+kIaTqaGM+xkXjatzQw1dQfSmlLggr2W1EKMyMxSgx2woZyusLpNpZ4DdPmL+1bbJWeo4LXsi6bC0Iew==}
     engines: {node: '>=12', npm: '>=6'}
-
-  mimelib@0.3.1:
-    resolution: {integrity: sha512-ipzNp6TBsNfD3hButGlPVlGmuCgybIM9SBf8YwIG+SYmBgtU0u8wjf+BSrJX0mvqtv59SLmwphw/XiCbkLWv7w==}
-    deprecated: This project is unmaintained
 
   minipass@7.1.3:
     resolution: {integrity: sha512-tEBHqDnIoM/1rXME1zgka9g6Q2lcoCkxHLuc7ODJ5BxbP5d4c2Z5cGgtXAku59200Cx7diuHTOYfSBD8n6mm8A==}
@@ -692,8 +675,6 @@ snapshots:
       email-addresses: 5.0.0
     optional: true
 
-  addressparser@1.0.1: {}
-
   binary-data@0.6.0:
     dependencies:
       generate-function: 2.3.1
@@ -734,10 +715,6 @@ snapshots:
     optional: true
 
   encoding-japanese@2.2.0: {}
-
-  encoding@0.1.13:
-    dependencies:
-      iconv-lite: 0.6.3
 
   entities@4.5.0: {}
 
@@ -1012,10 +989,6 @@ snapshots:
       domutils: 3.2.2
       entities: 7.0.1
 
-  iconv-lite@0.6.3:
-    dependencies:
-      safer-buffer: 2.1.2
-
   iconv-lite@0.7.2:
     dependencies:
       safer-buffer: 2.1.2
@@ -1073,11 +1046,6 @@ snapshots:
       mmdb-lib: 3.0.2
       tiny-lru: 13.0.0
     optional: true
-
-  mimelib@0.3.1:
-    dependencies:
-      addressparser: 1.0.1
-      encoding: 0.1.13
 
   minipass@7.1.3: {}
 

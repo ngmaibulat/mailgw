@@ -1,0 +1,15 @@
+### 2026-06-07
+
+- removed dep: "mimelib": "^0.3.1"
+- switched to PNPM@11 via corepack
+- added pnpm-workspaces.yaml to allow build of modern-syslog (Haraka dependency)
+- switched to NodeJS 26 from 20
+- added: `sudo pacman -S docker-buildx`
+- run: `docker buildx version`: `github.com/docker/buildx 0.34.1 e0b0e77d18d3379bc1e0d55f3b37de288d36fe47`
+- build and push via buildx
+- use pnpm to get version automatically: `pnpm pkg get version`
+
+### Todo
+
+- pnpm security
+- docker buildx

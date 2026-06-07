@@ -9,6 +9,7 @@ RUN mkdir -p /opt/mailgw/plugins
 
 COPY package.json /opt/mailgw/
 COPY pnpm-lock.yaml  /opt/mailgw/
+COPY pnpm-workspace.yaml  /opt/mailgw/
 COPY plugins  /opt/mailgw/plugins
 
 WORKDIR /opt/mailgw
