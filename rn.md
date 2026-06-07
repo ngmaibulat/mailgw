@@ -9,8 +9,10 @@
 - build and push via buildx
 - use pnpm to get version automatically: `pnpm pkg get version`
 - use `pnpm version patch` to bump version
+- use: `pnpm config set minimum-release-age 1440`
+- set: `blockExoticSubdeps: true`
+- added trivy scan
 
 ### Todo
 
-- pnpm security
-- docker buildx
+- document: `pnpm clean --lockfile`

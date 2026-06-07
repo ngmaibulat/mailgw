@@ -8,7 +8,9 @@
     "client": "swaks -s 127.0.0.1 -f mail@devbook.local -t mail@devbook.local",
     "plugin-cfg": "haraka -o -c .",
     "start": "haraka  -c .",
-    "dev": "MODE=DEV haraka  -c ."
+    "dev": "MODE=DEV haraka  -c .",
+    "scan": "trivy fs .",
+    "scan-clean": "trivy clean --all"
   },
   "author": "Aibulat",
   "license": "MIT",

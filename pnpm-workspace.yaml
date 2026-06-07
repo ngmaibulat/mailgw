@@ -1,2 +1,6 @@
+pnpm:
+    minimumReleaseAge: 10080
+    blockExoticSubdeps: true
+
 allowBuilds:
     modern-syslog: true
