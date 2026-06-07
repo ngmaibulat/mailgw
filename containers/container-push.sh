@@ -1,5 +1,7 @@
 #!/bin/bash
 
+cd ..
+
 pnpm version patch
 
 VER=`pnpm pkg get version`
