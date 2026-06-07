@@ -15,4 +15,12 @@
 
 ### Todo
 
-- document: `pnpm clean --lockfile`
+- Deploy on Ubuntu 26.04
+- Send test emails
+- Apply Customer configs
+- Make Docker compose files
+
+### Document
+
+- https://pnpm.io/supply-chain-security
+- `pnpm clean --lockfile`

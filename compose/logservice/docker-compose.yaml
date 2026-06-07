@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  db:
+    container_name: db
+    image: mysql:latest
+    restart: unless-stopped
+    networks:
+      - mailgw
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - data:/var/lib/mysql
+    environment:
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
+      MYSQL_ROOT_PASSWORD: ${DB_PASS}
+      MYSQL_DATABASE: ${DB_NAME}
+
+  logservice:
+    container_name: logservice
+    image: ngmaibulat/logservice:latest
+    restart: unless-stopped
+    networks:
+      - mailgw
+    environment:
+      DB_DRIVER: ${DB_DRIVER}
+      DB_HOST: ${DB_HOST}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      NODE_ENV: ${NODE_ENV}
+      PORT: ${PORT}
+
+networks:
+  mailgw:
+    name: mailgw
+    driver: bridge
+
+volumes:
+  data:
+    name: data
