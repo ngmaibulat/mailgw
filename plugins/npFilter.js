@@ -49,8 +49,10 @@ connection.transaction.mail_from
 exports.hook_connect = function (next, connection) {
     const cfg = this.config.get("ngmfilter.json", "json");
 
-    // let data = JSON.stringify(cfg.allowed) + "\n\n\n";
-    // log(data);
+    if (!cfg || !Array.isArray(cfg.allowed)) {
+        this.logerror("ngmfilter.json missing or has no 'allowed' array — denying all connections");
+        return next(DENYDISCONNECT);
+    }
 
     let allowed = cfg.allowed.includes(connection.remote.ip);
 

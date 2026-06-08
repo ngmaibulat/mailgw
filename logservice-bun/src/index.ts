@@ -1,5 +1,6 @@
 import { runMigrations } from "./migrate";
 import { withAuth } from "./middleware/auth";
+import { withErrorHandling } from "./middleware/error";
 import { rootRoute } from "./routes/root";
 import {
     deliveryRoute, deliverySearchRoute,
@@ -7,6 +8,12 @@ import {
     connectionRoute, connectionSearchRoute,
     transactionSearchRoute,
 } from "./routes/api";
+
+type Handler = (req: Request) => Response | Promise<Response>;
+
+function handle(handler: Handler): Handler {
+    return withAuth(withErrorHandling(handler));
+}
 
 const port = Number(Bun.env.PORT ?? 3000);
 
@@ -23,10 +30,10 @@ Bun.serve({
     port,
     routes: {
         "/": { GET: rootRoute },
-        "/api/delivery":    { POST: withAuth(deliveryRoute),    GET: withAuth(deliverySearchRoute) },
-        "/api/connection":  { POST: withAuth(connectionRoute),  GET: withAuth(connectionSearchRoute) },
-        "/api/queue":       { POST: withAuth(queueRoute) },
-        "/api/transaction": { GET:  withAuth(transactionSearchRoute) },
+        "/api/delivery":    { POST: handle(deliveryRoute),    GET: handle(deliverySearchRoute) },
+        "/api/connection":  { POST: handle(connectionRoute),  GET: handle(connectionSearchRoute) },
+        "/api/queue":       { POST: handle(queueRoute) },
+        "/api/transaction": { GET:  handle(transactionSearchRoute) },
     },
     fetch(_req) {
         return new Response("Resource does not exist\n", { status: 404 });

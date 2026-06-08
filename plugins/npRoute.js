@@ -46,21 +46,23 @@ hmail.todo:
  */
 
 exports.hook_get_mx = function (next, hmail, domain) {
+    if (!hmail.todo.rcpt_to || hmail.todo.rcpt_to.length === 0) {
+        this.logerror("hook_get_mx: rcpt_to is empty, deferring");
+        return next(DENYSOFT, "No recipients");
+    }
+
     let sender = functions.getAddr(hmail.todo.mail_from);
     let rcpt = functions.getAddr(hmail.todo.rcpt_to[0]);
     let relay = rtable.findRoute(sender, rcpt);
 
-    // httplog(hmail.todo);
-    // httplog(relay);
-
     if (process.env.MODE == "DEV") {
-        const result = {
-            sender,
-            rcpt,
-            relay,
-        };
-
+        const result = { sender, rcpt, relay };
         functions.log(JSON.stringify(result), logfile);
+    }
+
+    if (!relay) {
+        this.logerror(`hook_get_mx: no route found for ${sender} -> ${rcpt}`);
+        return next(DENYSOFT, "No route found");
     }
 
     return next(OK, relay);

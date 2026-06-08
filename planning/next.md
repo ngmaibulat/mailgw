@@ -14,3 +14,17 @@ Before going to production:
 6. Testing — smoke tests for all endpoints.
 
 Suggested order: Migrations → wire up connection/queue persistence → auth → testing.
+
+---
+
+Three things stand out, in order of importance:
+
+1. Dockerfile for logservice-bun — the docker-compose.yaml already references ngmaibulat/mailgw-logservice-bun:latest but there's no Dockerfile yet. The service can't be deployed without it. This is the most urgent gap.
+
+2. Error handling in route handlers — right now if the DB is down or a query throws, the error bubbles up unhandled and Bun will return a 500 with no useful response body. A simple try/catch in each route returning { status: "Error" } with HTTP 500 would make failures visible and safe.
+
+3. Fix the Haraka bugs from the original code review — those are in production right now:
+
+- hook_get_mx passes next(OK, false) when no route is found — should be DENYSOFT
+- npFilter.js crashes on missing/malformed config with no null guard
+- hook_get_mx will throw if rcpt_to is empty
