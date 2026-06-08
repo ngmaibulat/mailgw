@@ -26,16 +26,32 @@ services:
             - mariadb_data:/var/lib/mysql
             - /run/mysqld:/run/mysqld
 
-    db-migrator:
-        image: ngmaibulat/db-migrator:latest
+    logservice:
+        image: ngmaibulat/mailgw-logservice-bun:latest
+        container_name: dev-logservice
+        restart: unless-stopped
+        ports:
+            - "3000:3000"
         environment:
-            NODE_ENV: production
             PORT: 3000
-            DB_DRIVER: mysql
             DB_HOST: dev-mailgw-db
             DB_NAME: mailgw
             DB_USER: mailgw
             DB_PASS: P@ssw0rd
+        depends_on:
+            db-migrator:
+                condition: service_completed_successfully
+
+    db-migrator:
+        image: ngmaibulat/mailgw-logservice-bun:latest
+        command: ["bun", "src/index.ts", "--migrate"]
+        environment:
+            DB_HOST: dev-mailgw-db
+            DB_NAME: mailgw
+            DB_USER: mailgw
+            DB_PASS: P@ssw0rd
+        depends_on:
+            - mariadb
 
 volumes:
     mariadb_data:

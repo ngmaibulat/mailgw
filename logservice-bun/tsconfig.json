@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "types": ["bun-types"],
+        "strict": true,
+        "skipLibCheck": true,
+        "lib": ["ESNext"]
+    },
+    "include": ["src/**/*", "tests/**/*", "migrate.ts"]
+}

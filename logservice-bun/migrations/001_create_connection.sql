@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS `Connection` (
+    `id`                 INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `uuid`               VARCHAR(255),
+    `dt`                 DATETIME,
+    `encoding`           VARCHAR(255),
+    `hello_name`         VARCHAR(255),
+    `remoteAddr`         VARCHAR(255),
+    `remotePort`         INT,
+    `remote_host`        VARCHAR(255),
+    `remote_info`        VARCHAR(255),
+    `remote_is_local`    INT,
+    `remote_is_private`  INT,
+    `using_tls`          INT,
+    `tran_count`         INT,
+    `rcpt_count_accept`  INT,
+    `rcpt_count_tempfail` INT,
+    `rcpt_count_reject`  INT,
+    `createdAt`          DATETIME     NOT NULL,
+    `updatedAt`          DATETIME     NOT NULL
+);

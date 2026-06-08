@@ -1,0 +1,22 @@
+{
+  "name": "@ngmaibulat/mailgw-logservice-bun",
+  "version": "0.0.1",
+  "description": "",
+  "module": "src/index.ts",
+  "scripts": {
+    "test": "bun test tests/",
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "start:migrate": "bun src/index.ts --migrate",
+    "migrate": "bun migrate.ts"
+  },
+  "keywords": [],
+  "author": "Aibulat",
+  "license": "Aibulat",
+  "dependencies": {
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14"
+  }
+}
