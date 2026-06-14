@@ -4,7 +4,7 @@ const dotenv = require("dotenv");
 const routes = require("./routes/root.js");
 const routesApi = require("./routes/api.js");
 
-const models = require("../models");
+const models = require("../models/index.js");
 
 dotenv.config();
 const app = express();
