@@ -6,21 +6,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a mail gateway/router built on [Haraka](https://haraka.github.io/) (Node.js SMTP server). It accepts inbound SMTP, applies routing rules to forward mail to configured relay targets, and POSTs structured JSON events to a companion logging service.
 
-The repo is a pnpm monorepo with two packages:
-- **Root** — the Haraka SMTP server with custom plugins (`plugins/`)
+The repo is a pnpm workspace monorepo. Each app lives in its own top-level
+package under a private workspace root (`package.json` + `pnpm-workspace.yaml`):
+- **`mailgw/`** — the Haraka SMTP server with custom plugins (`mailgw/plugins/`)
 - **`logservice/`** — an Express + Sequelize REST API that receives events from plugins and stores them in MariaDB
 
 ## Commands
 
-### Haraka (root package)
+### Haraka (`mailgw/` package)
+
+Run via the workspace filter from the repo root, or `cd mailgw` first:
 
 ```bash
-pnpm start                  # run Haraka on port 25
-pnpm dev                    # run with MODE=DEV (extra debug logging to log/)
-pnpm run client             # send a test email via swaks to localhost
-pnpm run plugin-cfg         # dump Haraka plugin configuration
-pnpm run scan               # trivy security scan
-pnpm version patch          # bump patch version (used before a container build)
+pnpm --filter @aibulat/mailgw start   # run Haraka on port 25  (or: cd mailgw && pnpm start)
+pnpm --filter @aibulat/mailgw dev     # run with MODE=DEV (extra debug logging to log/)
+pnpm --filter @aibulat/mailgw test    # run the plugin test suite
+cd mailgw && pnpm run client          # send a test email via swaks to localhost
+cd mailgw && pnpm run plugin-cfg      # dump Haraka plugin configuration
+cd mailgw && pnpm version patch       # bump patch version (used before a container build)
 ```
 
 ### logservice
@@ -34,9 +37,9 @@ pnpm start                  # run node src/index.js directly
 ### Container / Docker
 
 ```bash
-./containers/container-build.sh   # auto-bumps version, builds with docker buildx
+./containers/container-build.sh   # auto-bumps mailgw version, builds with docker buildx (-f mailgw/Dockerfile, root context)
 ./containers/container-push.sh    # push to Docker Hub (ngmaibulat/mailgw)
-./container-dev.sh                # run latest image locally (mounts ./plugins live)
+cd mailgw && ./container-dev.sh   # run latest image locally (mounts mailgw/plugins live)
 docker compose up                 # full stack: mailgw + mariadb + db-migrator
 docker compose run --rm db-migrator  # run Sequelize migrations against MariaDB
 ```
@@ -45,7 +48,7 @@ docker compose run --rm db-migrator  # run Sequelize migrations against MariaDB
 
 ### Haraka plugin pipeline
 
-Haraka loads plugins listed in `config/plugins` and calls registered hooks at each SMTP stage. All custom plugins live in `plugins/` and follow the `np` naming prefix:
+Haraka loads plugins listed in `mailgw/config/plugins` and calls registered hooks at each SMTP stage. All custom plugins live in `mailgw/plugins/` and follow the `np` naming prefix:
 
 | Plugin | Hook(s) | Purpose |
 |---|---|---|
@@ -57,13 +60,13 @@ Haraka loads plugins listed in `config/plugins` and calls registered hooks at ea
 | `npQueue.js` | `hook_queue_outbound` | Log queue events → logservice |
 | `npLogDelivery.js` | `hook_delivered` | Log delivery outcomes → logservice |
 
-All logging plugins read `config/logging.json` (via Haraka's `this.config.get`) and use `plugins/functions.js#httplog` to POST JSON to the logservice.
+All logging plugins read `mailgw/config/logging.json` (via Haraka's `this.config.get`) and use `mailgw/plugins/functions.js#httplog` to POST JSON to the logservice.
 
-### Routing logic (`plugins/Route.js`, `plugins/RoutingTable.js`)
+### Routing logic (`mailgw/plugins/Route.js`, `mailgw/plugins/RoutingTable.js`)
 
 On `register`, `npRoute.js` loads two config files and builds a `RoutingTable`:
-- `config/routing.json` — array of route rules, each specifying `relay`, `sender`, `sender_domain`, `rcpt`, `rcpt_domain` (empty string = wildcard)
-- `config/relays.json` — map of relay name → relay object (host, port, etc.)
+- `mailgw/config/routing.json` — array of route rules, each specifying `relay`, `sender`, `sender_domain`, `rcpt`, `rcpt_domain` (empty string = wildcard)
+- `mailgw/config/relays.json` — map of relay name → relay object (host, port, etc.)
 
 On `hook_get_mx`, `RoutingTable.findRoute(sender, rcpt)` walks the rules in order and returns the first matching relay.
 
@@ -86,4 +89,4 @@ Sequelize models in `logservice/models/` backed by MariaDB. Schema migrations li
 
 ### DEV mode
 
-Setting `MODE=DEV` (`pnpm dev`) enables extra JSON logging to `log/ngmroute.log` inside `npRoute.js`. Log files are written to `log/` relative to the Haraka working directory (the repo root or `/opt/mailgw` in Docker).
+Setting `MODE=DEV` (`pnpm dev`) enables extra JSON logging to `log/ngmroute.log` inside `npRoute.js`. Log files are written to `log/` relative to the Haraka working directory (`mailgw/` locally or `/opt/mailgw` in Docker).

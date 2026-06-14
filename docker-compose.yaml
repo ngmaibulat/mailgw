@@ -9,7 +9,7 @@ services:
             # Must match the logservice API_KEY so the plugins authenticate.
             API_KEY: ${API_KEY:-}
         volumes:
-            - ./plugins:/opt/mailgw/plugins
+            - ./mailgw/plugins:/opt/mailgw/plugins
             - /opt/mailgw/config:/opt/mailgw/config
             - /opt/mailgw/log:/opt/mailgw/log
             - /opt/mailgw/queue:/opt/mailgw/queue

@@ -1,0 +1,22 @@
+{
+  "name": "@aibulat/mailgw",
+  "version": "0.1.5",
+  "description": "Mail router based on haraka",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "client": "swaks -s 127.0.0.1 -f mail@devbook.local -t mail@devbook.local",
+    "plugin-cfg": "haraka -o -c .",
+    "start": "haraka  -c .",
+    "dev": "MODE=DEV haraka  -c .",
+    "scan": "trivy fs .",
+    "scan-clean": "trivy clean --all",
+    "test": "node --test tests/*.test.js"
+  },
+  "author": "Aibulat",
+  "license": "MIT",
+  "dependencies": {
+    "Haraka": "^3.2.1",
+    "mailparser": "^3.9.9"
+  }
+}

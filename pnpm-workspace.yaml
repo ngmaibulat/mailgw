@@ -1,3 +1,8 @@
+packages:
+    # logservice is a Bun project (own bun.lock) and is intentionally NOT a pnpm
+    # workspace member, so pnpm and Bun don't fight over its node_modules.
+    - mailgw
+
 pnpm:
     minimumReleaseAge: 10080
     blockExoticSubdeps: true

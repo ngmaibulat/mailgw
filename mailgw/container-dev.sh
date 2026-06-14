@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Run from the mailgw/ package dir so ${PWD}/plugins resolves to mailgw/plugins.
+
 docker stop dev-mailgw
 
 docker rm -f $(docker ps -aq)
