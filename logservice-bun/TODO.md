@@ -49,8 +49,5 @@
 - [x] Add authentication to API endpoints (API key via X-API-Key header)
 
 ## Testing
-- [ ] Smoke test all 3 API endpoints (requires live DB)
-- [ ] Verify DB writes succeed for `/delivery` (requires live DB)
-- [x] Verify delivery validation rejects bad payloads
-- [x] Test query builder search operators
-- [x] Test auth middleware
+
+Tracked in `planning/testing.md`.

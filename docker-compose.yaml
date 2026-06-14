@@ -5,6 +5,9 @@ services:
         restart: unless-stopped
         ports:
             - "25:25"
+        environment:
+            # Must match the logservice API_KEY so the plugins authenticate.
+            API_KEY: ${API_KEY:-}
         volumes:
             - ./plugins:/opt/mailgw/plugins
             - /opt/mailgw/config:/opt/mailgw/config
@@ -34,6 +37,8 @@ services:
             - "3000:3000"
         environment:
             PORT: 3000
+            # Enables X-API-Key auth when set; leave empty to accept all.
+            API_KEY: ${API_KEY:-}
             DB_HOST: dev-mailgw-db
             DB_NAME: mailgw
             DB_USER: mailgw
