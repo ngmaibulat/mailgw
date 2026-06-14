@@ -7,6 +7,16 @@ test("getAddr joins user and host with @", () => {
     assert.equal(functions.getAddr({ user: "alice", host: "a.com" }), "alice@a.com");
 });
 
+test("getAddr returns '' for a null/undefined address (null sender)", () => {
+    assert.equal(functions.getAddr(null), "");
+    assert.equal(functions.getAddr(undefined), "");
+});
+
+test("getAddr tolerates a partial address without throwing", () => {
+    assert.equal(functions.getAddr({ user: "a" }), "a@");
+    assert.equal(functions.getAddr({ host: "b.com" }), "@b.com");
+});
+
 test("getAddrList comma-joins addresses, no trailing comma", () => {
     const list = [
         { user: "a", host: "x.com" },
@@ -70,6 +80,42 @@ test("log_transaction maps txn fields onto the logged payload", () => {
     assert.equal(obj.rcpt_count_accept, 1);
     assert.equal(obj.rcpt_count_reject, 0);
     assert.deepEqual(obj.headers, { subject: "hi" });
+});
+
+test("log_transaction does not throw when nested fields are absent", () => {
+    const original = functions.httplog;
+    const calls = [];
+    functions.httplog = (obj, url) => calls.push({ obj, url });
+    try {
+        // no rcpt_count, no header, null sender
+        functions.log_transaction({ uuid: "u", mail_from: null }, "http://logservice/queue");
+    } finally {
+        functions.httplog = original;
+    }
+
+    assert.equal(calls.length, 1);
+    const obj = calls[0].obj;
+    assert.equal(obj.uuid, "u");
+    assert.equal(obj.sender, "");
+    assert.equal(obj.rcpt_count_accept, undefined);
+    assert.equal(obj.headers, undefined);
+});
+
+test("log_connection shapes via buildConnInfo and does not throw on a bare connection", () => {
+    const original = functions.httplog;
+    const calls = [];
+    functions.httplog = (obj, url) => calls.push({ obj, url });
+    try {
+        // hook_data_post-style call but with early-stage/absent fields
+        functions.log_connection({ uuid: "c" }, "http://logservice/conn");
+    } finally {
+        functions.httplog = original;
+    }
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].obj.uuid, "c");
+    assert.equal(calls[0].obj.remoteAddr, undefined);
+    assert.equal(calls[0].url, "http://logservice/conn");
 });
 
 test("buildConnInfo maps connection fields onto the log payload", () => {

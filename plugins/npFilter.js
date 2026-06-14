@@ -50,7 +50,9 @@ exports.hook_connect = function (next, connection) {
     const cfg = this.config.get("ngmfilter.json", "json");
 
     if (!cfg || !Array.isArray(cfg.allowed)) {
-        this.logerror("ngmfilter.json missing or has no 'allowed' array — denying all connections");
+        this.logerror(
+            "ngmfilter.json missing or has no 'allowed' array — denying all connections",
+        );
         return next(DENYDISCONNECT);
     }
 
@@ -89,24 +91,6 @@ exports.hook_queue_outbound = function (next, connection) {
 
     return next(CONT);
 };
-
-exports.hook_send_email = function (next, hmail) {
-    log(
-        "send mail: " +
-            hmail.todo.uuid +
-            " to: " +
-            hmail.todo.rcpt_to[0].original
-    );
-    // jsonlog(hmail.todo.rcpt_to[0]);
-    return next(DENY);
-};
-
-// exports.register = function()
-// {
-//     this.lognotice("registering hooks");
-//     this.register_hook('connect', 'hook_connect');
-//     this.register_hook('rcpt', 'hook_rcpt');
-// };
 
 function log(msg) {
     fs.appendFile(logfile, msg + "\n", (err) => {
