@@ -1,5 +1,7 @@
 const fs = require("fs");
 
+const VERSION = "0.0.21";
+
 exports.httplog = function (obj, url) {
     let jsondata = JSON.stringify(obj);
     // let jsondata = JSON.stringify(obj, censor(obj));
@@ -16,6 +18,77 @@ exports.httplog = function (obj, url) {
     return fetch(url, req).catch((err) => {
         exports.log(err.toString());
     });
+};
+
+// Shape the shared per-connection log payload used by the connection / data /
+// queue logging hooks. Optional chaining guards against fields that may not
+// exist yet at the SMTP stage the hook fires (e.g. hello before EHLO).
+exports.buildConnInfo = function (connection) {
+    return {
+        uuid: connection.uuid,
+        dt: connection.start_time,
+        state: connection.state,
+        encoding: connection.encoding,
+        remoteAddr: connection.client?.remoteAddress,
+        remotePort: connection.client?.remotePort,
+        remote_is_local: connection.remote_is_local,
+        remote_is_private: connection.remote_is_private,
+        remote_host: connection.remote_host,
+        remote_info: connection.remote_info,
+        hello_name: connection.hello?.host,
+        using_tls: connection.using_tls,
+        tran_count: connection.tran_count,
+        pipelining: connection.pipelining,
+        rcpt_count_accept: connection.rcpt_count?.accept,
+        rcpt_count_tempfail: connection.rcpt_count?.tempfail,
+        rcpt_count_reject: connection.rcpt_count?.reject,
+    };
+};
+
+// POST a payload to the logservice and record the outcome to a local logfile.
+// Returns the fetch promise so callers/tests can await it.
+exports.postWithLogging = function (payload, url, logfile) {
+    exports.log(exports.toJson(payload), logfile);
+
+    return exports
+        .httplog(payload, url)
+        .then((response) => {
+            const tm = new Date().toISOString();
+            if (response && response.status) {
+                exports.log(
+                    JSON.stringify({
+                        tm,
+                        version: VERSION,
+                        status: response.status,
+                        statusText: response.statusText,
+                    }),
+                    logfile
+                );
+            } else {
+                exports.log(
+                    JSON.stringify({
+                        tm,
+                        version: VERSION,
+                        error: "HTTP Logfail, please review logs on Logger side",
+                        logdata: payload,
+                    }),
+                    logfile
+                );
+            }
+        })
+        .catch((error) => {
+            const tm = new Date().toISOString();
+            exports.log(
+                JSON.stringify({
+                    tm,
+                    version: VERSION,
+                    error: "HTTP Connect Error",
+                    httperror: error,
+                    logdata: payload,
+                }),
+                logfile
+            );
+        });
 };
 
 exports.getAddr = function (addr) {
