@@ -1,6 +1,6 @@
 {
   "name": "@ngmaibulat/mailgw-logservice-bun",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "",
   "module": "src/index.ts",
   "scripts": {
@@ -11,7 +11,9 @@
     "db:test": "bun src/dbtest.ts",
     "db:migrate": "bun src/dbmigrate.ts",
     "db:clean": "bun src/dbclean.ts",
-    "db:reset": "bun src/dbclean.ts && bun src/index.ts --migrate"
+    "db:reset": "bun src/dbclean.ts && bun src/index.ts --migrate",
+    "scan": "trivy image --severity HIGH,CRITICAL ngmaibulat/logservice:latest",
+    "scan:upgrade": "sudo pacman -Syu trivy"
   },
   "keywords": [],
   "author": "Aibulat",
