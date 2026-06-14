@@ -6,6 +6,8 @@ const migrationsDir = join(import.meta.dir, "../migrations");
 
 export async function runMigrations(): Promise<void> {
     const db = new SQL({
+        // MariaDB — pin the MySQL adapter (Bun's SQL defaults to Postgres).
+        adapter: "mysql",
         host: Bun.env.DB_HOST,
         port: Number(Bun.env.DB_PORT ?? 3306),
         user: Bun.env.DB_USER,
