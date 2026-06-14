@@ -1,6 +1,6 @@
 {
   "name": "mailgw-monorepo",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Mail gateway monorepo (Haraka router + log service)",
   "private": true,
   "type": "commonjs",
