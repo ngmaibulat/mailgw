@@ -1,2 +1,7 @@
-sudo apt install -y nala
-sudo nala install -y swaks vim tcpdump nala python-is-python3 python3-pip python3-venv
+#!/bin/bash
+# Edge (mailgw) node — host debugging tools only. The app runs in Docker, so no
+# Node/Python toolchain is needed on the host.
+set -euo pipefail
+
+sudo apt-get update
+sudo apt-get install -y swaks tcpdump vim

@@ -1,0 +1,64 @@
+# Core node: logservice + db (+ webui later). Runs on a single host; the mailgw
+# edge nodes POST to this node's logservice over the network (see deploy/mailgw).
+# Secrets come from deploy/core/.env (copy from .env.example).
+services:
+    mariadb:
+        image: mariadb:12
+        container_name: core-mariadb
+        restart: unless-stopped
+        environment:
+            MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASS}
+            MARIADB_DATABASE: ${DB_NAME}
+            MARIADB_USER: ${DB_USER}
+            MARIADB_PASSWORD: ${DB_PASS}
+        volumes:
+            - mariadb_data:/var/lib/mysql
+        # Not published to the host by default — only logservice (same compose
+        # network) needs it. Add a ports mapping only if you need external DB access.
+
+    db-migrator:
+        image: ngmaibulat/logservice:latest
+        container_name: core-db-migrator
+        command: ["bun", "src/dbmigrate.ts"]
+        restart: "no"
+        environment:
+            DB_HOST: core-mariadb
+            DB_NAME: ${DB_NAME}
+            DB_USER: ${DB_USER}
+            DB_PASS: ${DB_PASS}
+        depends_on:
+            - mariadb
+
+    logservice:
+        image: ngmaibulat/logservice:latest
+        container_name: core-logservice
+        restart: unless-stopped
+        ports:
+            - "3000:3000" # reachable by the edge mailgw nodes
+        environment:
+            PORT: 3000
+            # Required across hosts: enforces X-API-Key (logservice auth.ts).
+            # Edge mailgw nodes must send the same value.
+            API_KEY: ${API_KEY}
+            DB_HOST: core-mariadb
+            DB_NAME: ${DB_NAME}
+            DB_USER: ${DB_USER}
+            DB_PASS: ${DB_PASS}
+        depends_on:
+            db-migrator:
+                condition: service_completed_successfully
+
+    # webui: arrives later — placeholder so the core compose documents intent.
+    # webui:
+    #     image: ngmaibulat/webui:latest
+    #     container_name: core-webui
+    #     restart: unless-stopped
+    #     ports:
+    #         - "8080:8080"
+    #     environment:
+    #         API_BASE: http://core-logservice:3000
+    #     depends_on:
+    #         - logservice
+
+volumes:
+    mariadb_data:

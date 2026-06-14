@@ -7,5 +7,12 @@ pnpm:
     minimumReleaseAge: 10080
     blockExoticSubdeps: true
 
+# Haraka 3.3.1 and its freshly-published deps are exempted from the 7-day
+# maturity window so the upgrade can resolve. Trim this list once they age out.
+minimumReleaseAgeExclude:
+    - Haraka
+    - "haraka-*"
+    - semver
+
 allowBuilds:
     modern-syslog: true

@@ -1,0 +1,16 @@
+# Edge (mailgw) node: just the Haraka SMTP container. Host networking so it owns
+# port 25 directly; config/log/queue come from /opt/mailgw on the host.
+# API_KEY is provided by 04-mailgw.sh (must match the core logservice).
+services:
+    mailgw:
+        image: ngmaibulat/mailgw:latest
+        container_name: mailgw
+        restart: unless-stopped
+        network_mode: host
+        environment:
+            # Attaches X-API-Key to logservice POSTs; empty => no header sent.
+            API_KEY: ${API_KEY:-}
+        volumes:
+            - /opt/mailgw/config:/opt/mailgw/config
+            - /opt/mailgw/log:/opt/mailgw/log
+            - /opt/mailgw/queue:/opt/mailgw/queue

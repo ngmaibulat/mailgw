@@ -15,8 +15,8 @@ importers:
   mailgw:
     dependencies:
       Haraka:
-        specifier: ^3.2.1
-        version: 3.2.1
+        specifier: ^3.3.1
+        version: 3.3.1
       mailparser:
         specifier: ^3.9.9
         version: 3.9.9
@@ -25,6 +25,10 @@ packages:
 
   '@haraka/email-address@3.1.5':
     resolution: {integrity: sha512-W1/rUKDrV9KZJiVd4JlmTmvsUtu/C1EfIheMdc3BQF0BWO2yiTk4zsLoiUObsHr+GzVSrA9DVkRYTOJsbgu70Q==}
+    engines: {node: '>=22'}
+
+  '@haraka/email-address@3.1.6':
+    resolution: {integrity: sha512-albuxbQSCI8x/67zgo0kUUUyxsrTV6irss2f21Kfjgb+T8RJXU5SzScJYwhR86zYpQFfrSF3bkzKV/dc8pOAPw==}
     engines: {node: '>=22'}
 
   '@isaacs/fs-minipass@4.0.1':
@@ -42,9 +46,27 @@ packages:
     peerDependencies:
       '@redis/client': ^5.12.1
 
+  '@redis/bloom@6.0.0':
+    resolution: {integrity: sha512-P0n5NkV9IIdT6nYXOfMHG83sho8pE7Nay7yw27wOGVLv4DthgvzebpGz6m7VuMTizeJmw3LPw2Xek5wFUhGpVw==}
+    engines: {node: '>= 20.0.0'}
+    peerDependencies:
+      '@redis/client': ^6.0.0
+
   '@redis/client@5.12.1':
     resolution: {integrity: sha512-7aPGWeqA3uFm43o19umzdl16CEjK/JQGtSXVPevplTaOU3VJA/rseBC1QvYUz9lLDIMBimc4SW/zrW4S89BaCA==}
     engines: {node: '>= 18.19.0'}
+    peerDependencies:
+      '@node-rs/xxhash': ^1.1.0
+      '@opentelemetry/api': '>=1 <2'
+    peerDependenciesMeta:
+      '@node-rs/xxhash':
+        optional: true
+      '@opentelemetry/api':
+        optional: true
+
+  '@redis/client@6.0.0':
+    resolution: {integrity: sha512-NS4iIT25r24sAjNQ2nSRdCW5jPJoV0rxkBee27oTeR+RXaOu89cjIsrww5rPBaYVGVdL1QCx9uz9141gZiSKdQ==}
+    engines: {node: '>= 20.0.0'}
     peerDependencies:
       '@node-rs/xxhash': ^1.1.0
       '@opentelemetry/api': '>=1 <2'
@@ -60,17 +82,35 @@ packages:
     peerDependencies:
       '@redis/client': ^5.12.1
 
+  '@redis/json@6.0.0':
+    resolution: {integrity: sha512-F+eqFfgPcy57Zs1KW7UtLnBtRk6lxAUIoe7dyZerpm6e+ssYXG/dWJrbrHFYs0b7tt6QBtYpVuukBuM9XqhUAg==}
+    engines: {node: '>= 20.0.0'}
+    peerDependencies:
+      '@redis/client': ^6.0.0
+
   '@redis/search@5.12.1':
     resolution: {integrity: sha512-ItlxbxC9cKI6IU1TLWoczwJCRb6TdmkEpWv05UrPawqaAnWGRu3rcIqsc5vN483T2fSociuyV1UkWIL5I4//2w==}
     engines: {node: '>= 18.19.0'}
     peerDependencies:
       '@redis/client': ^5.12.1
 
+  '@redis/search@6.0.0':
+    resolution: {integrity: sha512-VHuCJ2W0YWFixGZh/l//8JiyOsD4gN+NhjdRAGIoUe0UQ4mtq1NyY2ZJ973XT+vYhaU21XdK8r8oNrd5n7wbzQ==}
+    engines: {node: '>= 20.0.0'}
+    peerDependencies:
+      '@redis/client': ^6.0.0
+
   '@redis/time-series@5.12.1':
     resolution: {integrity: sha512-c6JL6E3EcZJuNqKFz+KM+l9l5mpcQiKvTwgA3blt5glWJ8hjDk0yeHN3beE/MpqYIQ8UEX44ItQzgkE/gCBELQ==}
     engines: {node: '>= 18.19.0'}
     peerDependencies:
       '@redis/client': ^5.12.1
+
+  '@redis/time-series@6.0.0':
+    resolution: {integrity: sha512-QWhkYsg+3lhBrBf+cbzybtV8LQcSrk7iXIgTaGU+pHNFTkql7TpVRE24ROS6M2ybVIV6O/zxTqfxgxxYiqyw0Q==}
+    engines: {node: '>= 20.0.0'}
+    peerDependencies:
+      '@redis/client': ^6.0.0
 
   '@selderee/plugin-htmlparser2@0.12.0':
     resolution: {integrity: sha512-oELmoyA6ML9jDRMV3kgcMQFKxUfBU0yFVn6yTctVaLT5ygXnxH52I3TZEgV9EhXJC68/uFvE5Daj1/25c0Xa/A==}
@@ -86,8 +126,8 @@ packages:
   '@zone-eu/mailsplit@5.4.12':
     resolution: {integrity: sha512-w7Gy+NvjZ0MiXm8F6zfjImAqcTONKDImgWVBjDKQVFUXWuz3VFM5levNArkL2M877ajql5+bkS2pDV56injlmg==}
 
-  Haraka@3.2.1:
-    resolution: {integrity: sha512-0fVNiz7ULgjSD/fLYzIkbJ2d+VE1gEJvWyfvD0ITfIW3jviUJ5RX6ObiTu1yhkTzI9PzaLeanHFSXj6+ky9Daw==}
+  Haraka@3.3.1:
+    resolution: {integrity: sha512-9dr1pB/hDl8sJlQcEmIAG8FnF52qabtnt+I+ualOB6FyOXlfa01DfXO43lEkT1mINIa9RdfOEoK8VtxrE8VDUg==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -98,13 +138,6 @@ packages:
   abbrev@5.0.0:
     resolution: {integrity: sha512-/XrFJgzQQQHpti1raDJC6m4ws6aNktmjBlhk8Fdlk7LwCEuDoieEJJY9OFHjfiFJFFRM2tK+Ky/IsfbbmlMu1w==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
-
-  address-rfc2821@2.2.1:
-    resolution: {integrity: sha512-eS/Ormij1erzhVoBKqG7JYWwYqT0jSp0piYQeAeZeqqZOV6t0atYZvT8ZfO9CSFdPA8NQtjwNP951u0k1OD5Ig==}
-    engines: {node: '>= 20.20.0'}
-
-  address-rfc2822@2.2.4:
-    resolution: {integrity: sha512-jgN5ntU50F9cwwSkeeg7Ppznr4kiywukTVQTt+oNqM3ZeXubP7Ij5vOu/SIFLD90xR5geDAjLtTEo59GE82bvQ==}
 
   binary-data@0.6.0:
     resolution: {integrity: sha512-HGiT0ir03tS1u7iWdW5xjJfbPpvxH2qJbPFxXW0I3P5iOzkbjN/cJy5GlpAwmjHW5CiayGOxZ/ytLzXmYgdgqQ==}
@@ -121,15 +154,9 @@ packages:
     resolution: {integrity: sha512-RMr0FhtfXemyinomL4hrWcYJxmX6deFdCxpJzhDttxgO1+bcCnkk+9drydLVDmAMG7NE6aN/fl4F7ucU/90gAA==}
     engines: {node: '>=0.10.0'}
 
-  commander@2.20.3:
-    resolution: {integrity: sha512-GpVkmM8vF2vQUkj2LvZmD35JxeJOLCwJ9cUkugyk2nuhbv3+mJvpLYYt+0+USMxE+oj+ey/lJEnhZw75x/OMcQ==}
-
   deepmerge-ts@7.1.5:
     resolution: {integrity: sha512-HOJkrhaYsweh+W+e74Yn7YStZOilkoPb6fycpwNLKzSPtruFs48nYis0zy5yJz1+ktUhHxoRDJ27RQAWLIJVJw==}
     engines: {node: '>=16.0.0'}
-
-  discontinuous-range@1.0.0:
-    resolution: {integrity: sha512-c68LpLbO+7kP/b1Hr1qs8/BJ09F5khZGTxqxZuhzxpmwJKOgRFHJWIb9/KmqnqHhLdO55aOxFH/EGBvUQbL/RQ==}
 
   dom-serializer@2.0.0:
     resolution: {integrity: sha512-wIkAryiqt/nV5EQKqQpo3SToSOV9J0DnbJqwK7Wv/Trc92zIAYZ4FlMu+JPFW1DfGFt81ZTCGgDEabffXeLyJg==}
@@ -143,9 +170,6 @@ packages:
 
   domutils@3.2.2:
     resolution: {integrity: sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==}
-
-  email-addresses@5.0.0:
-    resolution: {integrity: sha512-4OIPYlA6JXqtVn8zpHpGiI7vE6EQOAg16aGnDMIAlZVinnoZ8208tW1hAbjWydgN/4PLTT9q+O1K6AH/vALJGw==}
 
   encoding-japanese@2.2.0:
     resolution: {integrity: sha512-EuJWwlHPZ1LbADuKTClvHtwbaFn4rOD+dRAbWysqEOXRc2Uui0hJInNJrsdH0c+OhJA4nrCBdSkW4DD5YxAo6A==}
@@ -185,6 +209,10 @@ packages:
     resolution: {integrity: sha512-bMZNno2WZt0oHKpPlLohYmMQz1g1+0DPPqgvL4EH/BmJDXhjDFAH9XJZOGgXxXcMRZx7McT8O4ybeebHz45tfg==}
     engines: {node: '>=20'}
 
+  haraka-config@1.6.3:
+    resolution: {integrity: sha512-UhfnaTLzNSzK5g+dSumi3LSZCMxany6MrSizqDheEnJX7mkczvu+nQua4JKt31AWg/o4LoTGn7GPY83znnZiQQ==}
+    engines: {node: '>=20'}
+
   haraka-constants@1.0.8:
     resolution: {integrity: sha512-KqVy59yZJ/z7l6UZsb+o6D8CDj3jLuWlpwsQvmrf+MpClAL6Bdxh4NiqzYHhqpXrDI0Vm731ofcTTtbANdLwSQ==}
     engines: {node: '>= 18'}
@@ -196,6 +224,9 @@ packages:
   haraka-email-message@1.3.4:
     resolution: {integrity: sha512-iTqpcRsg7fmXiqNVAXqenAeDCZ+fVg4vfVbzYyKtPr86qkRhoLPyfGCHpzWMYCvOgZNZwVR3b0v8rR2DI3lpwA==}
 
+  haraka-email-message@1.4.0:
+    resolution: {integrity: sha512-tt26Z1T+o1uIwUB8SYtnMlF07ZhihIcwV3T2EQYu8kvIPClHS2HGe4jxFg+rQ/k3COsElKDdNCexj/WFqpZWag==}
+
   haraka-message-stream@2.0.6:
     resolution: {integrity: sha512-M6Vr3bMwBnnqCSZiuhrU3P3bHWbISfiJkKFKDtQrOaROi3tnWzzVbATCH3nRgOQwvWJbwbrwOh6YmUowxGldVg==}
 
@@ -203,24 +234,28 @@ packages:
     resolution: {integrity: sha512-1lWHaeBC5eL/iWpVcG4BM6kXTVEmilkwkYPK9xN8TUZWFZzvvxEKSgNKkoapPahw4l8VIicKEc/IvvIg/D9yrA==}
     engines: {node: '>= v18.0.0'}
 
+  haraka-net-utils@1.9.2:
+    resolution: {integrity: sha512-58XBsAajGHo0ZGNvdHNfxHEYpGIFrSB81Ay9b2tVZ9epXfQoreeSP6bsaejNZaTI8+n5zn6J+UP+kC5QjK8OgQ==}
+    engines: {node: '>= v18.0.0'}
+
   haraka-notes@1.1.3:
     resolution: {integrity: sha512-6BNPOW49G9IV9yC4gqW7FIsqM0PPsG9VG55/OtFBtG4SiJzzhowTSLk0LNxn6OUIQP7F+6Wy95dN5aIvL3ygVQ==}
 
-  haraka-plugin-access@1.2.0:
-    resolution: {integrity: sha512-tbu9wlhNyA3d13TRogFK/qRlJtXAqRwG7XTQNBfJFHKHIFpJVOo/WkOIvDR+cGUckhZt1+mMrg4ElPCuDHjusg==}
+  haraka-plugin-access@1.4.0:
+    resolution: {integrity: sha512-KUUUql99ENBKkV3WVXLLtv3x0d89HrcU8cQWCBWvtX60lHYDlbhuHYf85czvj/ick/GIVKvBRnNZMNxi1C/LYw==}
 
-  haraka-plugin-aliases@1.0.3:
-    resolution: {integrity: sha512-gRXgupd9VZshDs3JIqOG1UzW4Q/h0gs4KlVs2IH/XvZUN2sphUZ3cMyjon24wUr66SohQmtBty/XJRLu5MurKA==}
+  haraka-plugin-aliases@1.1.0:
+    resolution: {integrity: sha512-/Z74x94nC5aP/JO2shQbZ05Wqmuudh496MXfuPnRflFAQXLIJcw4Y8H/x6oujcyeEpHP74mjHnQh787hvSZdsg==}
 
-  haraka-plugin-asn@2.1.0:
-    resolution: {integrity: sha512-Cy7wa+kvXfn0kMWw/ufn6IsltMmXKME0Qn8Qsd56itOZ9J7sPS0bD4tin0duQYbDyYe2BtHQ2HrgD7Huxk6XFg==}
+  haraka-plugin-asn@2.2.0:
+    resolution: {integrity: sha512-/0eemivOAyYR1UFxLWBi1SY5U8/YEqxgsrhTMd75VG+hlKwX1LWUBeWPmpWj9ekmhed3u5tIDJLk0Y1MD4RAQg==}
 
   haraka-plugin-attachment@1.2.1:
     resolution: {integrity: sha512-J/0gDK0wHC98JxmpmqVF3PhV9nMReFyhjYNBoT5fKzicmRtYneHRTjIVTu8I2q8p3S+NuFiINJHFKX15MhEkLQ==}
     engines: {node: '>= 16'}
 
-  haraka-plugin-bounce@2.1.2:
-    resolution: {integrity: sha512-n9u53vK4qexHAYKmmtC0qh+heoQ600roPdMmQcVxQIGZ/2i2h8V5xRgKZ0ZARLhlNrl+5YQa583pdYd7TA4Q3w==}
+  haraka-plugin-bounce@2.2.1:
+    resolution: {integrity: sha512-cCajyyRLiAV3nN5DCDsBzxOLPev2nA1gzg3gvvP22Sdqr3564lFyrn4Tibre2ncG5V149sJCKe28ZzCq0AEIhg==}
 
   haraka-plugin-clamd@1.0.3:
     resolution: {integrity: sha512-X+UGXCdkC6nEhW+zPoYnKtuJrUeabYllT3L5khmwxZSMJbI3atiBU1HyS8+lQj+N3D4IBPFbM58zNZmJYwhp3g==}
@@ -232,48 +267,51 @@ packages:
     resolution: {integrity: sha512-dX4sYQByabKkEmjTVXjBb3Oql/Upp+iMV+kiSDhcxwjmWUfjRjNR/kN+qxHmBHOvQhAXr2iQvRaSSAdYAdIwXQ==}
     hasBin: true
 
-  haraka-plugin-dns-list@1.2.4:
-    resolution: {integrity: sha512-GIX4mtyt5ArQM2KlQDuJxnS2QXccv+/kDcNbu+TFW4EqVw9ppiN64mjgxIxIwDnt8wD0mFRVx/hYqaKd4C0pxQ==}
+  haraka-plugin-dns-list@1.3.0:
+    resolution: {integrity: sha512-uEvY7kVs+eroeLZndRvp2RvMyOE0K57xXUUO6yL/reX+Q1k31gYwNRKeOldop9SQcghoToZfGd5EYk8jVbKyfw==}
 
   haraka-plugin-early_talker@1.0.2:
     resolution: {integrity: sha512-rQfsx4WisY3ba+0OJiLBvD7IeDl7x1vhjSOGRiN6PFZX0o2DWG3nM2n/x0Cb9oI5QV3G5taPzpt3MKPGIEiC0g==}
 
-  haraka-plugin-fcrdns@1.1.2:
-    resolution: {integrity: sha512-KKBHL67+abxNb6VwxKlWjX8HWcfMsnySybim5V2siBxBdouxGGyBD5uh2DZYWRcMz7WTac7ElQP2PU89aLrSUw==}
+  haraka-plugin-fcrdns@1.2.1:
+    resolution: {integrity: sha512-VfsMFcgr/gHpYeEWUgGvmoLbJ5jswK0d/6CRg9sxRqwl56Sw5NVbCKBY6ipO9fDyEJ4YfXSzOeVQnG4e7U1tcA==}
 
   haraka-plugin-geoip@1.1.2:
     resolution: {integrity: sha512-4+PmQRXD9V1WIYtle2k0Pb/ldfpSKvxc504r7kb5DwJEzwnABw1n177H9gz6oBfc16QihwRrX3mUwndIGapsRQ==}
     engines: {node: '>=20'}
 
-  haraka-plugin-greylist@1.1.1:
-    resolution: {integrity: sha512-zHGU6S1DZllrUAKMGJnQU/fjZRIXhWl7d7tsHgs1XEjcxaIZyn+4Umy9F9iLleXbvWXxNRRXtdW6rS/rHb/j0g==}
+  haraka-plugin-greylist@1.2.1:
+    resolution: {integrity: sha512-MizI8JUQ27OmNOreXe4BGb0bRzhfKpJIfsEvFd0ua5GBDS4Qq4EyqgwCWGFsMpyfZFdy3FdeNMG7VQ8WK7n3hg==}
 
-  haraka-plugin-headers@1.1.3:
-    resolution: {integrity: sha512-XcF0g3ScHoRR+uIRNM+bJhybOsxhk8nfKZAbcRlsbYwWsoaLJbA0v0zy/KWXN1pKIz4rBdaUu5UeHhTCa5/U3Q==}
+  haraka-plugin-headers@1.2.0:
+    resolution: {integrity: sha512-sWiHaKkt1CVfIZqO5s2XSrNvbvOiCQsNaf6+OZxXb7GeYCvhI08eE695pehX/9RqIOgduP1j0tFAQaiReL/RSw==}
 
-  haraka-plugin-helo.checks@1.1.1:
-    resolution: {integrity: sha512-vSvB+QEiaqSutKOe7vQMXReiJ4ZGIti5pvJ5EBkzxKuQJsgAlSqGNgJEbD77Fyb01DIPaZE3ElHz0F+SEj34Vw==}
+  haraka-plugin-helo.checks@1.1.3:
+    resolution: {integrity: sha512-l4CfMMioJ/YU73rXmqnqZl+l3DVaquR5uLtD3HYiJpJddrMovDKoy8YzuN/mMmHXE/eOPnYeht1amuH4KkWv/A==}
 
-  haraka-plugin-karma@2.4.1:
-    resolution: {integrity: sha512-MVlUDSRZqX5Hff4Ynt/cUoka7TMN3Ry5gMu42rmNz6u2txD3afm9dkpaAdWJeWwDbgITWSEWRxeJumf7uMC5cw==}
+  haraka-plugin-karma@2.5.2:
+    resolution: {integrity: sha512-kK13dj+wKWG7GSFwduM29QnBrTusAhf2VkfE/CJ2dIpARIEAJuwbD6f8NeLc3pmuHnhq/bSUZTY6foArhLLMeA==}
 
-  haraka-plugin-known-senders@1.1.5:
-    resolution: {integrity: sha512-Yc4g2XZPudhDrwtuTodO06Bvd1H/oU9LxaiMdDptFn/Z0yRAhLUBVR483lSa8mEBXYvGnDV/iSKr6cApQIvvcw==}
+  haraka-plugin-known-senders@1.2.0:
+    resolution: {integrity: sha512-Ri+xVZ4Oos0XO1Raw0/bAHA3i2fpCgAohmNZ6uxiwbwk8j6CbQ6zFyHnGdSwE18iNynHvegSeGgqAF3yYf14OQ==}
 
-  haraka-plugin-limit@1.2.7:
-    resolution: {integrity: sha512-WPUK9zVt59NPIHOehO2C+VRpKSI736gCYrO+p7U+YFSJIfX3VRhCEt1wMNKmtaetJ9JNiRyEEtCp+5oeD6XWPQ==}
+  haraka-plugin-limit@1.3.2:
+    resolution: {integrity: sha512-ARD/5iUjEWfwYqzsyMEEnW1r5LFHq8jzCHll4R3lHexnsUD8/aREZR8SThzF8TTEIyRVnvkAp+OrTJQYz/0C1A==}
 
-  haraka-plugin-mail_from.is_resolvable@1.2.0:
-    resolution: {integrity: sha512-Qf+0Ojz7k8MludDOzQFjI/VKVi0lYPqlWt/RDT6ci3HZVSmxD6CacFO/c+pIMkjJLxNOyVqdTEvAuI9J8BwOIA==}
+  haraka-plugin-mail_from.is_resolvable@1.3.0:
+    resolution: {integrity: sha512-eE9H9x69HNmjxRZhTNmOHScwMwu3tUZVmRWmocL8S4itg5tWkRUC+7RTkhcMu6/B7YIC/uiYS49wixCgv8zu9w==}
 
-  haraka-plugin-messagesniffer@1.0.1:
-    resolution: {integrity: sha512-MIkG4J/mrL6SHDm7qKxKvfnHZ+LQhLZy2fd5gqduQFTuS+3DulRNd5qVcy+y7SjtYq/tgFBpCC225eROMajl/Q==}
+  haraka-plugin-messagesniffer@1.0.2:
+    resolution: {integrity: sha512-h3vFegccHKMyn1W3HIMv5ZjwGgGfsb9W4vXk86+N4DdTd7xkGcCylicx0gSI+caNZaMhiQ2VS7oJHyMxGCsXGg==}
 
-  haraka-plugin-qmail-deliverable@1.3.5:
-    resolution: {integrity: sha512-eyHW1Hf31Oae+gT3/+AMa9pN49olkB7t+BCMqyeyG5VN2pr+hto6wUN3ynl/CET4q34Fyhtb6Dgqkpmli7wOlg==}
+  haraka-plugin-qmail-deliverable@1.4.0:
+    resolution: {integrity: sha512-doASY8Vo14q9aS2lOPMZEwtnrWBRLmR1xwAKY4kmy/INHMVj1EHhnlOf9L9gwI0Z75wGztqQlDL1KROQtbN2ww==}
 
   haraka-plugin-redis@2.0.11:
     resolution: {integrity: sha512-96sxvHrjEWD4Z8T471Yd4cnN/R6i2Z2AXXyHnSq7Obf1e+qRRafsGVTKbS/fsmiEArG8im7zM/L9XjyJuoXDVg==}
+
+  haraka-plugin-redis@2.1.0:
+    resolution: {integrity: sha512-wnmOitPwyzfWq98MhdIudAtcsf1xzLpzZWy1QYSVJcdtOSPQzzarnmmRz28SWodxD2c6rQFU/a4pFXMdrYl21g==}
 
   haraka-plugin-relay@1.0.2:
     resolution: {integrity: sha512-A7EH/ALaoylivekp+t+f0EoK5pgs6E9oAh6FfDfBQRjOS0KSRsFN8w5qduFTDoHlBCosel3scXFc2+7jxERgfQ==}
@@ -281,31 +319,37 @@ packages:
   haraka-plugin-rspamd@1.6.0:
     resolution: {integrity: sha512-ut+Zm/yg1hUcdu/vbkTZvrNcJKkkC9cfGI4Mg6HCxJw007NROSr30ZoQFnNrYUbsszhyw5m0+lpR6ERQZ2vWJQ==}
 
-  haraka-plugin-spamassassin@1.0.4:
-    resolution: {integrity: sha512-BP/Kj29Gqh8Fg+W7cW+4uxXvyKB/JYRc/FbEbLowdcTrX0b+eKeGxbix3M8KJj3/519C8gg/1i3+mIS1VWgjpA==}
+  haraka-plugin-spamassassin@1.1.0:
+    resolution: {integrity: sha512-Hg9f4HJiVyuwRwPbaPhPPYKw7h7oj8fK7w9QN/D3+G3SUBM7jVC3fX6vgNdrUozZ9jptcpBXsQ8LwPAJgCPNpg==}
 
-  haraka-plugin-spf@1.2.11:
-    resolution: {integrity: sha512-nFdQVTsJspVnY9ggpklwy2N/A0Zo7KlBL+waTnx3Q50AEOEBdwlpTAzVjAC3bDYOKJVdXWRfQDUj8bmvMdLkLg==}
+  haraka-plugin-spf@1.3.0:
+    resolution: {integrity: sha512-pSBKXDQY0Vfe4vsUr/nUbsohrJ6u0siivgLAGZugbzZZXRM2dapgeOW1YfjbsPsrJmfY01IvFlpq0/6Okw6sbg==}
     hasBin: true
 
-  haraka-plugin-syslog@1.1.1:
-    resolution: {integrity: sha512-kTbY2l7ad0SwUzxI+CW0EGMIk0SNCN0nYpuUbDHjYISHxpS7fUCsI73il/ht2i2WoRde4Hr95d+Inksuvu9I8Q==}
+  haraka-plugin-syslog@1.1.2:
+    resolution: {integrity: sha512-HeRXXcxj/uZmNA+JW5OzCyFA6RCYVe+pqWkBMZbFhwoanYat9BrnB6N5EcOBB+YXhRlsQlbCo8EeXxbgLgTbQQ==}
 
-  haraka-plugin-uribl@1.0.10:
-    resolution: {integrity: sha512-J47VQCgLcyKaQL/4ROC5dE8XEshOe3xv7O/Wu9Tqag9Mhb6ACZKE77+n408bgqayBeLW7A8mPyk7cV8PLG6fgQ==}
+  haraka-plugin-uribl@2.0.0:
+    resolution: {integrity: sha512-xCtr6qMBGjYNnLbyCb6qgISk5FhxH8jZlb2SHTRGeNqIQYTZEoSWOKjziCXiiyxcGlTYFapuOFTJ8pKkh17hxw==}
 
-  haraka-results@2.3.1:
-    resolution: {integrity: sha512-fmyCNxZqgDAi5gVlS4eSlQngUj3N4kLeSvKmQDDpwJ+qKkcPdLzAOxtPqvltviEeqjt57ip4/7uxLq1596/9Qw==}
+  haraka-results@2.4.0:
+    resolution: {integrity: sha512-5n9rVTzIp2lH5Vc7tkGIU9qJT4qGTgr+Hhw8kfWtQ8NrXXtSjEnuvZeiD3FOH0S65wLgjHLowwg5bADTsUto+A==}
     engines: {node: '>=20'}
 
   haraka-tld@1.3.5:
     resolution: {integrity: sha512-fM36/jj5oIk+N4r1bhSx1k9y7kgmAUaBsCuLV0+7tfwuT+pi1+6WPNr+nCYfOHuvQARu6xRZmSJFPZzXULWAaw==}
+
+  haraka-tld@1.3.6:
+    resolution: {integrity: sha512-2dqTAaIgNECGFYJyoSgDhBwawEoaWuQVfy5JiAC3DjV+IFO15pf04Su3CvaYXnAG1lWr1yMvxEJNCqq7YPNnjQ==}
 
   haraka-utils@1.1.4:
     resolution: {integrity: sha512-bUggwf/biz9QCv+2l1Y0C1qLZfYuca51p6RAApk/qSY3dSAYr65B8VwPdI8Pq0Qpfk3heFGO0f6rBsyNERBjpQ==}
 
   haraka-utils@2.1.0:
     resolution: {integrity: sha512-O45dPyqo7CJDLDBc9b9CEC8qyMRP2a8L7iqAj3GQFFky/0LOlZcLqydC+bR0wRoa3a5y7VUvk/1YiHMy089B4Q==}
+
+  haraka-utils@2.2.1:
+    resolution: {integrity: sha512-fWo9V6tvDP82o8f/LQTDuZ+GlZpZC2heehn2yLQGESJj9el1WT3X+cBZWzGOL50eb1CKomCEOmIH7EFS9JFs/Q==}
 
   he@1.2.0:
     resolution: {integrity: sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==}
@@ -387,18 +431,11 @@ packages:
     resolution: {integrity: sha512-dmFE23qpyZJf8MOdzuNKliW4j1PCqxaRtSzyNnv6QDUWjf1z8T4ZoQ7Qf0t6It2ewNv9/XJZSJoUgwpq3D0X7A==}
     os: ['!win32']
 
-  moo@0.5.3:
-    resolution: {integrity: sha512-m2fmM2dDm7GZQsY7KK2cme8agi+AAljILjQnof7p1ZMDe6dQ4bdnSMx0cPppudoeNv5hEFQirN6u+O4fDE0IWA==}
-
   nan@2.27.0:
     resolution: {integrity: sha512-hC+0LidcL3XE4rp1C4H54KujgXKzbfyTngZTwBByQxsOxCEKZT0MPQ4hOKUH2jU1OYstqdDH4onyHPDzcV0XdQ==}
 
-  nearley@2.20.1:
-    resolution: {integrity: sha512-+Mc8UaAebFzgV+KpI5n7DasuuQCHA89dmwm7JXw3TV43ukfNQ9DnBH3Mdb2g/I4Fdxc26pwimBWvjIw0UAILSQ==}
-    hasBin: true
-
-  node-gyp@12.3.0:
-    resolution: {integrity: sha512-QNcUWM+HgJplcPzBvFBZ9VXacyGZ4+VTOb80PwWR+TlVzoHbRKULNEzpRsnaoxG3Wzr7Qh7BYxGDU3CbKib2Yg==}
+  node-gyp@12.4.0:
+    resolution: {integrity: sha512-OMcPNvqTCFUnNaBlmdgq+lfNqY7gTiSmNRDjY3uAXRyudeKZEZxu3CLtjMQrx4zZxCX2b/mpNqTtwuCJgXhHkw==}
     engines: {node: ^20.17.0 || >=22.9.0}
     hasBin: true
 
@@ -408,6 +445,11 @@ packages:
 
   nopt@10.0.0:
     resolution: {integrity: sha512-+KTtw3y0UQl+h9zuQFXrrP7idJEM5HIWs9dnMO2CEeUl7ubpdthW8z7UE0qaKEdE7L5Lh7/Hs9ZzBKYHCqDwiQ==}
+    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
+    hasBin: true
+
+  nopt@10.0.1:
+    resolution: {integrity: sha512-df3sBr/6ax9hSGuC3CspvLlbnX8cP5L5nZwXF8cGN8l0zSWR6BvzmQ6jPUKjvo6+/xdpkNvEcucBNUdBeeV13g==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
     hasBin: true
 
@@ -437,24 +479,13 @@ packages:
     resolution: {integrity: sha512-uxFIHU0YlHYhDQtV4R9J6a52SLx28BCjT+4ieh7IGbgwVJWO+km431c4yRlREUAsAmt/uMjQUyQHNEPf0M39CA==}
     engines: {node: '>=6'}
 
-  punycode@2.3.1:
-    resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
-    engines: {node: '>=6'}
-
-  railroad-diagrams@1.0.0:
-    resolution: {integrity: sha512-cz93DjNeLY0idrCNOH6PviZGRN9GJhsdm9hpn1YCS879fj4W+x5IFJhhkRZcwVgMmFF7R82UA/7Oh+R8lLZg6A==}
-
-  randexp@0.4.6:
-    resolution: {integrity: sha512-80WNmd9DA0tmZrw9qQa62GPPWfuXJknrmVmLcxvq4uZBdYqb1wYoKTmnlGUchvVWe0XiLupYkBoXVOxz3C8DYQ==}
-    engines: {node: '>=0.12'}
-
   redis@5.12.1:
     resolution: {integrity: sha512-LDsoVvb/CpoV9EN3FXvgvSHNJWuCIzl9MiO3ppOevuGLpSGJhwfQjpEwfFJcQvNSddHADDdZaWx0HnmMxRXG7g==}
     engines: {node: '>= 18.19.0'}
 
-  ret@0.1.15:
-    resolution: {integrity: sha512-TTlYpa+OL+vMMNG24xSlQGEJ3B/RzEfUlLct7b5G/ytav+wPrplCpVMFuwzXbkecJrb6IYo1iFb0S9v37754mg==}
-    engines: {node: '>=0.12'}
+  redis@6.0.0:
+    resolution: {integrity: sha512-n9Thfc39OXleEoPT2k5gwKsqY+HfCww3YS71ofcr9KKbkn89bpjU9dToIlD+JRdM3/GYQkwMtVgTxLyed+LptQ==}
+    engines: {node: '>= 20.0.0'}
 
   safer-buffer@2.1.2:
     resolution: {integrity: sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==}
@@ -464,6 +495,11 @@ packages:
 
   semver@7.8.1:
     resolution: {integrity: sha512-rkVq3IXh+4FDGch+KwzX3aV9W3kO54GyEgpvBzSyctDA6Xtd7RJQV1xmXbeQp5v7+VzLOfVqiutSE6GICgPFvg==}
+    engines: {node: '>=10'}
+    hasBin: true
+
+  semver@7.8.4:
+    resolution: {integrity: sha512-rUCObTnP32Q08R2uuIrt7r9PlEonuTmtuXYcW6s5kjdlj3xbnwe+21yXptAUYcMAABLkYYTtnmzb3w3EDZfueA==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -519,6 +555,8 @@ snapshots:
 
   '@haraka/email-address@3.1.5': {}
 
+  '@haraka/email-address@3.1.6': {}
+
   '@isaacs/fs-minipass@4.0.1':
     dependencies:
       minipass: 7.1.3
@@ -535,7 +573,15 @@ snapshots:
     dependencies:
       '@redis/client': 5.12.1
 
+  '@redis/bloom@6.0.0(@redis/client@6.0.0)':
+    dependencies:
+      '@redis/client': 6.0.0
+
   '@redis/client@5.12.1':
+    dependencies:
+      cluster-key-slot: 1.1.2
+
+  '@redis/client@6.0.0':
     dependencies:
       cluster-key-slot: 1.1.2
 
@@ -543,13 +589,25 @@ snapshots:
     dependencies:
       '@redis/client': 5.12.1
 
+  '@redis/json@6.0.0(@redis/client@6.0.0)':
+    dependencies:
+      '@redis/client': 6.0.0
+
   '@redis/search@5.12.1(@redis/client@5.12.1)':
     dependencies:
       '@redis/client': 5.12.1
 
+  '@redis/search@6.0.0(@redis/client@6.0.0)':
+    dependencies:
+      '@redis/client': 6.0.0
+
   '@redis/time-series@5.12.1(@redis/client@5.12.1)':
     dependencies:
       '@redis/client': 5.12.1
+
+  '@redis/time-series@6.0.0(@redis/client@6.0.0)':
+    dependencies:
+      '@redis/client': 6.0.0
 
   '@selderee/plugin-htmlparser2@0.12.0(selderee@0.12.0)':
     dependencies:
@@ -571,52 +629,52 @@ snapshots:
       libmime: 5.3.8
       libqp: 2.1.1
 
-  Haraka@3.2.1:
+  Haraka@3.3.1:
     dependencies:
-      '@haraka/email-address': 3.1.5
-      haraka-config: 1.6.2
+      '@haraka/email-address': 3.1.6
+      haraka-config: 1.6.3
       haraka-constants: 1.0.8
       haraka-dsn: 1.2.0
-      haraka-email-message: 1.3.4
-      haraka-net-utils: 1.8.3
+      haraka-email-message: 1.4.0
+      haraka-net-utils: 1.9.2
       haraka-notes: 1.1.3
-      haraka-plugin-redis: 2.0.11
-      haraka-results: 2.3.1
-      haraka-tld: 1.3.5
-      haraka-utils: 1.1.4
+      haraka-plugin-redis: 2.1.0
+      haraka-results: 2.4.0
+      haraka-tld: 1.3.6
+      haraka-utils: 2.2.1
       ipaddr.js: 2.4.0
-      node-gyp: 12.3.0
-      nopt: 10.0.0
-      redis: 5.12.1
-      semver: 7.8.1
+      node-gyp: 12.4.0
+      nopt: 10.0.1
+      redis: 6.0.0
+      semver: 7.8.4
     optionalDependencies:
-      haraka-plugin-access: 1.2.0
-      haraka-plugin-aliases: 1.0.3
-      haraka-plugin-asn: 2.1.0
+      haraka-plugin-access: 1.4.0
+      haraka-plugin-aliases: 1.1.0
+      haraka-plugin-asn: 2.2.0
       haraka-plugin-attachment: 1.2.1
-      haraka-plugin-bounce: 2.1.2
+      haraka-plugin-bounce: 2.2.1
       haraka-plugin-clamd: 1.0.3
       haraka-plugin-dcc: 1.0.3
       haraka-plugin-dkim: 1.2.0
-      haraka-plugin-dns-list: 1.2.4
+      haraka-plugin-dns-list: 1.3.0
       haraka-plugin-early_talker: 1.0.2
-      haraka-plugin-fcrdns: 1.1.2
+      haraka-plugin-fcrdns: 1.2.1
       haraka-plugin-geoip: 1.1.2
-      haraka-plugin-greylist: 1.1.1
-      haraka-plugin-headers: 1.1.3
-      haraka-plugin-helo.checks: 1.1.1
-      haraka-plugin-karma: 2.4.1
-      haraka-plugin-known-senders: 1.1.5
-      haraka-plugin-limit: 1.2.7
-      haraka-plugin-mail_from.is_resolvable: 1.2.0
-      haraka-plugin-messagesniffer: 1.0.1
-      haraka-plugin-qmail-deliverable: 1.3.5
+      haraka-plugin-greylist: 1.2.1
+      haraka-plugin-headers: 1.2.0
+      haraka-plugin-helo.checks: 1.1.3
+      haraka-plugin-karma: 2.5.2
+      haraka-plugin-known-senders: 1.2.0
+      haraka-plugin-limit: 1.3.2
+      haraka-plugin-mail_from.is_resolvable: 1.3.0
+      haraka-plugin-messagesniffer: 1.0.2
+      haraka-plugin-qmail-deliverable: 1.4.0
       haraka-plugin-relay: 1.0.2
       haraka-plugin-rspamd: 1.6.0
-      haraka-plugin-spamassassin: 1.0.4
-      haraka-plugin-spf: 1.2.11
-      haraka-plugin-syslog: 1.1.1
-      haraka-plugin-uribl: 1.0.10
+      haraka-plugin-spamassassin: 1.1.0
+      haraka-plugin-spf: 1.3.0
+      haraka-plugin-syslog: 1.1.2
+      haraka-plugin-uribl: 2.0.0
     transitivePeerDependencies:
       - '@node-rs/xxhash'
       - '@opentelemetry/api'
@@ -624,17 +682,6 @@ snapshots:
   abbrev@4.0.0: {}
 
   abbrev@5.0.0: {}
-
-  address-rfc2821@2.2.1:
-    dependencies:
-      nearley: 2.20.1
-      punycode: 2.3.1
-    optional: true
-
-  address-rfc2822@2.2.4:
-    dependencies:
-      email-addresses: 5.0.0
-    optional: true
 
   binary-data@0.6.0:
     dependencies:
@@ -650,13 +697,7 @@ snapshots:
 
   cluster-key-slot@1.1.2: {}
 
-  commander@2.20.3:
-    optional: true
-
   deepmerge-ts@7.1.5: {}
-
-  discontinuous-range@1.0.0:
-    optional: true
 
   dom-serializer@2.0.0:
     dependencies:
@@ -675,9 +716,6 @@ snapshots:
       dom-serializer: 2.0.0
       domelementtype: 2.3.0
       domhandler: 5.0.3
-
-  email-addresses@5.0.0:
-    optional: true
 
   encoding-japanese@2.2.0: {}
 
@@ -706,12 +744,28 @@ snapshots:
     optionalDependencies:
       hjson: 3.2.2
 
+  haraka-config@1.6.3:
+    dependencies:
+      yaml: 2.9.0
+    optionalDependencies:
+      hjson: 3.2.2
+
   haraka-constants@1.0.8: {}
 
   haraka-dsn@1.2.0: {}
 
   haraka-email-message@1.3.4:
     dependencies:
+      haraka-config: 1.6.2
+      haraka-message-stream: 2.0.6
+      iconv-lite: 0.7.2
+      libmime: 5.3.8
+      libqp: 2.1.1
+    optional: true
+
+  haraka-email-message@1.4.0:
+    dependencies:
+      '@haraka/email-address': 3.1.5
       haraka-config: 1.6.2
       haraka-message-stream: 2.0.6
       iconv-lite: 0.7.2
@@ -729,23 +783,32 @@ snapshots:
       punycode.js: 2.3.1
     optionalDependencies:
       '@msimerson/stun': 3.2.1
+    optional: true
+
+  haraka-net-utils@1.9.2:
+    dependencies:
+      haraka-config: 1.6.2
+      haraka-tld: 1.3.5
+      ipaddr.js: 2.4.0
+    optionalDependencies:
+      '@msimerson/stun': 3.2.1
 
   haraka-notes@1.1.3: {}
 
-  haraka-plugin-access@1.2.0:
+  haraka-plugin-access@1.4.0:
     dependencies:
-      address-rfc2822: 2.2.4
-      haraka-net-utils: 1.8.3
+      '@haraka/email-address': 3.1.5
+      haraka-net-utils: 1.9.2
       haraka-tld: 1.3.5
-      haraka-utils: 1.1.4
+      haraka-utils: 2.1.0
     optional: true
 
-  haraka-plugin-aliases@1.0.3:
+  haraka-plugin-aliases@1.1.0:
     dependencies:
-      address-rfc2821: 2.2.1
+      '@haraka/email-address': 3.1.5
     optional: true
 
-  haraka-plugin-asn@2.1.0:
+  haraka-plugin-asn@2.2.0:
     dependencies:
       maxmind: 5.0.6
     optional: true
@@ -757,11 +820,11 @@ snapshots:
       tmp: 0.2.7
     optional: true
 
-  haraka-plugin-bounce@2.1.2:
+  haraka-plugin-bounce@2.2.1:
     dependencies:
-      address-rfc2822: 2.2.4
-      haraka-net-utils: 1.8.3
-      haraka-plugin-spf: 1.2.11
+      '@haraka/email-address': 3.1.6
+      haraka-net-utils: 1.9.2
+      haraka-plugin-spf: 1.3.0
     optional: true
 
   haraka-plugin-clamd@1.0.3:
@@ -781,7 +844,7 @@ snapshots:
       nopt: 10.0.0
     optional: true
 
-  haraka-plugin-dns-list@1.2.4:
+  haraka-plugin-dns-list@1.3.0:
     dependencies:
       haraka-net-utils: 1.8.3
     optional: true
@@ -791,10 +854,10 @@ snapshots:
       ipaddr.js: 2.4.0
     optional: true
 
-  haraka-plugin-fcrdns@1.1.2:
+  haraka-plugin-fcrdns@1.2.1:
     dependencies:
       haraka-constants: 1.0.8
-      haraka-net-utils: 1.8.3
+      haraka-net-utils: 1.9.2
       haraka-tld: 1.3.5
     optional: true
 
@@ -804,9 +867,9 @@ snapshots:
       maxmind: 5.0.6
     optional: true
 
-  haraka-plugin-greylist@1.1.1:
+  haraka-plugin-greylist@1.2.1:
     dependencies:
-      address-rfc2821: 2.2.1
+      '@haraka/email-address': 3.1.5
       haraka-dsn: 1.2.0
       haraka-net-utils: 1.8.3
       haraka-plugin-redis: 2.0.11
@@ -817,32 +880,30 @@ snapshots:
       - '@opentelemetry/api'
     optional: true
 
-  haraka-plugin-headers@1.1.3:
+  haraka-plugin-headers@1.2.0:
     dependencies:
-      address-rfc2821: 2.2.1
-      address-rfc2822: 2.2.4
+      '@haraka/email-address': 3.1.5
       haraka-tld: 1.3.5
     optional: true
 
-  haraka-plugin-helo.checks@1.1.1:
+  haraka-plugin-helo.checks@1.1.3:
     dependencies:
       haraka-dsn: 1.2.0
-      haraka-net-utils: 1.8.3
-      haraka-tld: 1.3.5
-      haraka-utils: 1.1.4
+      haraka-net-utils: 1.9.2
+      haraka-tld: 1.3.6
+      haraka-utils: 2.2.1
     optional: true
 
-  haraka-plugin-karma@2.4.1:
+  haraka-plugin-karma@2.5.2:
     dependencies:
-      address-rfc2821: 2.2.1
       haraka-constants: 1.0.8
-      haraka-plugin-redis: 2.0.11
+      haraka-plugin-redis: 2.1.0
     transitivePeerDependencies:
       - '@node-rs/xxhash'
       - '@opentelemetry/api'
     optional: true
 
-  haraka-plugin-known-senders@1.1.5:
+  haraka-plugin-known-senders@1.2.0:
     dependencies:
       haraka-plugin-redis: 2.0.11
       haraka-tld: 1.3.5
@@ -851,28 +912,37 @@ snapshots:
       - '@opentelemetry/api'
     optional: true
 
-  haraka-plugin-limit@1.2.7:
+  haraka-plugin-limit@1.3.2:
     dependencies:
       haraka-constants: 1.0.8
-      haraka-plugin-redis: 2.0.11
+      haraka-plugin-redis: 2.1.0
       ipaddr.js: 2.4.0
     transitivePeerDependencies:
       - '@node-rs/xxhash'
       - '@opentelemetry/api'
     optional: true
 
-  haraka-plugin-mail_from.is_resolvable@1.2.0:
+  haraka-plugin-mail_from.is_resolvable@1.3.0:
     dependencies:
+      haraka-dsn: 1.2.0
       haraka-net-utils: 1.8.3
     optional: true
 
-  haraka-plugin-messagesniffer@1.0.1:
+  haraka-plugin-messagesniffer@1.0.2:
     optional: true
 
-  haraka-plugin-qmail-deliverable@1.3.5:
+  haraka-plugin-qmail-deliverable@1.4.0:
     optional: true
 
   haraka-plugin-redis@2.0.11:
+    dependencies:
+      redis: 5.12.1
+    transitivePeerDependencies:
+      - '@node-rs/xxhash'
+      - '@opentelemetry/api'
+    optional: true
+
+  haraka-plugin-redis@2.1.0:
     dependencies:
       redis: 5.12.1
     transitivePeerDependencies:
@@ -889,49 +959,56 @@ snapshots:
       haraka-dsn: 1.2.0
     optional: true
 
-  haraka-plugin-spamassassin@1.0.4:
+  haraka-plugin-spamassassin@1.1.0:
     dependencies:
       haraka-net-utils: 1.8.3
       haraka-utils: 1.1.4
     optional: true
 
-  haraka-plugin-spf@1.2.11:
+  haraka-plugin-spf@1.3.0:
     dependencies:
       haraka-dsn: 1.2.0
       haraka-net-utils: 1.8.3
       ipaddr.js: 2.4.0
-      nopt: 9.0.0
+      nopt: 10.0.0
     optional: true
 
-  haraka-plugin-syslog@1.1.1:
+  haraka-plugin-syslog@1.1.2:
     dependencies:
       haraka-constants: 1.0.8
+      haraka-utils: 2.2.1
       modern-syslog: 1.2.0
       nan: 2.27.0
     optional: true
 
-  haraka-plugin-uribl@1.0.10:
+  haraka-plugin-uribl@2.0.0:
     dependencies:
-      haraka-net-utils: 1.8.3
+      '@haraka/email-address': 3.1.5
+      haraka-net-utils: 1.9.2
       haraka-tld: 1.3.5
-      haraka-utils: 1.1.4
+      haraka-utils: 2.2.1
     optional: true
 
-  haraka-results@2.3.1:
+  haraka-results@2.4.0:
     dependencies:
       haraka-config: 1.6.2
     optionalDependencies:
-      redis: 5.12.1
+      redis: 6.0.0
     transitivePeerDependencies:
       - '@node-rs/xxhash'
       - '@opentelemetry/api'
 
   haraka-tld@1.3.5: {}
 
-  haraka-utils@1.1.4: {}
+  haraka-tld@1.3.6: {}
+
+  haraka-utils@1.1.4:
+    optional: true
 
   haraka-utils@2.1.0:
     optional: true
+
+  haraka-utils@2.2.1: {}
 
   he@1.2.0: {}
 
@@ -1025,21 +1102,10 @@ snapshots:
       nan: 2.27.0
     optional: true
 
-  moo@0.5.3:
-    optional: true
-
   nan@2.27.0:
     optional: true
 
-  nearley@2.20.1:
-    dependencies:
-      commander: 2.20.3
-      moo: 0.5.3
-      railroad-diagrams: 1.0.0
-      randexp: 0.4.6
-    optional: true
-
-  node-gyp@12.3.0:
+  node-gyp@12.4.0:
     dependencies:
       env-paths: 2.2.1
       exponential-backoff: 3.1.3
@@ -1057,12 +1123,18 @@ snapshots:
   nopt@10.0.0:
     dependencies:
       abbrev: 5.0.0
+    optional: true
+
+  nopt@10.0.1:
+    dependencies:
+      abbrev: 5.0.0
 
   nopt@9.0.0:
     dependencies:
       abbrev: 4.0.0
 
-  openssl-wrapper@0.3.4: {}
+  openssl-wrapper@0.3.4:
+    optional: true
 
   parseley@0.13.1:
     dependencies:
@@ -1077,18 +1149,6 @@ snapshots:
 
   punycode.js@2.3.1: {}
 
-  punycode@2.3.1:
-    optional: true
-
-  railroad-diagrams@1.0.0:
-    optional: true
-
-  randexp@0.4.6:
-    dependencies:
-      discontinuous-range: 1.0.0
-      ret: 0.1.15
-    optional: true
-
   redis@5.12.1:
     dependencies:
       '@redis/bloom': 5.12.1(@redis/client@5.12.1)
@@ -1100,8 +1160,16 @@ snapshots:
       - '@node-rs/xxhash'
       - '@opentelemetry/api'
 
-  ret@0.1.15:
-    optional: true
+  redis@6.0.0:
+    dependencies:
+      '@redis/bloom': 6.0.0(@redis/client@6.0.0)
+      '@redis/client': 6.0.0
+      '@redis/json': 6.0.0(@redis/client@6.0.0)
+      '@redis/search': 6.0.0(@redis/client@6.0.0)
+      '@redis/time-series': 6.0.0(@redis/client@6.0.0)
+    transitivePeerDependencies:
+      - '@node-rs/xxhash'
+      - '@opentelemetry/api'
 
   safer-buffer@2.1.2: {}
 
@@ -1110,6 +1178,8 @@ snapshots:
       parseley: 0.13.1
 
   semver@7.8.1: {}
+
+  semver@7.8.4: {}
 
   tar@7.5.15:
     dependencies:

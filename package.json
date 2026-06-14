@@ -9,8 +9,8 @@
     "start": "pnpm --filter @aibulat/mailgw start",
     "dev": "pnpm --filter @aibulat/mailgw dev",
     "test": "pnpm --filter @aibulat/mailgw test",
-    "build:mailgw": "bash containers/container-build.sh",
-    "build:logservice": "bash logservice/container-build.sh",
+    "build:mailgw": "bash mailgw/container-push.sh",
+    "build:logservice": "bash logservice/container-push.sh",
     "build:containers": "pnpm run build:mailgw && pnpm run build:logservice"
   },
   "author": "Aibulat",

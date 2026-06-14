@@ -37,8 +37,8 @@ pnpm start                  # run node src/index.js directly
 ### Container / Docker
 
 ```bash
-./containers/container-build.sh   # auto-bumps mailgw version, builds with docker buildx (-f mailgw/Dockerfile, root context)
-./containers/container-push.sh    # push to Docker Hub (ngmaibulat/mailgw)
+./mailgw/container-build.sh       # auto-bumps mailgw version, builds with docker buildx (-f mailgw/Dockerfile, root context)
+./mailgw/container-push.sh        # build + push to Docker Hub (ngmaibulat/mailgw)
 cd mailgw && ./container-dev.sh   # run latest image locally (mounts mailgw/plugins live)
 docker compose up                 # full stack: mailgw + mariadb + db-migrator
 docker compose run --rm db-migrator  # run Sequelize migrations against MariaDB

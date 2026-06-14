@@ -73,5 +73,13 @@ services:
             # mariadb:
             #     condition: service_healthy
 
+    mailhog:
+        image: mailhog/mailhog
+        container_name: dev-mailhog
+        restart: unless-stopped
+        ports:
+            - "8025:8025" # MailHog web interface
+            - "1025:1025" # MailHog SMTP server
+
 volumes:
     mariadb_data:
