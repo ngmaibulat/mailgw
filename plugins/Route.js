@@ -36,11 +36,12 @@ module.exports = class Route {
         param = param == null ? "" : param.toString();
 
         if (param) {
+            // Match case-insensitively: email domains (and, in practice,
+            // addresses) compare without regard to case, so a rule like
+            // "Example.com" must match "example.com".
+            const expected = param.toLowerCase();
             return function (val) {
-                if (val == param) {
-                    return true;
-                }
-                return false;
+                return String(val).toLowerCase() === expected;
             };
         } else {
             return function (val) {

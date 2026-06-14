@@ -42,6 +42,17 @@ test("rcpt_domain is matched against the rcpt's domain", () => {
     assert.equal(r.match("x@a.com", "user@other.com"), false);
 });
 
+test("domain matching is case-insensitive", () => {
+    const r = new Route("relay", "", "Example.com", "", "B.COM");
+    assert.equal(r.match("s@EXAMPLE.COM", "r@b.com"), true);
+    assert.equal(r.match("s@example.com", "r@B.Com"), true);
+});
+
+test("address matching is case-insensitive", () => {
+    const r = new Route("relay", "Boss@A.com", "", "USER@b.com", "");
+    assert.equal(r.match("boss@a.com", "user@B.COM"), true);
+});
+
 test("all specified predicates must hold together (AND)", () => {
     const r = new Route("relay", "", "a.com", "", "b.com");
     assert.equal(r.match("s@a.com", "r@b.com"), true);
