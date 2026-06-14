@@ -1,0 +1,32 @@
+{
+  "Exchange": [
+    {
+      "name": "Exch-01",
+      "auth_user": "someuser",
+      "auth_pass": "somepass",
+      "priority": 0,
+      "exchange": "sandbox.smtp.mailtrap.io",
+      "port": "2525"
+    },
+
+    {
+      "name": "Exch-02",
+      "auth_user": "someuser",
+      "auth_pass": "somepass",
+      "priority": 0,
+      "exchange": "sandbox.smtp.mailtrap.io",
+      "port": "2525"
+    }
+  ],
+
+  "Outbound": [
+    {
+      "name": "Default",
+      "auth_user": "someuser",
+      "auth_pass": "somepass",
+      "priority": 0,
+      "exchange": "sandbox.smtp.mailtrap.io",
+      "port": "2525"
+    }
+  ]
+}

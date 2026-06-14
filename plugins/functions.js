@@ -55,6 +55,30 @@ exports.buildConnInfo = function (connection) {
     };
 };
 
+// Shape the per-transaction log payload used by the queue logging hook. Maps
+// onto the logservice TransactionRow. Optional chaining/getAddr guards against
+// fields that may be absent. dt (data_post_start) is epoch ms; the logservice
+// converts it via FROM_UNIXTIME(dt/1000).
+exports.buildTxnInfo = function (connection) {
+    const txn = connection.transaction;
+    if (!txn) return null;
+
+    return {
+        uuid: txn.uuid,
+        dt: txn.data_post_start,
+        action: txn.action,
+        encoding: txn.encoding,
+        sender: exports.getAddr(txn.mail_from),
+        rcpt_list: exports.getAddrList(txn.rcpt_to || []),
+        rcpt_count_accept: txn.rcpt_count?.accept,
+        rcpt_count_tempfail: txn.rcpt_count?.tempfail,
+        rcpt_count_reject: txn.rcpt_count?.reject,
+        delay_data_post: txn.data_post_delay,
+        data_bytes: txn.data_bytes,
+        mime_part_count: txn.mime_part_count,
+    };
+};
+
 // POST a payload to the logservice and record the outcome to a local logfile.
 // Returns the fetch promise so callers/tests can await it.
 exports.postWithLogging = function (payload, url, logfile) {

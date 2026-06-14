@@ -26,7 +26,7 @@ export async function insertConnection(c: ConnectionRow): Promise<void> {
              using_tls, tran_count, rcpt_count_accept, rcpt_count_tempfail,
              rcpt_count_reject, createdAt, updatedAt)
         VALUES
-            (${c.uuid}, ${c.dt}, ${c.encoding}, ${c.hello_name}, ${c.remoteAddr},
+            (${c.uuid}, FROM_UNIXTIME(${c.dt} / 1000), ${c.encoding}, ${c.hello_name}, ${c.remoteAddr},
              ${c.remotePort}, ${c.remote_host}, ${c.remote_info}, ${c.remote_is_local},
              ${c.remote_is_private}, ${c.using_tls}, ${c.tran_count},
              ${c.rcpt_count_accept}, ${c.rcpt_count_tempfail}, ${c.rcpt_count_reject},

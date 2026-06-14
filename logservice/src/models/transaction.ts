@@ -22,7 +22,7 @@ export async function insertTransaction(t: TransactionRow): Promise<number> {
              rcpt_count_accept, rcpt_count_tempfail, rcpt_count_reject,
              delay_data_post, data_bytes, mime_part_count, createdAt, updatedAt)
         VALUES
-            (${t.uuid}, ${t.dt}, ${t.action}, ${t.encoding}, ${t.sender}, ${t.rcpt_list},
+            (${t.uuid}, FROM_UNIXTIME(${t.dt} / 1000), ${t.action}, ${t.encoding}, ${t.sender}, ${t.rcpt_list},
              ${t.rcpt_count_accept}, ${t.rcpt_count_tempfail}, ${t.rcpt_count_reject},
              ${t.delay_data_post}, ${t.data_bytes}, ${t.mime_part_count},
              NOW(), NOW())

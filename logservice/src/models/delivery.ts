@@ -8,7 +8,7 @@ export async function insertDelivery(d: Delivery): Promise<void> {
              tls_forced, tls, auth, host, ip, port, response, delay,
              createdAt, updatedAt)
         VALUES
-            (${d.uuid}, ${d.dt}, ${d.sender}, ${d.rcpt_domain}, ${d.rcpt_list},
+            (${d.uuid}, FROM_UNIXTIME(${d.dt} / 1000), ${d.sender}, ${d.rcpt_domain}, ${d.rcpt_list},
              ${d.rcpt_accepted}, ${d.tls_forced}, ${d.tls}, ${d.auth},
              ${d.host}, ${d.ip}, ${d.port}, ${d.response}, ${d.delay},
              NOW(), NOW())

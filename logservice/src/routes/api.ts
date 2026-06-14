@@ -1,9 +1,11 @@
 import { schemaDelivery } from "../validation/delivery";
 import { insertDelivery } from "../models/delivery";
 import { insertConnection } from "../models/connection";
+import { insertTransaction } from "../models/transaction";
 import { searchDelivery, searchConnection, searchTransaction } from "../query/search";
 import { hashListLookup } from "../query/hash";
 import type { ConnectionRow } from "../models/connection";
+import type { TransactionRow } from "../models/transaction";
 
 export async function deliveryRoute(req: Request): Promise<Response> {
     const body = await req.json();
@@ -26,7 +28,10 @@ export async function deliverySearchRoute(req: Request): Promise<Response> {
 
 export async function queueRoute(req: Request): Promise<Response> {
     const body = await req.json();
-    await insertConnection(toConnectionRow(body));
+    // Queue events are recorded as Transactions; the connect-stage Connection
+    // row is already written by connectionRoute, so we no longer double-insert.
+    // await insertConnection(toConnectionRow(body));
+    await insertTransaction(toTransactionRow(body));
     return Response.json({ status: "OK" });
 }
 
@@ -53,6 +58,23 @@ function toConnectionRow(body: any): ConnectionRow {
         rcpt_count_accept:   body.rcpt_count_accept   ?? 0,
         rcpt_count_tempfail: body.rcpt_count_tempfail ?? 0,
         rcpt_count_reject:   body.rcpt_count_reject   ?? 0,
+    };
+}
+
+function toTransactionRow(body: any): TransactionRow {
+    return {
+        uuid:                body.uuid         ?? null,
+        dt:                  body.dt           ?? null,
+        action:              body.action       ?? null,
+        encoding:            body.encoding     ?? null,
+        sender:              body.sender       ?? null,
+        rcpt_list:           body.rcpt_list    ?? null,
+        rcpt_count_accept:   body.rcpt_count_accept   ?? 0,
+        rcpt_count_tempfail: body.rcpt_count_tempfail ?? 0,
+        rcpt_count_reject:   body.rcpt_count_reject   ?? 0,
+        delay_data_post:     body.delay_data_post ?? null,
+        data_bytes:          body.data_bytes   ?? null,
+        mime_part_count:     body.mime_part_count ?? null,
     };
 }
 

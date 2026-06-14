@@ -1,6 +1,6 @@
 {
   "name": "@ngmaibulat/mailgw-logservice-bun",
-  "version": "0.0.17",
+  "version": "0.0.19",
   "description": "",
   "module": "src/index.ts",
   "scripts": {

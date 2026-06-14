@@ -7,7 +7,7 @@ exports.getConfig = function () {
 };
 
 exports.hook_queue_outbound = function (next, connection) {
-    const obj = functions.buildConnInfo(connection);
+    const obj = functions.buildTxnInfo(connection);
     const url = exports.getConfig.call(this).url_queue;
 
     functions.postWithLogging(obj, url, logfile);
