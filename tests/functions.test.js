@@ -3,6 +3,51 @@ const assert = require("node:assert/strict");
 
 const functions = require("../plugins/functions");
 
+test("apiHeaders attaches X-API-Key when API_KEY is set", () => {
+    const orig = process.env.API_KEY;
+    process.env.API_KEY = "secret123";
+    try {
+        const headers = functions.apiHeaders();
+        assert.equal(headers["X-API-Key"], "secret123");
+        assert.equal(headers["Content-Type"], "application/json");
+    } finally {
+        if (orig === undefined) delete process.env.API_KEY;
+        else process.env.API_KEY = orig;
+    }
+});
+
+test("apiHeaders omits X-API-Key when API_KEY is unset", () => {
+    const orig = process.env.API_KEY;
+    delete process.env.API_KEY;
+    try {
+        const headers = functions.apiHeaders();
+        assert.equal("X-API-Key" in headers, false);
+    } finally {
+        if (orig !== undefined) process.env.API_KEY = orig;
+    }
+});
+
+test("httplog sends the API key header through to fetch", async () => {
+    const origFetch = global.fetch;
+    const origKey = process.env.API_KEY;
+    process.env.API_KEY = "secret123";
+    let captured;
+    global.fetch = (url, req) => {
+        captured = { url, req };
+        return Promise.resolve({ status: 200 });
+    };
+    try {
+        await functions.httplog({ a: 1 }, "http://logservice/conn");
+    } finally {
+        global.fetch = origFetch;
+        if (origKey === undefined) delete process.env.API_KEY;
+        else process.env.API_KEY = origKey;
+    }
+    assert.equal(captured.url, "http://logservice/conn");
+    assert.equal(captured.req.headers["X-API-Key"], "secret123");
+    assert.equal(captured.req.method, "POST");
+});
+
 test("getAddr joins user and host with @", () => {
     assert.equal(functions.getAddr({ user: "alice", host: "a.com" }), "alice@a.com");
 });

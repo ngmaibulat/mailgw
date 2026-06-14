@@ -2,16 +2,26 @@ const fs = require("fs");
 
 const VERSION = "0.0.21";
 
+// Build the common headers for logservice requests, attaching the API key
+// (matching the logservice X-API-Key auth) only when API_KEY is configured.
+exports.apiHeaders = function () {
+    const headers = {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+    };
+    if (process.env.API_KEY) {
+        headers["X-API-Key"] = process.env.API_KEY;
+    }
+    return headers;
+};
+
 exports.httplog = function (obj, url) {
     let jsondata = JSON.stringify(obj);
     // let jsondata = JSON.stringify(obj, censor(obj));
 
     let req = {
         method: "POST",
-        headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-        },
+        headers: exports.apiHeaders(),
         body: jsondata,
     };
 

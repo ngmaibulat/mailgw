@@ -14,12 +14,17 @@ module.exports = class AttachChecker {
         let url = this.url;
         let jsondata = JSON.stringify(list);
 
+        let headers = {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+        };
+        if (process.env.API_KEY) {
+            headers["X-API-Key"] = process.env.API_KEY;
+        }
+
         let req = {
             method: "POST",
-            headers: {
-                Accept: "application/json",
-                "Content-Type": "application/json",
-            },
+            headers: headers,
             body: jsondata,
         };
 
