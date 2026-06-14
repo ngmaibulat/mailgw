@@ -26,11 +26,20 @@ services:
             MARIADB_USER: mailgw
             MARIADB_PASSWORD: P@ssw0rd
         volumes:
+            # Docker-managed named volume only — no host bind mounts.
             - mariadb_data:/var/lib/mysql
-            - /run/mysqld:/run/mysqld
+        # healthcheck (commented): gates dependents on real DB readiness. The
+        # migrator now retries the connection itself, so this is optional —
+        # uncomment (and the service_healthy depends_on below) to re-enable.
+        # healthcheck:
+        #     test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+        #     interval: 5s
+        #     timeout: 5s
+        #     retries: 12
+        #     start_period: 30s
 
     logservice:
-        image: ngmaibulat/mailgw-logservice-bun:latest
+        image: ngmaibulat/logservice:latest
         container_name: dev-logservice
         restart: unless-stopped
         ports:
@@ -48,8 +57,9 @@ services:
                 condition: service_completed_successfully
 
     db-migrator:
-        image: ngmaibulat/mailgw-logservice-bun:latest
-        command: ["bun", "src/index.ts", "--migrate"]
+        image: ngmaibulat/logservice:latest
+        container_name: dev-mailgw-db-migrator
+        command: ["bun", "src/dbmigrate.ts"]
         environment:
             DB_HOST: dev-mailgw-db
             DB_NAME: mailgw
@@ -57,6 +67,11 @@ services:
             DB_PASS: P@ssw0rd
         depends_on:
             - mariadb
+            # With the healthcheck above commented out, this falls back to plain
+            # start ordering; the migrator's own connection retry handles
+            # readiness. Re-enable alongside the healthcheck to gate strictly:
+            # mariadb:
+            #     condition: service_healthy
 
 volumes:
     mariadb_data:

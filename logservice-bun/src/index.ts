@@ -1,4 +1,4 @@
-import { runMigrations } from "./migrate";
+import { runMigrations } from "./dbmigrate";
 import { withAuth } from "./middleware/auth";
 import { withErrorHandling } from "./middleware/error";
 import { rootRoute } from "./routes/root";
@@ -18,11 +18,15 @@ function handle(handler: Handler): Handler {
 
 const port = Number(Bun.env.PORT ?? 3000);
 
+// `--migrate` is a one-shot: run migrations and exit, do NOT start the server.
+// (The db-migrator container relies on this exiting so its dependents can start.)
 if (process.argv.includes("--migrate")) {
     try {
         await runMigrations();
+        process.exit(0);
     } catch (err) {
-        console.error("[migrate] failed, aborting startup:", err);
+        const reason = err instanceof Error ? err.message : String(err);
+        console.error(`[migrate] aborted: ${reason}`);
         process.exit(1);
     }
 }

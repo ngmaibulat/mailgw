@@ -1,5 +1,7 @@
 ### 2026-06-14
 
+- db migrator script fixes
+
 ### 2026-06-07
 
 - removed dep: "mimelib": "^0.3.1"
