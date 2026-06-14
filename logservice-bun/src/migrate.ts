@@ -1,4 +1,4 @@
-import { SQL } from "bun:sql";
+import { SQL } from "bun";
 import { readdir, readFile } from "fs/promises";
 import { join } from "path";
 

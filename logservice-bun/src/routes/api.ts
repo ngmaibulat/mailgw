@@ -2,6 +2,7 @@ import { schemaDelivery } from "../validation/delivery";
 import { insertDelivery } from "../models/delivery";
 import { insertConnection } from "../models/connection";
 import { searchDelivery, searchConnection, searchTransaction } from "../query/search";
+import { hashListLookup } from "../query/hash";
 import type { ConnectionRow } from "../models/connection";
 
 export async function deliveryRoute(req: Request): Promise<Response> {
@@ -59,6 +60,15 @@ export async function connectionSearchRoute(req: Request): Promise<Response> {
     const q = new URL(req.url).searchParams.get("q");
     const result = await searchConnection(q);
     return Response.json(result);
+}
+
+// Attachment MD5 blocklist check. The Haraka npFilterAttach plugin POSTs an
+// array of attachment descriptors and expects { action: "allow" | "block" }.
+export async function filterMD5Route(req: Request): Promise<Response> {
+    const body = await req.json();
+    const list = Array.isArray(body) ? body : [];
+    const action = await hashListLookup(list);
+    return Response.json({ action });
 }
 
 export async function transactionSearchRoute(req: Request): Promise<Response> {

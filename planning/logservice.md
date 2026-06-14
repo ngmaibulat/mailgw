@@ -12,23 +12,23 @@ this file tracks only what remains. Detailed task-level status lives in
 - Auth (X-API-Key middleware) and centralized error-handling middleware.
 - Dockerfile + `.dockerignore` present.
 - Parameterized query builder with a column allowlist (injection guard).
-- Unit tests: validation, query builder, auth.
+- Attachment MD5 blocklist: `/filter/md5` route + `hashListLookup` orchestration
+  (`decideActions` pure logic + `BlockMD5` / `HashLookup` models).
+- Unit tests: validation, query builder, auth, hash decision logic.
+
+Note: fixed the `SQL` import in `db.ts` / `src/migrate.ts` — `"bun:sql"` does
+not resolve in Bun 1.3.13; the `SQL` class is imported from `"bun"`. The
+service could not load before this.
 
 ## Remaining work
 
 1. **Live-DB integration tests** (highest value)
-   Current tests are unit-level only. Add smoke tests that run the 3 POST
-   endpoints against a real MariaDB (the `docker compose` db) and assert rows
-   are actually written. This is the main confidence gap before production.
+   Current tests are unit-level only. Add smoke tests that run the POST
+   endpoints (including `/filter/md5`) against a real MariaDB (the
+   `docker compose` db) and assert rows are actually written. This is the main
+   confidence gap before production.
 
-2. **Attachment hash-check feature** (only if attachment blocking is used)
-   - Port `checkMD5` / `hashLookup` / `hashListLookup` orchestration from the
-     old `functions.js` (models `BlockMD5` / `HashLookup` already exist).
-   - Add the missing `/filter/md5` route: the Haraka `npFilterAttach` plugin
-     POSTs to `http://localhost:3000/filter/md5`, but `index.ts` exposes no
-     such endpoint — the feature can't work until this is added.
-
-3. **Deferred models / endpoints** (do only when needed)
+2. **Deferred models / endpoints** (do only when needed)
    `Header`, `Log`, `Config`, `RelayGroup`, `Relay`, `User`, `Exception` — no
    active routes use them yet; port on demand.
 

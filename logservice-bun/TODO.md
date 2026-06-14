@@ -37,7 +37,9 @@
   - [x] `between` → `BETWEEN ? AND ?`
   - [x] `>`, `>=`, `<`, `<=`, `less`, `more` → direct operators
   - [x] Add field name allowlist to prevent column injection (security fix)
-- [ ] Port `checkMD5`, `hashLookup`, `hashListLookup` functions
+- [x] Port `checkMD5`, `hashLookup`, `hashListLookup` functions
+  (as `decideActions` + `hashListLookup` in `src/query/hash.ts`, exposed via
+  the `POST /filter/md5` route)
 
 ## Migrations
 - [x] Convert 12 Sequelize migration files to plain `.sql` files

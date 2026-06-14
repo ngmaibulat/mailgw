@@ -7,6 +7,7 @@ import {
     queueRoute,
     connectionRoute, connectionSearchRoute,
     transactionSearchRoute,
+    filterMD5Route,
 } from "./routes/api";
 
 type Handler = (req: Request) => Response | Promise<Response>;
@@ -34,6 +35,7 @@ Bun.serve({
         "/api/connection":  { POST: handle(connectionRoute),  GET: handle(connectionSearchRoute) },
         "/api/queue":       { POST: handle(queueRoute) },
         "/api/transaction": { GET:  handle(transactionSearchRoute) },
+        "/filter/md5":      { POST: handle(filterMD5Route) },
     },
     fetch(_req) {
         return new Response("Resource does not exist\n", { status: 404 });

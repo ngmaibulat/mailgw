@@ -1,5 +1,4 @@
-//@ts-ignore
-import { SQL } from "bun:sql";
+import { SQL } from "bun";
 
 const db = new SQL({
     host: Bun.env.DB_HOST,
