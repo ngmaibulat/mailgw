@@ -10,7 +10,8 @@
     "start": "haraka  -c .",
     "dev": "MODE=DEV haraka  -c .",
     "scan": "trivy fs .",
-    "scan-clean": "trivy clean --all"
+    "scan-clean": "trivy clean --all",
+    "test": "node --test tests/*.test.js"
   },
   "author": "Aibulat",
   "license": "MIT",

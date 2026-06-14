@@ -31,7 +31,9 @@ module.exports = class Route {
     }
 
     getCheckerFunction(param) {
-        param = param.toString();
+        // A missing field (null/undefined) is treated as a wildcard, same as
+        // an empty string — guard against calling .toString() on it.
+        param = param == null ? "" : param.toString();
 
         if (param) {
             return function (val) {

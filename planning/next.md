@@ -1,6 +1,7 @@
 Must-do before this can replace the original:
 
 1. Migrations — the new service can't run at all without the DB schema. Two tasks: convert 12 Sequelize migration files to plain .sql and write a Bun migration runner. This is the most pressing remaining work.
+
 2. Wire up /api/connection and /api/queue persistence — both currently just console.log. The models are already written (connection.ts, transaction.ts), so this is just connecting them in the route handlers.
 
 Small loose ends:

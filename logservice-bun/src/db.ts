@@ -1,3 +1,4 @@
+//@ts-ignore
 import { SQL } from "bun:sql";
 
 const db = new SQL({
