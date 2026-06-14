@@ -27,6 +27,13 @@ function makeHmail(rcpt_to, mail_from = { user: "s", host: "a.com" }) {
     return { todo: { mail_from, rcpt_to } };
 }
 
+test("npRoute does not blanket-enable relaying (npFilter owns the allowlist)", () => {
+    // Regression guard: npRoute must not register a connect hook that sets
+    // connection.relaying = true unconditionally — that would bypass the
+    // npFilter IP allowlist and open the relay.
+    assert.equal(typeof npRoute.hook_connect, "undefined");
+});
+
 test("hook_get_mx returns OK with the matched relay for routable mail", () => {
     setup([
         { relay: "partner", sender: "", sender_domain: "a.com", rcpt: "", rcpt_domain: "" },

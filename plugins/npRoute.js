@@ -68,10 +68,10 @@ exports.hook_get_mx = function (next, hmail, domain) {
     return next(OK, relay);
 };
 
-exports.hook_connect = function (next, connection) {
-    connection.relaying = true;
-    return next(CONT);
-};
+// NOTE: relaying is intentionally NOT set here. The IP allowlist in npFilter
+// is the single authority for connection.relaying — it enables relaying only
+// for allowlisted IPs and DENYDISCONNECTs everyone else. Setting relaying here
+// unconditionally would bypass that gate and open the relay.
 
 // exports.hook_queue_outbound = function (next, connection)
 // {
