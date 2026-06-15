@@ -1,0 +1,2 @@
+- rewrite modern-syslog in pure TS
+- use TS-7

@@ -7,7 +7,9 @@
   "scripts": {
     "test": "node --test",
     "dev": "nodemon --no-warnings src/index.mjs",
-    "start": "node --no-warnings src/index.mjs"
+    "start": "node --no-warnings src/index.mjs",
+    "container:build": "bash container-build.sh",
+    "container:push": "bash container-push.sh"
   },
   "keywords": [],
   "author": "Aibulat",

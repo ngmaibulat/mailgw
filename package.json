@@ -18,7 +18,8 @@
     "test:e2e:smtp": "bun test tests/smtp",
     "build:mailgw": "bash mailgw/container-push.sh",
     "build:logservice": "bash logservice/container-push.sh",
-    "build:containers": "pnpm run build:mailgw && pnpm run build:logservice"
+    "build:webui": "bash webui-express/container-push.sh",
+    "build:containers": "pnpm run build:mailgw && pnpm run build:logservice && pnpm run build:webui"
   },
   "author": "Aibulat",
   "license": "MIT",
