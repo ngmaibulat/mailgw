@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "lib": ["ESNext"]
   },
-  "include": ["src/**/*", "tests/**/*"]
+  "include": ["api/**/*", "smtp/**/*"]
 }

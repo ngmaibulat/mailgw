@@ -6,10 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a mail gateway/router built on [Haraka](https://haraka.github.io/) (Node.js SMTP server). It accepts inbound SMTP, applies routing rules to forward mail to configured relay targets, and POSTs structured JSON events to a companion logging service.
 
-The repo is a pnpm workspace monorepo. Each app lives in its own top-level
-package under a private workspace root (`package.json` + `pnpm-workspace.yaml`):
-- **`mailgw/`** — the Haraka SMTP server with custom plugins (`mailgw/plugins/`)
-- **`logservice/`** — an Express + Sequelize REST API that receives events from plugins and stores them in MariaDB
+The repo is a monorepo with a private root `package.json`. Only `mailgw/` is a
+pnpm workspace member (see `pnpm-workspace.yaml`); `logservice/` and `tests/`
+are standalone **Bun** packages with their own `bun.lock`, deliberately kept out
+of the pnpm workspace so pnpm and Bun don't fight over `node_modules`.
+- **`mailgw/`** — the Haraka SMTP server with custom plugins (`mailgw/plugins/`); a Node.js / pnpm package
+- **`logservice/`** — a Bun HTTP API (`Bun.serve`) that receives events from the plugins and stores them in MariaDB via Bun's native SQL client (`Bun.SQL`, MySQL adapter); written in TypeScript
+- **`tests/`** — cross-cutting end-to-end tests (Bun): logservice API (`tests/api/`) and SMTP pipeline (`tests/smtp/`)
 
 ## Commands
 
@@ -30,8 +33,12 @@ cd mailgw && pnpm version patch       # bump patch version (used before a contai
 
 ```bash
 cd logservice
-pnpm dev                    # run with nodemon (auto-reload)
-pnpm start                  # run node src/index.js directly
+bun run dev                 # run with bun --watch (auto-reload)  → src/index.ts
+bun run start               # run src/index.ts directly
+bun run start:migrate       # run migrations on boot, then start the server
+bun run db:migrate          # apply pending SQL migrations and exit
+bun run db:reset            # drop everything, then re-migrate
+bun test tests/             # run the unit test suite
 ```
 
 ### Container / Docker
@@ -41,8 +48,26 @@ pnpm start                  # run node src/index.js directly
 ./mailgw/container-push.sh        # build + push to Docker Hub (ngmaibulat/mailgw)
 cd mailgw && ./container-dev.sh   # run latest image locally (mounts mailgw/plugins live)
 docker compose up                 # full stack: mailgw + mariadb + db-migrator
-docker compose run --rm db-migrator  # run Sequelize migrations against MariaDB
+docker compose run --rm db-migrator  # apply SQL migrations against MariaDB (runs `bun src/dbmigrate.ts`)
 ```
+
+### End-to-end tests (`tests/` package)
+
+`tests/` is a standalone Bun package (not a pnpm workspace member) holding
+cross-cutting e2e tests that talk to a **running** stack (`docker compose up -d`):
+- `tests/api/` — logservice HTTP API e2e (`logservice.e2e.test.ts`)
+- `tests/smtp/` — Bun-native SMTP client + pipeline e2e (moved from `client/`)
+
+Run from the repo root so Bun auto-loads the root `.env` (`PORT`, `DB_*`):
+
+```bash
+pnpm test:e2e          # all e2e (or: bun test tests/)
+pnpm test:e2e:api      # logservice API only (bun test tests/api)
+pnpm test:e2e:smtp     # SMTP only (bun test tests/smtp)
+```
+
+DB-mutating suites are opt-in: `MAILGW_API_E2E=1` (api) and `MAILGW_DB_CHECK=1`
+(smtp). See `tests/README.md`.
 
 ## Architecture
 
@@ -52,15 +77,15 @@ Haraka loads plugins listed in `mailgw/config/plugins` and calls registered hook
 
 | Plugin | Hook(s) | Purpose |
 |---|---|---|
-| `npRoute.js` | `hook_get_mx`, `hook_connect` | Route outbound mail via `RoutingTable` |
-| `npFilter.js` | `hook_connect`, `hook_rcpt` | IP allowlist enforcement |
-| `npFilterAttach.js` | — | Attachment checking |
-| `npConnection.js` | `hook_connect` | Log connection events → logservice |
-| `npData.js` | `hook_data` | Log DATA-stage events → logservice |
-| `npQueue.js` | `hook_queue_outbound` | Log queue events → logservice |
-| `npLogDelivery.js` | `hook_delivered` | Log delivery outcomes → logservice |
+| `npRoute.js` | `hook_get_mx` | Route outbound mail via `RoutingTable` |
+| `npFilter.js` | `hook_connect`, `hook_rcpt`, `hook_queue_outbound` | IP allowlist enforcement (plus local rcpt logging) |
+| `npConnection.js` | `hook_connect` | Write connection info to a local log file + IP-blacklist placeholder (does **not** POST to logservice) |
+| `npData.js` | `hook_data` | POST connection info → logservice (`url_conn`) |
+| `npQueue.js` | `hook_queue_outbound` | POST transaction/queue event → logservice (`url_queue`) |
+| `npLogDelivery.js` | `hook_delivered` | POST delivery outcome → logservice (`url_delivery`) |
+| `npFilterAttach.js` | `hook_data_post` | Attachment MD5 blocklist check via POST `/filter/md5`; also POSTs connection + transaction events |
 
-All logging plugins read `mailgw/config/logging.json` (via Haraka's `this.config.get`) and use `mailgw/plugins/functions.js#httplog` to POST JSON to the logservice.
+The logservice-posting plugins `npData`, `npQueue`, and `npLogDelivery` read endpoint URLs (`url_conn` / `url_queue` / `url_delivery`) from `mailgw/config/logging.json` via Haraka's `this.config.get`, and POST JSON through `mailgw/plugins/functions.js#postWithLogging` (which writes a local log line, then calls `httplog`). Note that `npFilterAttach` instead uses **hardcoded** `http://localhost:3000` URLs.
 
 ### Routing logic (`mailgw/plugins/Route.js`, `mailgw/plugins/RoutingTable.js`)
 
@@ -80,12 +105,17 @@ On `hook_get_mx`, `RoutingTable.findRoute(sender, rcpt)` walks the rules in orde
 
 ### logservice
 
-Express app (`logservice/src/index.js`) listening on `PORT` (default 3000):
-- `POST /api/connection` — inbound connection events
-- `POST /api/queue` — queue events
-- `POST /api/delivery` — delivery events (validated with Zod schema)
+`Bun.serve` app (`logservice/src/index.ts`) listening on `PORT` (default 3000). Routes:
+- `GET  /` — health check, returns `{ status: "OK" }`
+- `POST /api/connection` — inbound connection events; `GET /api/connection` — search
+- `POST /api/queue` — queue events (stored as `Transaction` rows)
+- `POST /api/delivery` — delivery events (validated with a Zod schema); `GET /api/delivery` — search
+- `GET  /api/transaction` — search transactions
+- `POST /filter/md5` — attachment MD5 blocklist check, returns `{ action: "allow" | "block" }`
 
-Sequelize models in `logservice/models/` backed by MariaDB. Schema migrations live in `logservice/migrations/` and are run via the `db-migrator` container.
+Each handler is wrapped by `handle()` = `withAuth(withErrorHandling(...))` (`src/middleware/`). Auth checks the `X-API-Key` header against `API_KEY`; when `API_KEY` is unset, all requests are accepted. The `GET` search endpoints take a JSON `q` query param (`{ search: [{ field, operator, value }], searchLogic, limit, offset }`) parsed/whitelisted in `src/query/`.
+
+Data access uses raw SQL via Bun's `Bun.SQL` (`src/db.ts`, MySQL adapter) — there is **no ORM**. Per-table query helpers live in `src/models/` (`connection.ts`, `transaction.ts`, `delivery.ts`, etc.). Schema migrations are plain numbered `.sql` files in `logservice/migrations/`, applied in order by the custom runner `src/dbmigrate.ts` (tracks applied files in a `_migrations` table). Migrations run via the `db-migrator` container, the `--migrate` boot flag (`index.ts`), or `bun run db:migrate`.
 
 ### DEV mode
 

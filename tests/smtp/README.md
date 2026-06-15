@@ -1,4 +1,4 @@
-# mailgw test client
+# mailgw SMTP tests
 
 Two ways to drive the running gateway:
 
@@ -8,7 +8,7 @@ Two ways to drive the running gateway:
   `src/send.ts` CLI. No nodemailer/mysql2 — just Bun's built-in TCP + SQL.
 
 ```
-client/
+tests/smtp/
   src/    smtp.ts (client), send.ts (CLI)
   tests/  smtp.test.ts (SMTP), smtp.e2e.test.ts (DB, opt-in)
   swaks.sh
@@ -23,8 +23,7 @@ docker compose up -d
 ## Run the tests
 
 ```bash
-cd client
-bun test                      # SMTP-level integration tests
+cd tests && bun test smtp     # SMTP-level integration tests
 ```
 
 Override the target with env vars (defaults shown):
@@ -49,6 +48,9 @@ skipped unless enabled:
 ```bash
 MAILGW_DB_CHECK=1 bun test smtp.e2e
 ```
+
+> For the logservice HTTP API e2e tests, see [`../api`](../api) and the
+> top-level [`tests/README.md`](../README.md).
 
 DB connection defaults to the compose dev stack; override with
 `MAILGW_DB_HOST` / `_PORT` / `_USER` / `_PASS` / `_NAME`.

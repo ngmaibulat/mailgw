@@ -1,0 +1,16 @@
+{
+  "name": "@aibulat/mailgw-tests",
+  "version": "0.1.0",
+  "description": "End-to-end test suite for mailgw (SMTP pipeline + logservice HTTP API)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "test:api": "bun test api",
+    "test:smtp": "bun test smtp",
+    "send": "bun run smtp/src/send.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14"
+  }
+}
