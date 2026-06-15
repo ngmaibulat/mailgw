@@ -6,12 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a mail gateway/router built on [Haraka](https://haraka.github.io/) (Node.js SMTP server). It accepts inbound SMTP, applies routing rules to forward mail to configured relay targets, and POSTs structured JSON events to a companion logging service.
 
-The repo is a monorepo with a private root `package.json`. Only `mailgw/` is a
-pnpm workspace member (see `pnpm-workspace.yaml`); `logservice/` and `tests/`
-are standalone **Bun** packages with their own `bun.lock`, deliberately kept out
-of the pnpm workspace so pnpm and Bun don't fight over `node_modules`.
+The repo is a monorepo with a private root `package.json`. `mailgw/` and
+`webui-express/` are the pnpm workspace members (see `pnpm-workspace.yaml`);
+`logservice/` and `tests/` are standalone **Bun** packages with their own
+`bun.lock`, deliberately kept out of the pnpm workspace so pnpm and Bun don't
+fight over `node_modules`.
 - **`mailgw/`** — the Haraka SMTP server with custom plugins (`mailgw/plugins/`); a Node.js / pnpm package
 - **`logservice/`** — a Bun HTTP API (`Bun.serve`) that receives events from the plugins and stores them in MariaDB via Bun's native SQL client (`Bun.SQL`, MySQL adapter); written in TypeScript
+- **`webui-express/`** — the admin web UI (Express + Sequelize, Node/pnpm): log viewers, relay/relay-group config, and session login. Overlaps logservice's models and `/api` + `/filter/md5` endpoints (see its section below)
 - **`tests/`** — cross-cutting end-to-end tests (Bun): logservice API (`tests/api/`) and SMTP pipeline (`tests/smtp/`)
 
 ## Commands
@@ -40,6 +42,20 @@ bun run db:migrate          # apply pending SQL migrations and exit
 bun run db:reset            # drop everything, then re-migrate
 bun test tests/             # run the unit test suite
 ```
+
+### webui-express
+
+A pnpm workspace member; run via the filter from the repo root or `cd webui-express`:
+
+```bash
+pnpm webui dev                          # nodemon (auto-reload)  → src/index.mjs  (alias for pnpm --filter mailgw-webui)
+pnpm webui:dev                          # same, convenience root script
+pnpm webui:start                        # node src/index.mjs (production)
+pnpm --filter mailgw-webui test         # node --test  (no test files yet)
+cd webui-express && node create_user.mjs <email> <password>   # seed a login user
+```
+
+> The server uses HTTP/2 via `spdy` and reads `webui-express/certs/server.{key,crt}` on boot — it will crash without those certs. Templates default to pug (`TEMPLATE_ENGINE=pug|ejs`).
 
 ### Container / Docker
 
@@ -126,6 +142,15 @@ On `hook_get_mx`, `RoutingTable.findRoute(sender, rcpt)` walks the rules in orde
 Each handler is wrapped by `handle()` = `withAuth(withErrorHandling(...))` (`src/middleware/`). Auth checks the `X-API-Key` header against `API_KEY`; when `API_KEY` is unset, all requests are accepted. The `GET` search endpoints take a JSON `q` query param (`{ search: [{ field, operator, value }], searchLogic, limit, offset }`) parsed/whitelisted in `src/query/`.
 
 Data access uses raw SQL via Bun's `Bun.SQL` (`src/db.ts`, MySQL adapter) — there is **no ORM**. Per-table query helpers live in `src/models/` (`connection.ts`, `transaction.ts`, `delivery.ts`, etc.). Schema migrations are plain numbered `.sql` files in `logservice/migrations/`, applied in order by the custom runner `src/dbmigrate.ts` (tracks applied files in a `_migrations` table). Migrations run via the `db-migrator` container, the `--migrate` boot flag (`index.ts`), or `bun run db:migrate`.
+
+### webui-express
+
+Express app (`webui-express/src/app.mjs`, served over HTTP/2 by `src/index.mjs`). ESM throughout (`.mjs`). Composition:
+- **Routes** (`src/routes/`): `root` (dashboard), `log` (viewer pages for connection/delivery/mails/lookups), `api` (`/api/{connection,delivery,queue,hashlookups}` ingest + query), `filter` (`POST /filter/md5`), `config-relay` (`/config/relay/*`, `/config/relaygrp/*` CRUD). `/config/routing` is a `notimpl` stub.
+- **Auth** (`src/auth/`): session login (`bcryptjs` vs the `User.hash` column), `/login` `/logout` `/profile`. Sessions are stored **in-memory** (`src/globals.mjs`) and gated by the `checkSession` middleware. `/profile` is a `notimpl` stub. Users are seeded only via the `create_user.mjs` CLI (no web user management yet).
+- **Views**: two engines maintained in parallel — pug (`templates/pug/`, default) and ejs (`templates/ejs/`); selected by `TEMPLATE_ENGINE`.
+- **Data**: Sequelize models in `db/esmmodels/` (MariaDB via `mysql2`). Note these **duplicate** the logservice schema (Connection/Delivery/Transaction/hashlookups), and the `/api/*` write handlers `create()` from `req.body` without validation or `await` — see `webui-express/TODO.md` for the overlap/tech-debt items.
+- **Runtime adapter**: dependency imports go through `src/adapter.js`, which currently re-exports `adapter.node.js` (Node). A parallel `adapter.deno.js` and `src/deno-index.mjs` exist for an experimental Deno target (you'd point `adapter.js` at the Deno file to use it — there is no runtime switch). The roadmap lives in `webui-express/TODO.md` (older notes archived under `webui-express/archive/docs/`).
 
 ### DEV mode
 
