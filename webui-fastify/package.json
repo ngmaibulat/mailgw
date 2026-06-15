@@ -1,6 +1,6 @@
 {
   "name": "mailgw-webui-fastify",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Admin web UI for mailgw (Fastify + Drizzle, pug, HTTP/2)",
   "main": "src/index.mjs",
   "type": "module",
