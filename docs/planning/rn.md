@@ -1,3 +1,8 @@
+### 2026-06-15
+
+- added API e2e tests
+- bring old webui to monorepo
+
 ### 2026-06-14
 
 - db migrator script fixes

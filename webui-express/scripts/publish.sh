@@ -1,4 +1,4 @@
-export VER=`npm pkg get version | sed 's/"//g'`
+export VER=`pnpm pkg get version | sed 's/"//g'`
 export name="webui-$VER"
 export filelist="./db ./public ./src ./templates *.mjs example.env package.json"
 export os=`uname`

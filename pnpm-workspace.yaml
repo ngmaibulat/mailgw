@@ -1,7 +1,9 @@
 packages:
-    # logservice is a Bun project (own bun.lock) and is intentionally NOT a pnpm
-    # workspace member, so pnpm and Bun don't fight over its node_modules.
+    # logservice/ and tests/ are Bun projects (own bun.lock) and are
+    # intentionally NOT pnpm workspace members, so pnpm and Bun don't fight over
+    # their node_modules. mailgw/ and webui-express/ are Node/pnpm packages.
     - mailgw
+    - webui-express
 
 pnpm:
     minimumReleaseAge: 10080

@@ -6,8 +6,11 @@
   "type": "commonjs",
   "scripts": {
     "mailgw": "pnpm --filter @aibulat/mailgw",
+    "webui": "pnpm --filter mailgw-webui",
     "start": "pnpm --filter @aibulat/mailgw start",
     "dev": "pnpm --filter @aibulat/mailgw dev",
+    "webui:dev": "pnpm --filter mailgw-webui dev",
+    "webui:start": "pnpm --filter mailgw-webui start",
     "test": "pnpm --filter @aibulat/mailgw test",
     "test:logservice": "cd logservice && bun test tests/",
     "test:e2e": "bun test tests/",
