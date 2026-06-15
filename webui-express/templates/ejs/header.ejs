@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+        <link rel="stylesheet" href="/fonts/materialicons.css" />
+        <link rel="stylesheet" href="/fonts/roboto.css" />
+        <link rel="stylesheet" href="/fonts/font-awesome.min.css" />
+
+        <link rel="stylesheet" href="/lib/bootstrap.css" />
+        <link rel="stylesheet" href="/lib/w2ui-1.5.css" />
+        <link rel="stylesheet" href="/css/main.css" />
+
+        <script src="/lib/jquery-3.6.js"></script>
+        <script src="/lib/w2ui-1.5.min.js"></script>
+        <script src="/lib/bootstrap.js"></script>
+
+        <title>NGM Mail Router</title>
+    </head>
+    <body>
+        <nav class="mb-4 d-flex justify-content-between">
+            <ul class="d-flex align-items-center pt-2">
+                <li><a href="/" id="a-home" class="p-3">Home</a></li>
+
+                <li class="p-2"></li>
+
+                <li class="nav-item dropdown">
+                    <a
+                        class="dropdown-toggle"
+                        href="#"
+                        id="navbarDropdown"
+                        role="button"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                    >
+                        Logs
+                    </a>
+
+                    <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/log/connection"
+                                id=""
+                                class="p-3"
+                                >Connection</a
+                            >
+                        </li>
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/log/mails"
+                                id=""
+                                class="p-3"
+                                >Mails</a
+                            >
+                        </li>
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/log/delivery"
+                                id=""
+                                class="p-3"
+                                >Delivery</a
+                            >
+                        </li>
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/log/lookups"
+                                id=""
+                                class="p-3"
+                                >Lookups</a
+                            >
+                        </li>
+
+                        <!-- <li><hr class="dropdown-divider"></li>
+                  <li><a class="dropdown-item" href="#">Что-то еще здесь</a></li> -->
+                    </ul>
+                </li>
+
+                <li class="p-2"></li>
+
+                <li class="nav-item dropdown">
+                    <a
+                        class="dropdown-toggle"
+                        href="#"
+                        id="navbarDropdown"
+                        role="button"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                    >
+                        Config
+                    </a>
+
+                    <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/config/relaygrp"
+                                id=""
+                                class="p-3"
+                                >Relays</a
+                            >
+                        </li>
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/config/routing"
+                                id=""
+                                class="p-3"
+                                >Routing</a
+                            >
+                        </li>
+                    </ul>
+                </li>
+
+                <li class="p-2"></li>
+
+                <li class="nav-item dropdown">
+                    <a
+                        class="dropdown-toggle"
+                        href="#"
+                        id="navbarDropdown"
+                        role="button"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                    >
+                        Hashes
+                    </a>
+
+                    <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/config/relays"
+                                id=""
+                                class="p-3"
+                                >Hash Lists</a
+                            >
+                        </li>
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/config/routing"
+                                id=""
+                                class="p-3"
+                                >Hash Sources</a
+                            >
+                        </li>
+                    </ul>
+                </li>
+
+                <li class="p-2"></li>
+
+                <li class="nav-item dropdown">
+                    <a
+                        class="dropdown-toggle"
+                        href="#"
+                        id="navbarDropdown"
+                        role="button"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                    >
+                        Quarantine
+                    </a>
+
+                    <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/config/relays"
+                                id=""
+                                class="p-3"
+                                >All</a
+                            >
+                        </li>
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/config/routing"
+                                id=""
+                                class="p-3"
+                                >Queues</a
+                            >
+                        </li>
+                    </ul>
+                </li>
+
+                <li class="p-2"></li>
+
+                <li class="nav-item dropdown">
+                    <a
+                        class="dropdown-toggle"
+                        href="#"
+                        id="navbarDropdown"
+                        role="button"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                    >
+                        Attachments
+                    </a>
+
+                    <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/config/relays"
+                                id=""
+                                class="p-3"
+                                >All</a
+                            >
+                        </li>
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/config/routing"
+                                id=""
+                                class="p-3"
+                                >Allowed</a
+                            >
+                        </li>
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/config/routing"
+                                id=""
+                                class="p-3"
+                                >Blocked</a
+                            >
+                        </li>
+                    </ul>
+                </li>
+
+                <li class="p-2"></li>
+
+                <li class="nav-item dropdown">
+                    <a
+                        class="dropdown-toggle"
+                        href="#"
+                        id="navbarDropdown"
+                        role="button"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                    >
+                        RBAC
+                    </a>
+
+                    <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/config/relays"
+                                id=""
+                                class="p-3"
+                                >Roles</a
+                            >
+                        </li>
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="/config/routing"
+                                id=""
+                                class="p-3"
+                                >Users</a
+                            >
+                        </li>
+                    </ul>
+                </li>
+            </ul>
+
+            <ul class="d-flex align-items-center">
+                <li>
+                    <a href="/profile" id="a-profile" class="p-3">Username</a>
+                </li>
+
+                <li>
+                    <a href="/logout" class="p-3">Logout</a>
+                    &nbsp;&nbsp;&nbsp;
+                </li>
+            </ul>
+        </nav>
+    </body>
+</html>

@@ -1,0 +1,44 @@
+<%- include('../header') %>
+
+<div class="row">
+    <div class="table-title col-sm-12 col-md-12 col-lg-12 col-xl-11" style="margin: 20px">
+      <h3 style="display: inline;"><b>Update Relay Group</b></h3>
+    </div>
+  </div>
+  
+
+<form id="frm" method="POST">
+
+<div class="row">
+
+    <div class="col-1"></div>
+
+    <div class="card col-sm-6 col-md-6 col-lg-6 col-xl-5 m-4">
+
+        <div class="cardbody">
+  
+            <div class="card-title m-3">
+                <h4>Relay Group:</h4>
+            </div>
+
+            <div class="form-group m-3">
+                <label>Name:</label>
+                <input type="text" class="form-control" name="name" value="<%= data.name %>" required>
+            </div>
+
+            <div class="form-group m-3">
+                <label>Description:</label>
+                <input type="text" class="form-control" name="description" value="<%= data.description %>" required>
+            </div>
+  
+            <div class="m-3">
+                <button type="submit" id="btn_submit"  class="btn btn-success">Update</button>
+            </div>
+        
+        </div> <!-- cardbody -->
+
+    </div> <!-- card -->
+
+</div>
+
+</form>

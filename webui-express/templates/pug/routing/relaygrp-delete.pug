@@ -1,0 +1,23 @@
+extends ../page.pug
+block content
+    .row
+    .table-title.col-sm-12.col-md-12.col-lg-12.col-xl-11(style='margin: 20px')
+        h3(style='display: inline;')
+        b Delete Relay Group
+    form#frm(method='POST')
+        .row
+            .col-1
+            .card.col-sm-6.col-md-6.col-lg-6.col-xl-5.m-4
+                .cardbody
+                    .card-title.m-3
+                        h4 Relay Group:
+                    .form-group.m-3
+                        label Name:
+                        input.form-control(type='text' name='name' value=`${data.name}` disabled='')
+                    .form-group.m-3
+                        label Description:
+                        input.form-control(type='text' name='description' value=`${data.description}` disabled='')
+                    .m-3
+                        button#btn_submit.btn.btn-danger(type='submit') Delete
+                // cardbody
+            // card

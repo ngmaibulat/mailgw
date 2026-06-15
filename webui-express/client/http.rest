@@ -1,0 +1,19 @@
+GET http://localhost:3000/
+
+
+###
+POST http://localhost:3000/log
+Content-Type: application/json
+
+{
+    "name": "demo"
+}
+
+
+###
+POST http://localhost:3000/api/connection
+Content-Type: application/json
+
+{
+    "name": "demo"
+}

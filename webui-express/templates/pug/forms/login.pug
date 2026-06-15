@@ -1,0 +1,26 @@
+doctype html
+html
+  head
+    meta(charset='UTF-8')
+    title NGM Mail Router
+    link(rel='stylesheet' href='/lib/bootstrap.css')
+    link(rel='stylesheet' href='/css/login.css')
+    script(type='module' src='/js/login.js')
+  body
+    #login-form-wrap
+      h3 NGM Mail Router
+      form#login-form(method='post')
+        p
+          div#alert.alert.alert-danger(style='display: none') Invalid username or password
+        p
+          input#email(type='email' name='email' placeholder='Email' required='')
+          i.validation
+            span
+            span
+        p
+          input#pass(type='password' name='pass' placeholder='Password' required='')
+          i.validation
+            span
+            span
+        p
+          input#login(type='submit' value='Login')

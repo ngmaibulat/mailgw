@@ -1,0 +1,35 @@
+extends ../page.pug
+block content
+    .row
+        .table-title.col-sm-12.col-md-12.col-lg-12.col-xl-11(style='margin: 20px')
+            h3(style='display: inline')
+                b Relay Group: &nbsp;
+                span=data.name
+            a.btn.btn-success(href=`/config/relay/create/${data.id}`)
+                i.material-icons &#xE147;
+                span Add Relay
+    .row.mt-3
+        .col-1
+        .col-sm-10.col-md-8.col-lg-8.col-xl-8
+            table#rows.table.table-bordered.border-secondary.nogrid
+                thead
+                    tr
+                        th ID
+                        th Host
+                        th Port
+                        th Priority
+                        th User
+                        th Action
+                tbody
+                    each row in relays
+                        tr
+                            td=row.id
+                            td=row.host
+                            td=row.port
+                            td=row.priority
+                            td=row.auth_user
+                            td
+                                a.edit(href=`/config/relay/edit/${row.id}`)
+                                    i.material-icons(data-toggle='tooltip' title='Edit') &#xE254;
+                                a.delete(href=`/config/relay/delete/${row.id}`)
+                                    i.material-icons(data-toggle='tooltip' title='Delete') &#xE872;

@@ -1,0 +1,55 @@
+<%- include('../header') %>
+
+<div class="row">
+<div class="table-title col-sm-12 col-md-12 col-lg-12 col-xl-11" style="margin: 20px">
+      <h3 style="display: inline;"><b>Update Relay</b></h3>
+</div>
+</div>
+
+<form id="frm" method="POST">
+
+<input type="hidden" name="group_id" value="<%= group_id %>">
+
+<div class="row">
+
+    <div class="col-1"></div>
+
+    <div class="card col-sm-6 col-md-6 col-lg-6 col-xl-5 m-4">
+
+        <div class="cardbody">
+  
+            <div class="card-title m-3">
+                <h4>Relay:</h4>
+            </div>
+
+            <div class="form-group m-3">
+                <label>Host:</label>
+                <input type="text" class="form-control" name="host" value="<%= data.host %>" required>
+            </div>
+
+            <div class="form-group m-3">
+                <label>Port:</label>
+                <input type="number" class="form-control" name="port" value="<%= data.port %>" required>
+            </div>
+
+            <div class="form-group m-3">
+                <label>Priority:</label>
+                <input type="number" class="form-control" name="priority" value="<%= data.priority %>" required>
+            </div>
+
+            <div class="form-group m-3">
+                <label>User:</label>
+                <input type="text" class="form-control" name="auth_user" value="<%= data.auth_user %>">
+            </div>
+  
+            <div class="m-3">
+                <button type="submit" id="btn_submit"  class="btn btn-success">Update</button>
+            </div>
+        
+        </div> <!-- cardbody -->
+
+    </div> <!-- card -->
+
+</div>
+
+</form>

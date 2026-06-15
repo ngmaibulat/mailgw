@@ -1,0 +1,61 @@
+<%- include('../header') %>
+
+<div class="row">
+  <div class="table-title col-sm-12 col-md-12 col-lg-12 col-xl-11" style="margin: 20px">
+    <h3 style="display: inline;"><b>Relay Group:</b> <%= data.name %></h3>
+
+    <a href="/config/relay/create/<%= data.id %>" class="btn btn-success">
+      <i class="material-icons">&#xE147;</i><span>Add Relay</span>
+    </a>
+
+  </div>
+</div>
+
+
+<div class="row mt-3">
+
+  <div class="col-1"></div>
+
+  <div class="col-sm-10 col-md-8 col-lg-8 col-xl-8">
+  
+  <table id="rows" class="table table-bordered border-secondary nogrid">
+  
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Host</th>
+        <th>Port</th>
+        <th>Priority</th>
+        <th>User</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+
+  <tbody>
+
+    <% relays.forEach(function(row) { %>
+
+      <tr>
+
+        <td><%= row.id %></td>
+        <td><%= row.host %></td>
+        <td><%= row.port %></td>
+        <td><%= row.priority %></td>
+        <td><%= row.auth_user %></td>
+        <td>
+            <a href="/config/relay/edit/<%= row.id %>"     class="edit"><i class="material-icons" data-toggle="tooltip" title="Edit">&#xE254;</i></a>
+            <a href="/config/relay/delete/<%= row.id %>"   class="delete"><i class="material-icons" data-toggle="tooltip" title="Delete">&#xE872;</i></a>
+        </td>
+
+      </tr>
+
+    <% }); %>
+  
+  </tbody>
+  </table>
+  
+  
+  </div>  <!-- column -->
+  
+  
+  </div>
