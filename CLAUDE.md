@@ -8,13 +8,14 @@ This is a mail gateway/router built on [Haraka](https://haraka.github.io/) (Node
 
 The repo is a monorepo with a private root `package.json`. `mailgw/` and
 `webui-express/` are the pnpm workspace members (see `pnpm-workspace.yaml`);
-`logservice/` and `tests/` are standalone **Bun** packages with their own
-`bun.lock`, deliberately kept out of the pnpm workspace so pnpm and Bun don't
+`logservice/`, `tests/`, and `certs/` are standalone **Bun** packages with their
+own `bun.lock`, deliberately kept out of the pnpm workspace so pnpm and Bun don't
 fight over `node_modules`.
 - **`mailgw/`** — the Haraka SMTP server with custom plugins (`mailgw/plugins/`); a Node.js / pnpm package
 - **`logservice/`** — a Bun HTTP API (`Bun.serve`) that receives events from the plugins and stores them in MariaDB via Bun's native SQL client (`Bun.SQL`, MySQL adapter); written in TypeScript
 - **`webui-express/`** — the admin web UI (Express + Sequelize, Node/pnpm): log viewers, relay/relay-group config, and session login. Overlaps logservice's models and `/api` + `/filter/md5` endpoints (see its section below)
 - **`tests/`** — cross-cutting end-to-end tests (Bun): logservice API (`tests/api/`) and SMTP pipeline (`tests/smtp/`)
+- **`certs/`** — a Bun CLI that generates self-signed TLS certs from a JSON config (`node-forge`); produces the certs the webui serves over HTTP/2
 
 ## Commands
 
@@ -55,17 +56,39 @@ pnpm --filter mailgw-webui test         # node --test  (no test files yet)
 cd webui-express && node create_user.mjs <email> <password>   # seed a login user
 ```
 
-> The server uses HTTP/2 via `spdy` and reads `webui-express/certs/server.{key,crt}` on boot — it will crash without those certs. Templates default to pug (`TEMPLATE_ENGINE=pug|ejs`).
+> The server uses HTTP/2 via `spdy` and reads `./certs/server.{key,crt}` (relative to its working dir) on boot — it will crash without those certs. Generate them with the `certs/` project (see below); in Docker they're mounted from `certs/generated/webui`. Templates default to pug (`TEMPLATE_ENGINE=pug|ejs`).
+
+### certs
+
+```bash
+cd certs && bun install      # first time only
+pnpm certs                   # generate from certs/certs.config.json (or: cd certs && bun run generate)
+bun certs/src/generate.ts path/to/other.json   # explicit config path
+```
+
+Reads `certs/certs.config.json` (committed; `defaults` merged into each `certs[]` entry) and writes a self-signed key+cert per entry under its `out` dir. Generated files (default `certs/generated/...`) are **gitignored**. The shipped `webui` entry produces `certs/generated/webui/server.{key,crt}`, which `docker-compose.yaml` mounts into the webui container.
 
 ### Container / Docker
 
+Each Node/Bun service has `container-build.sh` (local `--load`) and
+`container-push.sh` (build + push) scripts that bump the package version and tag
+`ngmaibulat/<name>:v<ver>` + `:latest`. The mailgw and webui images build from
+the **repo-root context** (so the workspace `pnpm-lock.yaml` is visible) via
+`-f <pkg>/Dockerfile`; logservice builds from its own dir.
+
 ```bash
-./mailgw/container-build.sh       # auto-bumps mailgw version, builds with docker buildx (-f mailgw/Dockerfile, root context)
+./mailgw/container-build.sh       # mailgw image (node:26-alpine, -f mailgw/Dockerfile, root context)
 ./mailgw/container-push.sh        # build + push to Docker Hub (ngmaibulat/mailgw)
 cd mailgw && ./container-dev.sh   # run latest image locally (mounts mailgw/plugins live)
-docker compose up                 # full stack: mailgw + mariadb + db-migrator
+./webui-express/container-build.sh   # webui image (node:26-alpine, -f webui-express/Dockerfile, root context)
+./logservice/container-build.sh      # logservice image (oven/bun-alpine, own-dir context)
+pnpm build:containers             # push all three (build:mailgw + build:logservice + build:webui)
+docker compose up                 # full stack: mariadb + db-migrator + logservice + mailgw + webui + mailhog
 docker compose run --rm db-migrator  # apply SQL migrations against MariaDB (runs `bun src/dbmigrate.ts`)
 ```
+
+> Before `docker compose up`, generate the webui TLS certs (`pnpm certs`) — the
+> `webui` service mounts `certs/generated/webui` and won't start without them.
 
 ### End-to-end tests (`tests/` package)
 
