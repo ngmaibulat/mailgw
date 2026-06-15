@@ -22,7 +22,12 @@ export interface WhereClause {
     values: (string | number)[];
 }
 
-export function buildWhere(params: SearchParam[], logic: SearchLogic, allowedFields: Set<string>): WhereClause {
+export function buildWhere(
+    params: SearchParam[],
+    logic: SearchLogic,
+    allowedFields: Set<string>,
+    tablePrefix?: string,
+): WhereClause {
     const conditions: string[] = [];
     const values: (string | number)[] = [];
 
@@ -30,7 +35,9 @@ export function buildWhere(params: SearchParam[], logic: SearchLogic, allowedFie
         if (!item.value && item.value !== 0) continue;
         if (!allowedFields.has(item.field)) continue;
 
-        const col = `\`${item.field}\``;
+        // Qualify columns with a table alias when querying a JOIN, so fields
+        // that exist in both tables (e.g. action, createdAt) aren't ambiguous.
+        const col = tablePrefix ? `\`${tablePrefix}\`.\`${item.field}\`` : `\`${item.field}\``;
 
         switch (item.operator) {
             case "is":

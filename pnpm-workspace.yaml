@@ -1,9 +1,12 @@
 packages:
     # logservice/ and tests/ are Bun projects (own bun.lock) and are
     # intentionally NOT pnpm workspace members, so pnpm and Bun don't fight over
-    # their node_modules. mailgw/ and webui-express/ are Node/pnpm packages.
+    # their node_modules. mailgw/, webui-express/ and webui-fastify/ are
+    # Node/pnpm packages. webui-fastify is the Fastify rewrite of webui-express
+    # (kept side by side during the migration).
     - mailgw
     - webui-express
+    - webui-fastify
 
 pnpm:
     minimumReleaseAge: 10080

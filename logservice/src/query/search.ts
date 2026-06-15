@@ -25,6 +25,12 @@ const TRANSACTION_FIELDS = new Set([
     "delay_data_post", "data_bytes", "mime_part_count",
 ]);
 
+// Only HashLookups columns are searchable; the joined Transaction columns
+// (sender, rcpt_list, dt) are display-only in the viewer grid.
+const HASHLOOKUP_FIELDS = new Set([
+    "id", "txn_uuid", "md5", "contentType", "filename", "size", "action", "createdAt",
+]);
+
 async function searchTable<T>(
     table: string,
     allowedFields: Set<string>,
@@ -72,4 +78,39 @@ export async function searchTransaction(rawQuery: string | null) {
         q.search ?? [], q.searchLogic ?? "AND",
         q.limit ?? 100, q.offset ?? 0,
     );
+}
+
+// HashLookups joined to its originating Transaction (txn_uuid -> uuid) so the
+// lookup viewer can show the message's sender/rcpt alongside the attachment.
+// `h.action` (allow/block for the attachment) is kept as `action`; the
+// transaction's own action is surfaced as `txn_action`.
+export async function searchHashlookup(rawQuery: string | null) {
+    const q = parseSearchQuery(rawQuery);
+
+    const { sql: where, values } = buildWhere(
+        q.search ?? [], q.searchLogic ?? "AND", HASHLOOKUP_FIELDS, "h",
+    );
+    const whereSql = where ? `WHERE ${where}` : "";
+    const limit = q.limit ?? 100;
+    const offset = q.offset ?? 0;
+
+    const sql = `
+        SELECT h.*,
+               t.dt, t.sender, t.rcpt_list, t.encoding,
+               t.action AS txn_action,
+               t.rcpt_count_accept, t.rcpt_count_tempfail, t.rcpt_count_reject,
+               t.delay_data_post, t.data_bytes, t.mime_part_count
+        FROM \`HashLookups\` h
+        LEFT JOIN \`Transaction\` t ON t.uuid = h.txn_uuid
+        ${whereSql}
+        ORDER BY h.id DESC
+        LIMIT ? OFFSET ?`;
+
+    const rows = await db.unsafe(sql, [...values, limit, offset]);
+
+    return {
+        status: "success" as const,
+        total: rows.length,
+        records: rows,
+    };
 }

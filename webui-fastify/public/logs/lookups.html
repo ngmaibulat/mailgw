@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="/lib/bootstrap.css">
+    <link rel="stylesheet" href="/lib/w2ui-1.5.css">
+
+    <script src="/lib/jquery-3.6.js"></script>
+    <script src="/lib/w2ui-1.5.min.js"></script>
+
+    <title>NGM Mail Router</title>
+
+    <style>
+
+    nav>ul>li>a {
+        text-decoration: none;
+        color: white;
+    }
+
+    nav>ul>li>a:hover {
+        text-decoration: none;
+        color: orange;
+    }
+
+    nav>ul>li>a.active {
+        text-decoration: none;
+        color: red;
+    }
+
+    .nav-link.active {
+        text-decoration: none;
+        color: red;
+    }
+
+    nav>ul>li {
+        list-style: none;
+    }
+
+    nav {
+        background-color: black;
+        padding-top: 10px;
+    }
+
+    body {
+        /* background-color: #6c757d; */
+        background-color: #f1f1f1;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    </style>
+
+</head>
+<body>
+
+    <nav class="mb-4 d-flex justify-content-between">
+
+        <ul class="d-flex align-items-center">
+
+            <li><a href="/" id="a-home" class="p-3">Home</a></li>
+
+            <li><a href="/logs/connection.html"  id="" class="p-3">Connection</a></li>
+
+            <li><a href="/logs/queue.html"  id="" class="p-3">Mails</a></li>
+
+            <li><a href="/logs/delivery.html"  id="" class="p-3">Delivery</a></li>
+
+            <li><a href="/logs/lookups.html"  id="" class="p-3">Hash Lookups</a></li>
+
+            <li><a href="/siem"  id="a-siem" class="p-3">Relays</a></li>
+
+            <li><a href="/fwd"  id="a-fwd" class="p-3">Routing</a></li>
+
+        </ul>
+
+        <ul class="d-flex align-items-center">
+
+            <li>
+                <a href="/profile" id="a-profile" class="p-3">Username</a>
+            </li>
+
+            <li>
+                <a href="/logout" class="p-3">Logout</a>
+            </li>
+
+        </ul>
+        
+    </nav>
+
+    <div id="content" class="p-3">
+
+        <h3>Hash Lookups</h3>
+        <div id="grid" style="height: 800px;"></div>
+
+    </div>
+
+<script type="text/javascript">
+
+    $(function () {
+        $('#grid').w2grid({
+            name: 'grid',
+            recid: 'id',
+            url: '/api/hashlookups',
+            method: 'GET', // need this to avoid 412 error on Safari
+            multiSearch: true,
+
+            show: {
+                header: true,
+                footer: true,
+                toolbar: true,
+                lineNumbers: true
+            },
+
+            searches: [
+                // { type: 'int',  field: 'recid', label: 'ID' },
+                { type: 'datetime', field: 'createdAt', label: 'DT' },
+                { type: 'text', field: 'md5', label: 'MD5' },
+                { type: 'int', field: 'size', label: 'Size' },
+
+                { type: 'text', field: 'contentType', label: 'Content Type' },
+                { type: 'text', field: 'filename', label: 'Filename' },
+                { type: 'text', field: 'action', label: 'Action' },
+
+            ],
+
+
+            columns: [
+
+                { field: 'createdAt', text: 'DT' },
+                { field: 'md5', text: 'MD5' },
+                { field: 'contentType', text: 'contentType'},
+
+                { field: 'filename', text: 'filename'},
+                { field: 'size', text: 'size'},
+                { field: 'action', text: 'action'},
+
+            ]
+        });
+
+        // w2ui.grid.hideColumn('mime_part_count');
+
+    });
+</script>
+
+
+</body>
+</html>

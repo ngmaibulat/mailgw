@@ -6,11 +6,11 @@
   "type": "commonjs",
   "scripts": {
     "mailgw": "pnpm --filter @aibulat/mailgw",
-    "webui": "pnpm --filter mailgw-webui",
+    "webui": "pnpm --filter mailgw-webui-fastify",
     "start": "pnpm --filter @aibulat/mailgw start",
     "dev": "pnpm --filter @aibulat/mailgw dev",
-    "webui:dev": "pnpm --filter mailgw-webui dev",
-    "webui:start": "pnpm --filter mailgw-webui start",
+    "webui:dev": "pnpm --filter mailgw-webui-fastify dev",
+    "webui:start": "pnpm --filter mailgw-webui-fastify start",
     "certs": "bun certs/src/generate.ts",
     "test": "pnpm --filter @aibulat/mailgw test",
     "test:logservice": "cd logservice && bun test tests/",
@@ -19,7 +19,7 @@
     "test:e2e:smtp": "bun test tests/smtp",
     "build:mailgw": "bash mailgw/container-push.sh",
     "build:logservice": "bash logservice/container-push.sh",
-    "build:webui": "bash webui-express/container-push.sh",
+    "build:webui": "bash webui-fastify/container-push.sh",
     "build:containers": "pnpm run build:mailgw && pnpm run build:logservice && pnpm run build:webui"
   },
   "author": "Aibulat",

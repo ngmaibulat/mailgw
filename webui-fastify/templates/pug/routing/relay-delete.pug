@@ -1,0 +1,31 @@
+extends ../page.pug
+block content
+    .row
+    .table-title.col-sm-12.col-md-12.col-lg-12.col-xl-11(style='margin: 20px')
+        h3(style='display: inline;')
+        b=`Delete Relay: ${data.host}`
+    form#frm(method='POST')
+        input.form-control(type='hidden' name='group_id' value=`${group_id}` required='')
+        .row
+            .col-1
+            .card.col-sm-6.col-md-6.col-lg-6.col-xl-5.m-4
+                .cardbody
+                    .card-title.m-3
+                        h4 Relay:
+                    .form-group.m-3
+                        label Host:
+                        input.form-control(type='text' name='host' value=`${data.host}` disabled='')
+                    .form-group.m-3
+                        label Port:
+                        input.form-control(type='number' name='port' value=`${data.port}` disabled='')
+                    .form-group.m-3
+                        label Priority:
+                        input.form-control(type='number' name='priority' value=`${data.priority}` disabled='')
+                    .form-group.m-3
+                        label User:
+                        input.form-control(type='text' name='auth_user' value=`${data.auth_user}` disabled='')
+                    .m-3
+                        button#btn_submit.btn.btn-danger(type='submit') Delete
+                // cardbody
+            // card
+

@@ -1,0 +1,89 @@
+doctype html
+html
+  head
+    meta(charset='UTF-8')
+    meta(name='viewport' content='width=device-width, initial-scale=1.0')
+    link(rel='stylesheet' href='/fonts/materialicons.css')
+    link(rel='stylesheet' href='/fonts/roboto.css')
+    link(rel='stylesheet' href='/fonts/font-awesome.min.css')
+    link(rel='stylesheet' href='/lib/bootstrap.css')
+    link(rel='stylesheet' href='/lib/w2ui-1.5.css')
+    link(rel='stylesheet' href='/css/main.css')
+    script(src='/lib/jquery-3.6.js')
+    script(src='/lib/w2ui-1.5.min.js')
+    script(src='/lib/bootstrap.js')
+    title NGM Mail Router
+
+body
+  nav.mb-4.d-flex.justify-content-between
+    ul.d-flex.align-items-center.pt-2
+      li
+        a#a-home.p-3(href='/') Home
+      li.p-2
+      li.nav-item.dropdown
+        a#navbarDropdown.dropdown-toggle(href='#' role='button' data-bs-toggle='dropdown' aria-expanded='false')
+          | Logs
+        ul.dropdown-menu(aria-labelledby='navbarDropdown')
+          li
+            a.dropdown-item(href='/log/connection' id='') Connection
+          li
+            a.dropdown-item(href='/log/mails' id='') Mails
+          li
+            a.dropdown-item(href='/log/delivery' id='') Delivery
+          li
+            a.dropdown-item(href='/log/lookups' id='') Lookups
+
+      li.p-2
+      li.nav-item.dropdown
+        a#navbarDropdown.dropdown-toggle(href='#' role='button' data-bs-toggle='dropdown' aria-expanded='false')
+          | Config
+        ul.dropdown-menu(aria-labelledby='navbarDropdown')
+          li
+            a.dropdown-item(href='/config/relaygrp' id='') Relays
+          li
+            a.dropdown-item(href='/config/routing' id='') Routing
+      li.p-2
+      li.nav-item.dropdown
+        a#navbarDropdown.dropdown-toggle(href='#' role='button' data-bs-toggle='dropdown' aria-expanded='false')
+          | Hashes
+        ul.dropdown-menu(aria-labelledby='navbarDropdown')
+          li
+            a.dropdown-item(href='/config/relays' id='') Hash Lists
+          li
+            a.dropdown-item(href='/config/routing' id='') Hash Sources
+      li.p-2
+      li.nav-item.dropdown
+        a#navbarDropdown.dropdown-toggle(href='#' role='button' data-bs-toggle='dropdown' aria-expanded='false')
+          | Quarantine
+        ul.dropdown-menu(aria-labelledby='navbarDropdown')
+          li
+            a.dropdown-item(href='/config/relays' id='') All
+          li
+            a.dropdown-item(href='/config/routing' id='') Queues
+      li.p-2
+      li.nav-item.dropdown
+        a#navbarDropdown.dropdown-toggle(href='#' role='button' data-bs-toggle='dropdown' aria-expanded='false')
+          | Attachments
+        ul.dropdown-menu(aria-labelledby='navbarDropdown')
+          li
+            a.dropdown-item(href='/config/relays' id='') All
+          li
+            a.dropdown-item(href='/config/routing' id='') Allowed
+          li
+            a.dropdown-item(href='/config/routing' id='') Blocked
+      li.p-2
+      li.nav-item.dropdown
+        a#navbarDropdown.dropdown-toggle(href='#' role='button' data-bs-toggle='dropdown' aria-expanded='false')
+          | RBAC
+        ul.dropdown-menu(aria-labelledby='navbarDropdown')
+          li
+            a.dropdown-item(href='/config/relays' id='') Roles
+          li
+            a.dropdown-item(href='/config/routing' id='') Users
+    ul.d-flex.align-items-center
+      li
+        a#a-profile.p-3(href='/profile') Profile
+      li
+        a.p-3(href='/logout') Logout
+
+  block content

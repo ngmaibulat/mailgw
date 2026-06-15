@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="/lib/bootstrap.css">
+    <link rel="stylesheet" href="/lib/w2ui-1.5.css">
+
+    <script src="/lib/jquery-3.6.js"></script>
+    <script src="/lib/w2ui-1.5.min.js"></script>
+
+    <title>NGM Mail Router</title>
+
+    <style>
+
+    nav>ul>li>a {
+        text-decoration: none;
+        color: white;
+    }
+
+    nav>ul>li>a:hover {
+        text-decoration: none;
+        color: orange;
+    }
+
+    nav>ul>li>a.active {
+        text-decoration: none;
+        color: red;
+    }
+
+    .nav-link.active {
+        text-decoration: none;
+        color: red;
+    }
+
+    nav>ul>li {
+        list-style: none;
+    }
+
+    nav {
+        background-color: black;
+        padding-top: 10px;
+    }
+
+    body {
+        /* background-color: #6c757d; */
+        background-color: #f1f1f1;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    </style>
+
+</head>
+<body>
+
+    <nav class="mb-4 d-flex justify-content-between">
+
+        <ul class="d-flex align-items-center">
+
+            <li><a href="/" id="a-home" class="p-3">Home</a></li>
+
+            <li><a href="/logs/connection.html"  id="a-db" class="p-3">Connection</a></li>
+
+            <li><a href="/logs/queue.html"  id="a-src" class="p-3">Mails</a></li>
+
+            <li><a href="/logs/delivery.html"  id="a-dst" class="p-3">Delivery</a></li>
+
+            <li><a href="/siem"  id="a-siem" class="p-3">Relays</a></li>
+
+            <li><a href="/fwd"  id="a-fwd" class="p-3">Routing</a></li>
+
+        </ul>
+
+        <ul class="d-flex align-items-center">
+
+            <li>
+                <a href="/profile" id="a-profile" class="p-3">Username</a>
+            </li>
+
+            <li>
+                <a href="/logout" class="p-3">Logout</a>
+            </li>
+
+        </ul>
+        
+    </nav>
+
+    <div id="content" class="p-3">
+
+        <h3>Delivery</h3>
+        <div id="grid" style="height: 800px;"></div>
+
+    </div>
+
+
+<script type="text/javascript">
+
+    $(function () {
+
+        // https://w2ui.com/web/docs/1.5/w2utils.settings
+        // https://github.com/vitmalina/w2ui/blob/d91c5dee807e10bf20bff82282413d43a2297ac6/docs/details/w2utils.settings.html
+
+        w2utils.settings.dateFormat        = "yyyy-mm-dd",
+        w2utils.settings.timeFormat        = "hh:mi:ss",
+        w2utils.settings.datetimeFormat    = "yyyy-mm-dd hh:mi:ss",
+        w2utils.settings.datetimeFormat    = "yyyy-mm-dd",
+        w2utils.settings.date_display      = "yyyy-mm-dd",
+
+        $('#grid').w2grid({
+            name: 'grid',
+            recid: 'id',
+            url: '/api/delivery',
+            method: 'GET', // need this to avoid 412 error on Safari
+            multiSearch: true,
+
+            show: {
+                header: true,
+                footer: true,
+                toolbar: true,
+                lineNumbers: true
+            },
+
+            searches: [
+                // { type: 'int',  field: 'recid', label: 'ID' },
+                // { type: 'date', field: 'dt', label: 'Date' },
+                { type: 'datetime', field: 'dt', label: 'DateTime' },
+                { type: 'text', field: 'sender', label: 'Sender' },
+                { type: 'text', field: 'rcpt_list', label: 'Recipients' },
+                { type: 'text', field: 'rcpt_domain', label: 'Rcpt Domain'},
+                { type: 'text', field: 'rcpt_accepted', label: 'Rcpt Accepted'},
+                { type: 'text', field: 'tls_forced', label: 'TLS Enforced'},
+                { type: 'text', field: 'tls', label: 'TLS'},
+                { type: 'text', field: 'auth', label: 'Auth'},
+                { type: 'text', field: 'host', label: 'Host'},
+                { type: 'text', field: 'ip', label: 'IP'},
+                { type: 'text', field: 'port', label: 'Port'},
+                { type: 'text', field: 'response', label: 'Reponse'},
+                { type: 'text', field: 'delay', label: 'Delay'},   
+            ],
+
+            columns: [
+                { field: 'dt', text: 'DT',  "render": "datetime" },
+                { field: 'uuid', text: 'UUID' },
+
+                { field: 'sender', text: 'Sender'},
+                { field: 'rcpt_list', text: 'Rcpt' },
+
+                // { field: 'dt', text: 'DT', size: '30%' },
+
+                { field: 'rcpt_domain', text: 'Rcpt Domain'},
+                { field: 'rcpt_accepted', text: 'Rcpt Accepted'},
+                { field: 'tls_forced', text: 'TLS Enforced'},
+                { field: 'tls', text: 'TLS'},
+                { field: 'auth', text: 'Auth'},
+                { field: 'host', text: 'Host'},
+                { field: 'ip', text: 'IP'},
+                { field: 'port', text: 'Port'},
+                { field: 'response', text: 'Reponse'},
+                { field: 'delay', text: 'Delay'},
+
+            ]
+        });
+
+        w2ui.grid.hideColumn('uuid');
+        w2ui.grid.hideColumn('rcpt_domain');
+        w2ui.grid.hideColumn('rcpt_accepted');
+        w2ui.grid.hideColumn('tls_forced');
+        w2ui.grid.hideColumn('tls');
+        w2ui.grid.hideColumn('auth');
+        w2ui.grid.hideColumn('delay');
+    });
+</script>
+
+
+</body>
+</html>

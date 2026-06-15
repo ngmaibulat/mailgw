@@ -1,7 +1,7 @@
 // import dotenv from "dotenv";
 import { dotenv } from "../../src/adapter.js";
 
-dotenv.config();
+dotenv.config({ quiet: true }); // quiet:true suppresses dotenv v17's stdout tip banner
 
 const configs = {
     development: {

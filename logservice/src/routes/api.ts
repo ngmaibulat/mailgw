@@ -2,7 +2,7 @@ import { schemaDelivery } from "../validation/delivery";
 import { insertDelivery } from "../models/delivery";
 import { insertConnection } from "../models/connection";
 import { insertTransaction } from "../models/transaction";
-import { searchDelivery, searchConnection, searchTransaction } from "../query/search";
+import { searchDelivery, searchConnection, searchTransaction, searchHashlookup } from "../query/search";
 import { hashListLookup } from "../query/hash";
 import type { ConnectionRow } from "../models/connection";
 import type { TransactionRow } from "../models/transaction";
@@ -96,5 +96,11 @@ export async function filterMD5Route(req: Request): Promise<Response> {
 export async function transactionSearchRoute(req: Request): Promise<Response> {
     const q = new URL(req.url).searchParams.get("q");
     const result = await searchTransaction(q);
+    return Response.json(result);
+}
+
+export async function hashlookupSearchRoute(req: Request): Promise<Response> {
+    const q = new URL(req.url).searchParams.get("q");
+    const result = await searchHashlookup(q);
     return Response.json(result);
 }

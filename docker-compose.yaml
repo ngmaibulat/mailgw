@@ -28,6 +28,7 @@ services:
         volumes:
             # Docker-managed named volume only — no host bind mounts.
             - mariadb_data:/var/lib/mysql
+            - /run/mysqld:/run/mysqld
         # healthcheck (commented): gates dependents on real DB readiness. The
         # migrator now retries the connection itself, so this is optional —
         # uncomment (and the service_healthy depends_on below) to re-enable.
@@ -57,22 +58,25 @@ services:
                 condition: service_completed_successfully
 
     webui:
-        image: ngmaibulat/mailgw-webui:latest
+        image: ngmaibulat/mailgw-webui-fastify:latest
         container_name: dev-webui
         restart: unless-stopped
         ports:
-            - "4000:4000" # admin UI (HTTP/2 over TLS)
+            - "4000:4000" # admin UI (native HTTP/2 over TLS)
         environment:
             NODE_ENV: production
             PORT: 4000
             # Signs the session cookie — override in real deployments.
             SIGN_COOKIE: ${SIGN_COOKIE:-changeme}
-            TEMPLATE_ENGINE: pug
             DB_DRIVER: mysql
             DB_HOST: dev-mailgw-db
             DB_NAME: mailgw
             DB_USER: mailgw
             DB_PASS: P@ssw0rd
+            # The webui proxies its log-viewer reads to logservice.
+            LOGSERVICE_URL: http://dev-logservice:3000
+            # Sent as X-API-Key; must match logservice's API_KEY.
+            LOGSERVICE_API_KEY: ${API_KEY:-}
         volumes:
             # The server serves HTTP/2 over TLS and reads ./certs/server.{key,crt}
             # on boot. Generate them first with the `certs` project:
@@ -81,6 +85,8 @@ services:
         depends_on:
             db-migrator:
                 condition: service_completed_successfully
+            logservice:
+                condition: service_started
 
     db-migrator:
         image: ngmaibulat/logservice:latest

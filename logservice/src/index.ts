@@ -7,6 +7,7 @@ import {
     queueRoute,
     connectionRoute, connectionSearchRoute,
     transactionSearchRoute,
+    hashlookupSearchRoute,
     filterMD5Route,
 } from "./routes/api";
 
@@ -39,6 +40,7 @@ Bun.serve({
         "/api/connection":  { POST: handle(connectionRoute),  GET: handle(connectionSearchRoute) },
         "/api/queue":       { POST: handle(queueRoute) },
         "/api/transaction": { GET:  handle(transactionSearchRoute) },
+        "/api/hashlookup":  { GET:  handle(hashlookupSearchRoute) },
         "/filter/md5":      { POST: handle(filterMD5Route) },
     },
     fetch(_req) {

@@ -6,16 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a mail gateway/router built on [Haraka](https://haraka.github.io/) (Node.js SMTP server). It accepts inbound SMTP, applies routing rules to forward mail to configured relay targets, and POSTs structured JSON events to a companion logging service.
 
-The repo is a monorepo with a private root `package.json`. `mailgw/` and
-`webui-express/` are the pnpm workspace members (see `pnpm-workspace.yaml`);
-`logservice/`, `tests/`, and `certs/` are standalone **Bun** packages with their
-own `bun.lock`, deliberately kept out of the pnpm workspace so pnpm and Bun don't
-fight over `node_modules`.
+The repo is a monorepo with a private root `package.json`. `mailgw/`,
+`webui-fastify/`, and `webui-express/` are the pnpm workspace members (see
+`pnpm-workspace.yaml`); `logservice/`, `tests/`, and `certs/` are standalone
+**Bun** packages with their own `bun.lock`, deliberately kept out of the pnpm
+workspace so pnpm and Bun don't fight over `node_modules`.
 - **`mailgw/`** — the Haraka SMTP server with custom plugins (`mailgw/plugins/`); a Node.js / pnpm package
 - **`logservice/`** — a Bun HTTP API (`Bun.serve`) that receives events from the plugins and stores them in MariaDB via Bun's native SQL client (`Bun.SQL`, MySQL adapter); written in TypeScript
-- **`webui-express/`** — the admin web UI (Express + Sequelize, Node/pnpm): log viewers, relay/relay-group config, and session login. Overlaps logservice's models and `/api` + `/filter/md5` endpoints (see its section below)
+- **`webui-fastify/`** — the **active** admin web UI (Fastify + Drizzle, Node/pnpm): log viewers, relay/relay-group config, session login. Native HTTP/2, pug-only. Its log-viewer reads **proxy to logservice** (it no longer queries the log tables directly); the build/compose stack ships this image. See its section below.
+- **`webui-express/`** — the **legacy** Express rewrite target, kept as a reference. Same product on Express 5 over HTTP/1.1. It still carries the pre-refactor baggage `webui-fastify` shed (dual pug/ejs engines, the experimental Deno adapter, the full duplicated model set, and the overlapping `/api` ingest + `/filter/md5` endpoints). Prefer changing `webui-fastify`.
 - **`tests/`** — cross-cutting end-to-end tests (Bun): logservice API (`tests/api/`) and SMTP pipeline (`tests/smtp/`)
-- **`certs/`** — a Bun CLI that generates self-signed TLS certs from a JSON config (`node-forge`); produces the certs the webui serves over HTTP/2
+- **`certs/`** — a Bun CLI that generates self-signed TLS certs from a JSON config (`node-forge`); produces the certs the webui serves over TLS
 
 ## Commands
 
@@ -44,19 +45,31 @@ bun run db:reset            # drop everything, then re-migrate
 bun test tests/             # run the unit test suite
 ```
 
-### webui-express
+### webui-fastify (active admin UI)
 
-A pnpm workspace member; run via the filter from the repo root or `cd webui-express`:
+A pnpm workspace member (`mailgw-webui-fastify`). The root `pnpm webui*` scripts target it:
 
 ```bash
-pnpm webui dev                          # nodemon (auto-reload)  → src/index.mjs  (alias for pnpm --filter mailgw-webui)
-pnpm webui:dev                          # same, convenience root script
-pnpm webui:start                        # node src/index.mjs (production)
-pnpm --filter mailgw-webui test         # node --test  (no test files yet)
+pnpm webui:dev                             # nodemon (auto-reload)  → src/index.mjs  (alias for pnpm --filter mailgw-webui-fastify)
+pnpm webui:start                           # node src/index.mjs (production)
+pnpm webui dev                             # same as webui:dev (the `webui` alias forwards args)
+pnpm --filter mailgw-webui-fastify test    # node --test  (no test files yet)
+cd webui-fastify && node create_user.mjs <email> <password>   # seed a login user
+```
+
+> Serves **native HTTP/2** (Fastify `{ http2: true, https: { allowHTTP1: true } }`) and reads `./certs/server.{key,crt}` (relative to its working dir) on boot — it will crash without those certs. Generate them with the `certs/` project (see below); locally a `certs` symlink points at `certs/generated/webui`, and in Docker the same dir is mounted. Templates are **pug-only** (`TEMPLATE_DIR`, default `./templates/pug`). Log-viewer reads proxy to logservice via `LOGSERVICE_URL` (default `http://localhost:3000`) + optional `LOGSERVICE_API_KEY` (sent as `X-API-Key`).
+
+### webui-express (legacy reference)
+
+The older Express version, kept side-by-side as a reference (workspace member `mailgw-webui`). Run it via its explicit filter (the root `pnpm webui*` aliases now point at `webui-fastify`):
+
+```bash
+pnpm --filter mailgw-webui dev          # nodemon (auto-reload)  → src/index.mjs
+pnpm --filter mailgw-webui start        # node src/index.mjs (production)
 cd webui-express && node create_user.mjs <email> <password>   # seed a login user
 ```
 
-> The server uses HTTP/2 via `spdy` and reads `./certs/server.{key,crt}` (relative to its working dir) on boot — it will crash without those certs. Generate them with the `certs/` project (see below); in Docker they're mounted from `certs/generated/webui`. Templates default to pug (`TEMPLATE_ENGINE=pug|ejs`).
+> Serves **HTTP/1.1 over TLS** (`node:https`, `src/index.mjs`) — Express is not compatible with Node's native http2 server, so HTTP/2 is intentionally Fastify-only. Reads the same `./certs/server.{key,crt}`. Templates default to pug (`TEMPLATE_ENGINE=pug|ejs`).
 
 ### certs
 
@@ -77,15 +90,18 @@ the **repo-root context** (so the workspace `pnpm-lock.yaml` is visible) via
 `-f <pkg>/Dockerfile`; logservice builds from its own dir.
 
 ```bash
-./mailgw/container-build.sh       # mailgw image (node:26-alpine, -f mailgw/Dockerfile, root context)
-./mailgw/container-push.sh        # build + push to Docker Hub (ngmaibulat/mailgw)
-cd mailgw && ./container-dev.sh   # run latest image locally (mounts mailgw/plugins live)
-./webui-express/container-build.sh   # webui image (node:26-alpine, -f webui-express/Dockerfile, root context)
-./logservice/container-build.sh      # logservice image (oven/bun-alpine, own-dir context)
-pnpm build:containers             # push all three (build:mailgw + build:logservice + build:webui)
-docker compose up                 # full stack: mariadb + db-migrator + logservice + mailgw + webui + mailhog
-docker compose run --rm db-migrator  # apply SQL migrations against MariaDB (runs `bun src/dbmigrate.ts`)
+./mailgw/container-build.sh        # mailgw image (node:26-alpine, -f mailgw/Dockerfile, root context)
+./mailgw/container-push.sh         # build + push to Docker Hub (ngmaibulat/mailgw)
+cd mailgw && ./container-dev.sh    # run latest image locally (mounts mailgw/plugins live)
+./webui-fastify/container-build.sh    # ACTIVE webui image (ngmaibulat/mailgw-webui-fastify, node:26-alpine, root context)
+./webui-express/container-build.sh    # legacy Express webui image (ngmaibulat/mailgw-webui)
+./logservice/container-build.sh       # logservice image (oven/bun-alpine, own-dir context)
+pnpm build:containers              # push mailgw + logservice + webui (build:webui → webui-fastify)
+docker compose up                  # full stack: mariadb + db-migrator + logservice + mailgw + webui + mailhog
+docker compose run --rm db-migrator   # apply SQL migrations against MariaDB (runs `bun src/dbmigrate.ts`)
 ```
+
+> **`docker-compose.yaml`'s `webui` service runs the `mailgw-webui-fastify` image** (with `LOGSERVICE_URL`/`LOGSERVICE_API_KEY` wired for the read proxy). The root `pnpm build:webui` / `build:containers` scripts build/push that same Fastify image. The legacy Express image (`ngmaibulat/mailgw-webui`) is built only via `./webui-express/container-build.sh`.
 
 > Before `docker compose up`, generate the webui TLS certs (`pnpm certs`) — the
 > `webui` service mounts `certs/generated/webui` and won't start without them.
@@ -160,20 +176,33 @@ On `hook_get_mx`, `RoutingTable.findRoute(sender, rcpt)` walks the rules in orde
 - `POST /api/queue` — queue events (stored as `Transaction` rows)
 - `POST /api/delivery` — delivery events (validated with a Zod schema); `GET /api/delivery` — search
 - `GET  /api/transaction` — search transactions
+- `GET  /api/hashlookup` — search attachment MD5 lookups; `HashLookups` LEFT JOIN `Transaction` (on `txn_uuid = uuid`) so each row carries its message's `sender`/`rcpt_list`/`dt` (`searchHashlookup` in `src/query/search.ts`). Only `HashLookups` columns are searchable
 - `POST /filter/md5` — attachment MD5 blocklist check, returns `{ action: "allow" | "block" }`
 
-Each handler is wrapped by `handle()` = `withAuth(withErrorHandling(...))` (`src/middleware/`). Auth checks the `X-API-Key` header against `API_KEY`; when `API_KEY` is unset, all requests are accepted. The `GET` search endpoints take a JSON `q` query param (`{ search: [{ field, operator, value }], searchLogic, limit, offset }`) parsed/whitelisted in `src/query/`.
+Each handler is wrapped by `handle()` = `withAuth(withErrorHandling(...))` (`src/middleware/`). Auth checks the `X-API-Key` header against `API_KEY`; when `API_KEY` is unset, all requests are accepted. The `GET` search endpoints take a JSON `q` query param (`{ search: [{ field, operator, value }], searchLogic, limit, offset }`) parsed/whitelisted in `src/query/`. `buildWhere` takes an optional `tablePrefix` to qualify columns for JOIN queries (used by the hashlookup search).
 
 Data access uses raw SQL via Bun's `Bun.SQL` (`src/db.ts`, MySQL adapter) — there is **no ORM**. Per-table query helpers live in `src/models/` (`connection.ts`, `transaction.ts`, `delivery.ts`, etc.). Schema migrations are plain numbered `.sql` files in `logservice/migrations/`, applied in order by the custom runner `src/dbmigrate.ts` (tracks applied files in a `_migrations` table). Migrations run via the `db-migrator` container, the `--migrate` boot flag (`index.ts`), or `bun run db:migrate`.
 
-### webui-express
+### webui-fastify (active admin UI)
 
-Express app (`webui-express/src/app.mjs`, served over HTTP/2 by `src/index.mjs`). ESM throughout (`.mjs`). Composition:
-- **Routes** (`src/routes/`): `root` (dashboard), `log` (viewer pages for connection/delivery/mails/lookups), `api` (`/api/{connection,delivery,queue,hashlookups}` ingest + query), `filter` (`POST /filter/md5`), `config-relay` (`/config/relay/*`, `/config/relaygrp/*` CRUD). `/config/routing` is a `notimpl` stub.
-- **Auth** (`src/auth/`): session login (`bcryptjs` vs the `User.hash` column), `/login` `/logout` `/profile`. Sessions are stored **in-memory** (`src/globals.mjs`) and gated by the `checkSession` middleware. `/profile` is a `notimpl` stub. Users are seeded only via the `create_user.mjs` CLI (no web user management yet).
-- **Views**: two engines maintained in parallel — pug (`templates/pug/`, default) and ejs (`templates/ejs/`); selected by `TEMPLATE_ENGINE`.
-- **Data**: Sequelize models in `db/esmmodels/` (MariaDB via `mysql2`). Note these **duplicate** the logservice schema (Connection/Delivery/Transaction/hashlookups), and the `/api/*` write handlers `create()` from `req.body` without validation or `await` — see `webui-express/TODO.md` for the overlap/tech-debt items.
-- **Runtime adapter**: dependency imports go through `src/adapter.js`, which currently re-exports `adapter.node.js` (Node). A parallel `adapter.deno.js` and `src/deno-index.mjs` exist for an experimental Deno target (you'd point `adapter.js` at the Deno file to use it — there is no runtime switch). The roadmap lives in `webui-express/TODO.md` (older notes archived under `webui-express/archive/docs/`).
+Fastify app (`webui-fastify/src/app.mjs#build()`, started over native HTTP/2 by `src/index.mjs`). ESM throughout (`.mjs`). Composition:
+- **Plugins** registered at the root (inherited by all routes): `@fastify/formbody` (urlencoded), `@fastify/cookie` (signed, via `SIGN_COOKIE`), `@fastify/view` (pug), `@fastify/static` (`public/`, `index:false` so the dashboard owns `/`).
+- **Encapsulation = the auth boundary.** Three nested scopes: (1) root — static assets, public & unlogged; (2) a "logged" child that adds the `logger` `onRequest` hook and the public auth routes (`/login`, `/logout`, `/profile`); (3) a "secured" child inside it that adds the `checkSession` `preHandler` hook, then registers the protected routes. Hooks only apply to their own scope + descendants, so static stays unlogged and auth routes stay ungated — replacing Express's ordering-dependent `app.use()` chain.
+- **Routes** (`src/routes/`): `root` (dashboard), `log` (viewer pages), `api` (`/api/{connection,delivery,queue,hashlookups}` — **read-only**, proxied), `config-relay` (`/config/relay/*`, `/config/relaygrp/*` CRUD; `/config/routing` is a `notimpl` stub). There is **no ingest API and no `/filter/md5`** — those live in logservice.
+- **Read proxy** (`src/logservice.mjs`): the `/api/*` GETs forward the frontend's `?request=<json>` as logservice's `?q=<json>` and pass the response through verbatim (identical `{status,total,records}` shape). Path remaps: `queue` → logservice `/api/transaction`, `hashlookups` → `/api/hashlookup`. The webui **does not query the log tables directly**.
+- **Auth** (`src/auth/`): session login (`bcryptjs` vs `User.hash`), `/login` `/logout` `/profile`. Sessions are **in-memory** (`src/globals.mjs`); `checkSession` unsigns the cookie via `request.unsignCookie`. `/profile` is a `notimpl` stub. Users are seeded only via `create_user.mjs`.
+- **Data**: **Drizzle ORM** (MariaDB via `mysql2`), **scoped to only what the webui owns** — `users`, `relays`, `relayGroups`, `logs`, `exceptions` (`db/schema.mjs`). The webui **does not own/migrate this schema** — logservice's SQL migrations create the tables; `db/schema.mjs` just describes the columns to query (no `drizzle-kit`/DDL here). `db/index.mjs` exports the `db` instance (lazy `mysql2` pool, no import-time connect) + the table refs + `assertDbConnection()` (pinged at startup in `src/index.mjs`). `src/adapter.js` is now just a tiny re-export of uuid/bcrypt/zod.
+- **Config validation**: `src/validation/config.mjs` uses **drizzle-zod** (`createInsertSchema`) to derive relay/relaygroup insert schemas from the Drizzle tables, `.pick()`ed to form fields (prevents mass-assignment) and `.extend()`ed to require `name`/`host`. Note drizzle-zod 0.8 emits **zod v4** schemas, so that file imports `zod/v4` (the rest of the app uses classic v3 — they coexist). Relay edit uses a "leave blank to keep" rule so editing never wipes the stored `auth_pass`.
+
+Improvement backlog: `webui-fastify/TODO.md`.
+
+### webui-express (legacy reference)
+
+The earlier Express version, retained as a reference; **prefer `webui-fastify` for changes.** Express 5 app (`src/app.mjs`) served over **HTTP/1.1 by `node:https`** (`src/index.mjs`) — Express can't use Node's native http2. It still has the baggage the Fastify rewrite removed:
+- **Routes**: same paths but the `/api/*` handlers still **ingest** (`create()` from `req.body`, no validation/`await`) in addition to querying, plus a `filter` route (`POST /filter/md5`) — the overlap with logservice.
+- **Views**: two engines in parallel — pug (`templates/pug/`, default) and ejs (`templates/ejs/`), selected by `TEMPLATE_ENGINE`.
+- **Data**: the **full** Sequelize model set, duplicating logservice's schema (Connection/Delivery/Transaction/hashlookups/…).
+- **Runtime adapter**: `src/adapter.js` re-exports `adapter.node.js`; a parallel `adapter.deno.js` + `src/deno-index.mjs` exist for an abandoned Deno experiment. Roadmap in `webui-express/TODO.md` (older notes under `webui-express/archive/docs/`).
 
 ### DEV mode
 
