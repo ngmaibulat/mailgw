@@ -1,6 +1,14 @@
 ### 2026-06-14
 
 - db migrator script fixes
+- Debugged the SMTP 550/554 chain → config + IP allowlist + container networking fixes
+- logservice dt datetime fix, Transaction insert wired up, duplicate Connection write removed
+- Monorepo restructure into mailgw/, workspace split (logservice on Bun), root scripts
+- deploy/ modernized for the 2-edge + 1-core topology (no pm2), secrets flagged
+- Docker modern-syslog build fix, Haraka upgraded to 3.3.1 (with the minimumReleaseAgeExclude placement gotcha)
+- Bun-native SMTP test client + 19 tests, verified against the live stack
+
+A couple of things still open whenever you want them: the committed tls_key.pem / relays.json secrets under deploy/mailgw/settings/, and trimming the Haraka minimumReleaseAgeExclude once 3.3.1 ages past the 7-day window (~Jun 19).
 
 ### 2026-06-07
 

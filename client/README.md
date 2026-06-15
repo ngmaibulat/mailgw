@@ -4,8 +4,15 @@ Two ways to drive the running gateway:
 
 - **`swaks.sh`** — the original shell/swaks one-shot send.
 - **Bun-native client** — a zero-dependency SMTP client over `Bun.connect`
-  (`smtp.ts`), with `bun:test` integration tests and a `send.ts` CLI. No
-  nodemailer/mysql2 — just Bun's built-in TCP + SQL.
+  (`src/smtp.ts`), with `bun:test` integration tests under `tests/` and a
+  `src/send.ts` CLI. No nodemailer/mysql2 — just Bun's built-in TCP + SQL.
+
+```
+client/
+  src/    smtp.ts (client), send.ts (CLI)
+  tests/  smtp.test.ts (SMTP), smtp.e2e.test.ts (DB, opt-in)
+  swaks.sh
+```
 
 All of it talks to a **running** mailgw, so bring the stack up first:
 
@@ -40,7 +47,7 @@ accept-and-queue test performs a **real relayed send** (like swaks).
 skipped unless enabled:
 
 ```bash
-MAILGW_DB_CHECK=1 bun test smtp.e2e.test.ts
+MAILGW_DB_CHECK=1 bun test smtp.e2e
 ```
 
 DB connection defaults to the compose dev stack; override with
@@ -49,8 +56,8 @@ DB connection defaults to the compose dev stack; override with
 ## One-off send
 
 ```bash
-bun run send.ts                       # me@ngm.dev -> test@ngm.dev
-bun run send.ts user@example.com sender@example.com
+bun run src/send.ts                       # me@ngm.dev -> test@ngm.dev
+bun run src/send.ts user@example.com sender@example.com
 ```
 
 > Editor type hints: `bun install` (pulls `@types/bun`). Not required to run —

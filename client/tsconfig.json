@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "lib": ["ESNext"]
   },
-  "include": ["*.ts"]
+  "include": ["src/**/*", "tests/**/*"]
 }
