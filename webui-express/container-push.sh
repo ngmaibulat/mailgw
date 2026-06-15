@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 
 # Bump the webui package version (under webui-express/), then build + push from
 # the repo root context using the relocated Dockerfile.
-( cd webui-express && pnpm version patch )
+( cd webui-express && pnpm version patch --no-git-tag-version )
 
 VER=$(cd webui-express && pnpm pkg get version)
 

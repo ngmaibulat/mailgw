@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 
 # Bump the Haraka package version (now under mailgw/), then build from the repo
 # root context using the relocated Dockerfile.
-( cd mailgw && pnpm version patch )
+( cd mailgw && pnpm version patch --no-git-tag-version )
 
 VER=$(cd mailgw && pnpm pkg get version)
 

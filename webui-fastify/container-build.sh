@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 
 # Bump the webui-fastify package version, then build from the repo root context
 # using the relocated Dockerfile (so pnpm-lock.yaml is visible).
-( cd webui-fastify && pnpm version patch )
+( cd webui-fastify && pnpm version patch --no-git-tag-version )
 
 VER=$(cd webui-fastify && pnpm pkg get version)
 
