@@ -1,0 +1,17 @@
+{
+  "defaults": {
+    "days": 825,
+    "keySize": 2048,
+    "organization": "NGM Mailgw",
+    "keyFile": "server.key",
+    "certFile": "server.crt"
+  },
+  "certs": [
+    {
+      "name": "webui",
+      "commonName": "localhost",
+      "altNames": ["localhost", "dev-webui", "127.0.0.1", "::1"],
+      "out": "generated/webui"
+    }
+  ]
+}

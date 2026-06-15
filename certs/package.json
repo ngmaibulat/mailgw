@@ -1,0 +1,18 @@
+{
+  "name": "@aibulat/mailgw-certs",
+  "version": "0.1.0",
+  "description": "Generate self-signed TLS certs from a JSON config (Bun + node-forge)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "bun src/generate.ts",
+    "start": "bun src/generate.ts"
+  },
+  "dependencies": {
+    "node-forge": "^1.3.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@types/node-forge": "^1.3.11"
+  }
+}

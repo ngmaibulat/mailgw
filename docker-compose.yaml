@@ -75,8 +75,9 @@ services:
             DB_PASS: P@ssw0rd
         volumes:
             # The server serves HTTP/2 over TLS and reads ./certs/server.{key,crt}
-            # on boot; provide them here. Create the dir + certs before `up`.
-            - ./webui-express/certs:/app/certs:ro
+            # on boot. Generate them first with the `certs` project:
+            #   cd certs && bun install && bun run generate
+            - ./certs/generated/webui:/app/certs:ro
         depends_on:
             db-migrator:
                 condition: service_completed_successfully

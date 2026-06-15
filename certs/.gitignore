@@ -1,0 +1,5 @@
+# Generated certificates — never commit private keys / certs.
+generated/
+*.key
+*.crt
+*.pem
