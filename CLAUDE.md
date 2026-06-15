@@ -87,6 +87,16 @@ Haraka loads plugins listed in `mailgw/config/plugins` and calls registered hook
 
 The logservice-posting plugins `npData`, `npQueue`, and `npLogDelivery` read endpoint URLs (`url_conn` / `url_queue` / `url_delivery`) from `mailgw/config/logging.json` via Haraka's `this.config.get`, and POST JSON through `mailgw/plugins/functions.js#postWithLogging` (which writes a local log line, then calls `httplog`). Note that `npFilterAttach` instead uses **hardcoded** `http://localhost:3000` URLs.
 
+#### Plugin inconsistencies & gotchas
+
+The plugin set grew organically and is **not** uniform — don't assume symmetry. Known quirks (improvement items tracked in `mailgw/TODO.md`):
+
+- **Name ≠ behavior.** `npConnection` does *not* POST to logservice — it only writes a local log file and has a dead `isBlacklistedIP()` placeholder (always `false`). The plugin that actually sends connection info to the API is `npData`, at the `hook_data` stage, posting to `url_conn`.
+- **Config source split.** `npData` / `npQueue` / `npLogDelivery` resolve URLs from `logging.json`; `npFilterAttach` **hardcodes** `http://localhost:3000`, so its calls only work when logservice is co-located (e.g. they break in Docker where logservice is a separate host).
+- **Overlapping event posting.** `npFilterAttach.hook_data_post` *also* posts connection (`url_conn`) and transaction (`url_queue`) events in addition to its MD5 check, overlapping `npData` / `npQueue` — a duplicate-row risk (the "no longer double-insert" note in `logservice/src/routes/api.ts` is a scar from this).
+- **Posts are fire-and-forget.** `postWithLogging` / `httplog` don't `await` the POST; failures are only logged, never retried or surfaced to the SMTP transaction.
+- **Plugins that never touch the API:** `npConnection` (local file), `npFilter` (IP allowlist; its `hook_queue_outbound` only logs rcpt locally), `npRoute` (routing; DEV-only local log).
+
 ### Routing logic (`mailgw/plugins/Route.js`, `mailgw/plugins/RoutingTable.js`)
 
 On `register`, `npRoute.js` loads two config files and builds a `RoutingTable`:
