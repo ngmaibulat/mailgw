@@ -73,6 +73,10 @@ services:
             DB_NAME: mailgw
             DB_USER: mailgw
             DB_PASS: P@ssw0rd
+            # Comma-separated IPs/CIDRs of reverse proxies in front of the webui.
+            # When set, enables trustProxy so request.ip / the secure cookie work
+            # behind TLS termination. Unset here — the webui terminates TLS itself.
+            # TRUSTED_PROXIES: "10.0.0.0/8"
             # The webui proxies its log-viewer reads to logservice.
             LOGSERVICE_URL: http://dev-logservice:3000
             # Sent as X-API-Key; must match logservice's API_KEY.

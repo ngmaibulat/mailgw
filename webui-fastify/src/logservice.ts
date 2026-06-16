@@ -10,6 +10,9 @@ const BASE = (process.env.LOGSERVICE_URL || "http://localhost:3000").replace(
     "",
 );
 const API_KEY = process.env.LOGSERVICE_API_KEY || "";
+// Abort the upstream fetch if logservice doesn't respond in time, so a hung
+// logservice can't hang the webui request indefinitely.
+const TIMEOUT_MS = Number(process.env.LOGSERVICE_TIMEOUT_MS) || 10_000;
 
 // Thrown when the logservice request fails. `kind` lets the route map it to the
 // right gateway status: "upstream" (logservice answered non-2xx) -> 502,
@@ -53,10 +56,18 @@ export async function search(
 
     let resp: Response;
     try {
-        resp = await fetch(url, { headers });
+        resp = await fetch(url, {
+            headers,
+            signal: AbortSignal.timeout(TIMEOUT_MS),
+        });
     } catch (err) {
+        const e = err as Error;
+        const reason =
+            e.name === "TimeoutError"
+                ? `timed out after ${TIMEOUT_MS}ms`
+                : e.message;
         throw new LogserviceError(
-            `logservice GET ${path} unreachable: ${(err as Error).message}`,
+            `logservice GET ${path} unreachable: ${reason}`,
             "network",
         );
     }

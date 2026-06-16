@@ -68,8 +68,13 @@ a:active:hover {
     box-shadow: 0px 30px 50px 0px rgba(0, 0, 0, 0.2);
 }
 
-#login-form {
+#login-form-wrap form {
     padding: 20px 60px;
+}
+
+#login-form-wrap p.text-muted {
+    padding: 0 60px;
+    margin-top: 0.5rem;
 }
 
 input {

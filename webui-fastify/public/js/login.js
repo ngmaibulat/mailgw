@@ -1,17 +1,18 @@
 const url = new URL(window.location);
 const usp = url.searchParams;
 
-const params = usp.getAll("msg");
-const hasmsg = usp.has("msg");
+const msg = usp.get("msg");
 
-if (hasmsg) {
-    console.log("invalid auth");
+// Per-`?msg=` alert text. Anything unrecognised falls back to the generic
+// invalid-credentials message (the form's default alert text).
+const messages = {
+    InvalidAuth: "Invalid username or password",
+    ValidationError: "Please enter a valid email and password",
+    TooManyAttempts: "Too many login attempts. Please wait a minute and try again.",
+};
+
+if (msg !== null) {
     const el = document.getElementById("alert");
-    console.log(el);
+    el.textContent = messages[msg] ?? messages.InvalidAuth;
     el.style.display = "block";
 }
-
-// console.log(url);
-// console.log(usp);
-// console.log(params);
-// console.log(hasmsg);

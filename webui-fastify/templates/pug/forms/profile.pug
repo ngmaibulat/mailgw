@@ -1,0 +1,36 @@
+extends ../page.pug
+block content
+    .row
+        .table-title.col-sm-12.col-md-12.col-lg-12.col-xl-11(style='margin: 20px')
+            h3(style='display: inline')
+                b Profile
+    .row
+        .col-1
+        .col-sm-10.col-md-8.col-lg-6.col-xl-5.m-4
+            .profile-identity
+                .profile-avatar= email.charAt(0).toUpperCase()
+                .profile-meta
+                    .profile-email= email
+                    .profile-role Administrator
+
+    .row
+        .col-1
+        .col-sm-10.col-md-8.col-lg-6.col-xl-5.m-4
+            .card.rounded-3
+                .card-body.p-4
+                    h4.card-title.mb-4 Change password
+                    if error
+                        .alert.alert-danger= error
+                    if success
+                        .alert.alert-success= success
+                    form#change-password(method='post' action='/profile')
+                        .mb-4
+                            label.form-label Current password
+                            input.form-control#current(type='password' name='current' placeholder='Current password' required='')
+                        .mb-4
+                            label.form-label New password
+                            input.form-control#pass(type='password' name='pass' placeholder='New password (8–20 chars)' required='')
+                        .mb-4
+                            label.form-label Confirm new password
+                            input.form-control#passConfirm(type='password' name='passConfirm' placeholder='Confirm new password' required='')
+                        button#btn_submit.btn.btn-success.px-4.py-2(type='submit') Update password

@@ -3,7 +3,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { uuidv4 } from "../adapter.ts";
 
 import { checkAuth } from "./util.ts";
-import { sessions } from "../globals.ts";
+import { sessions, SESSION_TTL_MS } from "../globals.ts";
 import { AuthInfo } from "../validation/login.ts";
 
 export async function login(request: FastifyRequest, reply: FastifyReply) {
@@ -21,10 +21,10 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
     }
 
     const sessionid = uuidv4();
-    sessions[sessionid] = { email };
+    sessions[sessionid] = { email, expiresAt: Date.now() + SESSION_TTL_MS };
 
     reply.setCookie("session", sessionid, {
-        maxAge: 8 * 60 * 60, // seconds (Fastify); Express's res.cookie used ms
+        maxAge: SESSION_TTL_MS / 1000, // seconds (Fastify); Express's res.cookie used ms
         signed: true,
         path: "/",
         httpOnly: true,

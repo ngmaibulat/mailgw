@@ -1,0 +1,26 @@
+doctype html
+html
+  head
+    meta(charset='UTF-8')
+    title NGM Mail Router — Setup
+    link(rel='stylesheet' href='/lib/bootstrap.css')
+    link(rel='stylesheet' href='/css/login.css')
+  body
+    #login-form-wrap
+      h3 Create the first admin user
+      p.text-muted This page is shown only because no users exist yet.
+      form#setup-form(method='post')
+        p
+          if error
+            div#alert.alert.alert-danger= error
+        p
+          input#email(type='email' name='email' placeholder='Email' required='')
+          i.validation
+            span
+            span
+        p
+          input#pass(type='password' name='pass' placeholder='Password (8–20 chars)' required='')
+        p
+          input#passConfirm(type='password' name='passConfirm' placeholder='Confirm password' required='')
+        p
+          input#create(type='submit' value='Create user')

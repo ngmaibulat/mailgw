@@ -1,7 +1,7 @@
 import "./src/checkenv.ts"; // loads + validates env; MUST be first so it runs before db/index.ts is evaluated (ESM imports are hoisted)
 
-import bcrypt from "bcryptjs";
-import { db, users, closeDb } from "./db/index.ts";
+import { closeDb } from "./db/index.ts";
+import { createUser } from "./src/auth/users.ts";
 
 if (process.argv.length < 4) {
     console.error("Usage node create_user.ts <username> <password>");
@@ -11,11 +11,8 @@ if (process.argv.length < 4) {
 const email = process.argv[2];
 const pass = process.argv[3];
 
-const salt = await bcrypt.genSalt(10);
-const hash = await bcrypt.hash(pass, salt);
-
 try {
-    await db.insert(users).values({ email, hash });
+    await createUser(email, pass);
     console.log("User created!");
 } catch (err) {
     console.error("Error creating user:", (err as Error).message);

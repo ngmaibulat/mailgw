@@ -1,0 +1,30 @@
+extends ../page.pug
+block content
+    .row
+        .table-title.col-sm-12.col-md-12.col-lg-12.col-xl-11(style='margin: 20px')
+            h3(style='display: inline')
+                b Users
+            a.btn.btn-success(href='/users/create')
+                i.material-icons &#xE147;
+                span Create
+    .row.mt-3
+        .col-1
+        .col-sm-10.col-md-8.col-lg-8.col-xl-8
+            table#rows.table.table-bordered.border-secondary.nogrid
+                thead
+                    tr
+                        th ID
+                        th Email
+                        th Created
+                        th Action
+                tbody
+                    each row in data
+                        tr
+                            td=row.id
+                            td=row.email
+                            td=row.createdAt
+                            td
+                                a.edit(href=`/users/edit/${row.id}`)
+                                    i.material-icons(data-toggle='tooltip' title='Edit') &#xE254;
+                                a.delete(href=`/users/delete/${row.id}`)
+                                    i.material-icons(data-toggle='tooltip' title='Delete') &#xE872;
