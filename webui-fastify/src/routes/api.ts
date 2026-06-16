@@ -25,7 +25,21 @@ async function proxySearch(
     if (!parsed.ok) {
         return reply.code(400).send({ status: "error", message: parsed.error });
     }
-    return reply.send(await logservice.search(path, parsed.value));
+    try {
+        return reply.send(await logservice.search(path, parsed.value));
+    } catch (err) {
+        if (err instanceof logservice.LogserviceError) {
+            const code = err.kind === "network" ? 504 : 502;
+            request.log.error(
+                { upstreamStatus: err.upstreamStatus, body: err.body },
+                err.message,
+            );
+            return reply
+                .code(code)
+                .send({ status: "error", message: "logservice unavailable" });
+        }
+        throw err;
+    }
 }
 
 export default async function apiRoutes(fastify: FastifyInstance) {

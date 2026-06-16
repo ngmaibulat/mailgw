@@ -15,5 +15,5 @@ export async function checkAuth(email: string, pass: string): Promise<boolean> {
         return false;
     }
 
-    return bcrypt.compareSync(pass, record.hash);
+    return await bcrypt.compare(pass, record.hash);
 }

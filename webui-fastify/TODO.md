@@ -36,17 +36,17 @@ file refs are where the work lands.
 ## Medium — robustness
 
 - [x] **Search/query requests are forwarded unvalidated.** Fixed: `src/validation/search.ts` defines a zod v4 `searchRequest` schema mirroring logservice's accepted shape (`{ search: [{ field, operator, value }], searchLogic, limit, offset }`, operators + `AND`/`OR` enumerated, `value` scalar-or-2-tuple, non-negative int `limit`/`offset`). `parseSearchRequest` decodes the `?request=<json>` string, `safeParse`s it, and returns either the re-serialized (unknown-keys-stripped) JSON to forward or an error; `src/routes/api.ts`'s `proxySearch` returns **400** on failure instead of bouncing a bad request off logservice. logservice still does the authoritative field whitelist + parse (defense-in-depth).
-- [ ] **Proxy has no timeout and hard-500s when logservice is down** (`src/logservice.ts`: `fetch` then throw on `!ok`). Add `signal: AbortSignal.timeout(...)` and return a friendly empty/error grid payload instead of a 500.
+- [~] **Proxy has no timeout (hard-500 fixed).** `src/logservice.ts` now throws a typed `LogserviceError` (`kind: "upstream" | "network"`), which `src/routes/api.ts` maps to **502** (logservice answered non-2xx) / **504** (unreachable or invalid JSON), logging the upstream status/body, instead of a blanket 500. Still **no timeout** — add `signal: AbortSignal.timeout(...)` so a hung logservice doesn't hang the request, and consider returning a friendly empty grid payload instead of an error.
 - [x] **Stale schema-check magic number.** Gone with the Sequelize removal — the brittle `< 15` table-count check no longer exists (the webui doesn't inspect/own the schema).
 - [x] **DB connect + `process.exit` at import time.** Fixed: `db/index.ts` is a lazy `mysql2` pool (no import-time connect); `src/index.ts` calls `assertDbConnection()` (a ping) at startup and exits only there on failure.
-- [ ] **No `setErrorHandler`.** Handler exceptions fall through to Fastify's default 500; currently relying on `process.on("uncaughtException")` in `src/errhandler.ts` (blunt). Add a Fastify error handler.
+- [ ] **No `setErrorHandler`.** Handler exceptions fall through to Fastify's default 500; currently relying on `process.on("uncaughtException")` + `process.on("unhandledRejection")` in `src/errhandler.ts` (both now persist to the `exceptions` table, but blunt). Add a Fastify error handler.
 - [ ] **`trustProxy`** — if deployed behind a TLS-terminating reverse proxy, set `Fastify({ trustProxy: true })` so the `secure` cookie and `request.ip` (used by `src/middleware/logger.ts`) are correct.
 
 ## Operations
 
 - [ ] **Graceful shutdown.** Handle `SIGTERM`/`SIGINT` → `app.close()` + `closeDb()` (Docker stop is currently abrupt).
 - [ ] **Health endpoint.** `/` is the protected dashboard — add an unauthenticated `GET /health` for Docker/k8s liveness.
-- [ ] **Unbounded request logging.** `logger:false` (`src/index.ts`) disables Fastify's pino; `src/middleware/logger.ts` writes every request to the `Logs` table fire-and-forget, forever (no retention/sampling, errors swallowed). Consider enabling pino for request logs and making DB logging sampled/optional + a retention policy.
+- [~] **Unbounded request logging.** Fastify's pino is now **on whenever `NODE_ENV != "production"`** (`src/index.ts`, level via `LOG_LEVEL`, default `info`); prod stays `logger:false` and relies on the DB audit trail. `src/middleware/logger.ts` writes a row to the `Logs` table fire-and-forget; `isNoise()` skips `/favicon.ico` + `GET /api/*` grid polling (we **deliberately do not audit API reads** — see CLAUDE.md), so the table no longer floods. Still **no retention/sampling** and DB-write errors are swallowed. Remaining: add a retention policy (and optionally pino in prod too).
 
 ## Testing / DX
 

@@ -16,10 +16,10 @@ export async function checkSession(
     const sessionID = unsigned.valid ? unsigned.value : null;
 
     if (!sessionID || !sessions[sessionID]?.email) {
-        const accept = String(request.headers['accept'] ?? '');
-        const wantsJson = accept.includes('application/json');
+        const accept = String(request.headers.accept ?? "");
+        const wantsJson = accept.includes("application/json");
         if (wantsJson) {
-            return reply.code(401).send({ error: 'unauthenticated' });
+            return reply.code(401).send({ error: "unauthenticated" });
         }
         return reply.redirect("/login");
     }

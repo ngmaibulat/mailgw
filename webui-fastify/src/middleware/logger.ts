@@ -9,11 +9,27 @@ import { db, logs } from "../../db/index.ts";
 // Fastify `onRequest` hook — writes one row per request to the Logs table.
 // Only columns that exist in the `logs` schema are included (Sequelize silently
 // dropped unknown attributes; Drizzle would reject them).
+// Low-value, high-frequency requests we don't want flooding the Logs table.
+// The w2ui grids auto-refresh by polling GET /api/* (read-only proxy reads), so
+// those would otherwise dominate the audit log. Page navigation and config
+// mutations (POST /config/*) are still recorded.
+function isNoise(request: FastifyRequest): boolean {
+    const path = request.url.split("?")[0];
+    if (path === "/favicon.ico") return true;
+    if (request.method === "GET" && path.startsWith("/api/")) return true;
+    return false;
+}
+
 export function logger(
     request: FastifyRequest,
     _reply: FastifyReply,
     done: HookHandlerDoneFunction,
 ): void {
+    if (isNoise(request)) {
+        done();
+        return;
+    }
+
     const h = request.headers;
     const row = {
         url: `${request.protocol}://${h.host ?? ""}${request.url}`,
