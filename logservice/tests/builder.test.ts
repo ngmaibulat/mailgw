@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { buildWhere } from "../src/query/builder";
+import { buildOrderBy, buildWhere } from "../src/query/builder";
 
 const FIELDS = new Set(["sender", "dt", "host", "delay", "tls"]);
 
@@ -108,5 +108,60 @@ describe("buildWhere", () => {
             "AND", FIELDS
         );
         expect(sql).toBe("");
+    });
+});
+
+describe("buildOrderBy", () => {
+    it("returns the fallback when no sort given", () => {
+        expect(buildOrderBy(undefined, FIELDS, "`id` DESC")).toBe("`id` DESC");
+        expect(buildOrderBy([], FIELDS, "`id` DESC")).toBe("`id` DESC");
+    });
+
+    it("defaults direction to DESC", () => {
+        expect(buildOrderBy([{ field: "dt" }], FIELDS, "`id` DESC")).toBe(
+            "`dt` DESC"
+        );
+    });
+
+    it("normalises asc/desc (case-insensitive) and ignores junk", () => {
+        expect(
+            // biome-ignore lint/suspicious/noExplicitAny: testing bad input
+            buildOrderBy([{ field: "dt", direction: "ASC" as any }], FIELDS, "x")
+        ).toBe("`dt` ASC");
+        expect(
+            // biome-ignore lint/suspicious/noExplicitAny: testing bad input
+            buildOrderBy([{ field: "dt", direction: "junk" as any }], FIELDS, "x")
+        ).toBe("`dt` DESC");
+    });
+
+    it("joins multiple sort columns in order", () => {
+        const sql = buildOrderBy(
+            [
+                { field: "host", direction: "asc" },
+                { field: "delay", direction: "desc" },
+            ],
+            FIELDS,
+            "`id` DESC"
+        );
+        expect(sql).toBe("`host` ASC, `delay` DESC");
+    });
+
+    it("drops fields not in the allowlist, falling back if none remain", () => {
+        expect(
+            buildOrderBy([{ field: "password" }], FIELDS, "`id` DESC")
+        ).toBe("`id` DESC");
+        expect(
+            buildOrderBy(
+                [{ field: "password" }, { field: "dt", direction: "asc" }],
+                FIELDS,
+                "`id` DESC"
+            )
+        ).toBe("`dt` ASC");
+    });
+
+    it("qualifies columns with a table prefix for joins", () => {
+        expect(
+            buildOrderBy([{ field: "md5" }], new Set(["md5"]), "`h`.`id` DESC", "h")
+        ).toBe("`h`.`md5` DESC");
     });
 });

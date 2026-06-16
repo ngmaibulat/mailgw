@@ -33,9 +33,18 @@ const searchParam = z.object({
     value: z.union([scalar, z.tuple([scalar, scalar])]),
 });
 
+// Sort params mirror logservice's SortParam (src/query/builder.ts). logservice
+// whitelists the field + normalises the direction, so this is just shape
+// validation; an absent direction defaults to "desc" there.
+const sortParam = z.object({
+    field: z.string().min(1),
+    direction: z.enum(["asc", "desc"]).optional(),
+});
+
 export const searchRequest = z.object({
     search: z.array(searchParam).optional(),
     searchLogic: z.enum(["AND", "OR"]).optional(),
+    sort: z.array(sortParam).optional(),
     limit: z.int().min(0).optional(),
     offset: z.int().min(0).optional(),
 });

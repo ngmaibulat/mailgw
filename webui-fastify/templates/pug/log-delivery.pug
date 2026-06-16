@@ -1,5 +1,12 @@
 extends page.pug
+
+block head
+  link(rel='stylesheet' href='/lib/aggrid/ag-grid.css')
+  link(rel='stylesheet' href='/lib/aggrid/ag-theme-quartz.css')
+  script(src='/lib/aggrid/ag-grid-community.min.js')
+
 block content
   +pageHeader('Delivery log')
-  #grid.log-grid
-  script(type='text/javascript' src='/js/log-delivery.js')
+  #grid.log-grid.ag-theme-quartz-dark
+  script(src='/js/grids/aggrid-common.js')
+  script(src='/js/grids/delivery.js')

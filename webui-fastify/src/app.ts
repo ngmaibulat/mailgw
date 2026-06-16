@@ -81,11 +81,12 @@ export async function build(opts: BuildOptions = {}): Promise<FastifyInstance> {
     // Cross-Origin-{Opener,Resource}-Policy, etc.
     //
     // CSP is shipped in REPORT-ONLY mode: the policy is tailored to this UI
-    // (all scripts are same-origin /lib + /js, inline style attributes are used,
-    // w2ui uses data: image URIs) but reportOnly means a missed directive logs a
-    // browser-console violation instead of breaking the grids. Verify there are
-    // no violations in the browser, then flip `reportOnly` to false to enforce.
-    // The main unknown is whether w2ui/jQuery needs `'unsafe-eval'` in scriptSrc.
+    // (all scripts are same-origin /lib + /js, AG Grid sets inline style
+    // attributes and uses data: image URIs) but reportOnly means a missed
+    // directive logs a browser-console violation instead of breaking the grids.
+    // Verify there are no violations in the browser, then flip `reportOnly` to
+    // false to enforce. The main unknown is whether AG Grid needs
+    // `'unsafe-eval'` in scriptSrc.
     await app.register(fastifyHelmet, {
         contentSecurityPolicy: {
             reportOnly: true,

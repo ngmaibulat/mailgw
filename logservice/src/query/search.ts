@@ -1,6 +1,6 @@
 import db from "../db";
-import { buildWhere, parseSearchQuery } from "./builder";
-import type { SearchLogic, SearchParam } from "./builder";
+import { buildOrderBy, buildWhere, parseSearchQuery } from "./builder";
+import type { SearchLogic, SearchParam, SortParam } from "./builder";
 
 export interface SearchResult<T> {
     status: "success";
@@ -38,17 +38,27 @@ async function searchTable<T>(
     logic: SearchLogic,
     limit: number,
     offset: number,
+    sort: SortParam[] | undefined,
 ): Promise<SearchResult<T>> {
     const { sql: where, values } = buildWhere(params, logic, allowedFields);
 
     const whereSql = where ? `WHERE ${where}` : "";
-    const sql = `SELECT * FROM \`${table}\` ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`;
 
-    const rows = await db.unsafe(sql, [...values, limit, offset]) as T[];
+    // `total` is the full count of matching rows (ignoring limit/offset) so the
+    // client can paginate; the same WHERE values are reused.
+    const countSql = `SELECT COUNT(*) AS total FROM \`${table}\` ${whereSql}`;
+    const countRows = (await db.unsafe(countSql, values)) as {
+        total: number | bigint | string;
+    }[];
+    const total = Number(countRows[0]?.total ?? 0);
+
+    const orderBy = buildOrderBy(sort, allowedFields, "`id` DESC");
+    const sql = `SELECT * FROM \`${table}\` ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+    const rows = (await db.unsafe(sql, [...values, limit, offset])) as T[];
 
     return {
         status: "success",
-        total: rows.length,
+        total,
         records: rows,
     };
 }
@@ -58,7 +68,7 @@ export async function searchDelivery(rawQuery: string | null) {
     return searchTable(
         "Delivery", DELIVERY_FIELDS,
         q.search ?? [], q.searchLogic ?? "AND",
-        q.limit ?? 100, q.offset ?? 0,
+        q.limit ?? 100, q.offset ?? 0, q.sort,
     );
 }
 
@@ -67,7 +77,7 @@ export async function searchConnection(rawQuery: string | null) {
     return searchTable(
         "Connection", CONNECTION_FIELDS,
         q.search ?? [], q.searchLogic ?? "AND",
-        q.limit ?? 100, q.offset ?? 0,
+        q.limit ?? 100, q.offset ?? 0, q.sort,
     );
 }
 
@@ -76,7 +86,7 @@ export async function searchTransaction(rawQuery: string | null) {
     return searchTable(
         "Transaction", TRANSACTION_FIELDS,
         q.search ?? [], q.searchLogic ?? "AND",
-        q.limit ?? 100, q.offset ?? 0,
+        q.limit ?? 100, q.offset ?? 0, q.sort,
     );
 }
 
@@ -93,6 +103,20 @@ export async function searchHashlookup(rawQuery: string | null) {
     const whereSql = where ? `WHERE ${where}` : "";
     const limit = q.limit ?? 100;
     const offset = q.offset ?? 0;
+    // Sort is restricted to the searchable HashLookups columns (the joined
+    // Transaction columns are display-only), qualified to the `h` alias.
+    const orderBy = buildOrderBy(q.sort, HASHLOOKUP_FIELDS, "`h`.`id` DESC", "h");
+
+    const fromJoin = `
+        FROM \`HashLookups\` h
+        LEFT JOIN \`Transaction\` t ON t.uuid = h.txn_uuid
+        ${whereSql}`;
+
+    const countSql = `SELECT COUNT(*) AS total ${fromJoin}`;
+    const countRows = (await db.unsafe(countSql, values)) as {
+        total: number | bigint | string;
+    }[];
+    const total = Number(countRows[0]?.total ?? 0);
 
     const sql = `
         SELECT h.*,
@@ -100,17 +124,15 @@ export async function searchHashlookup(rawQuery: string | null) {
                t.action AS txn_action,
                t.rcpt_count_accept, t.rcpt_count_tempfail, t.rcpt_count_reject,
                t.delay_data_post, t.data_bytes, t.mime_part_count
-        FROM \`HashLookups\` h
-        LEFT JOIN \`Transaction\` t ON t.uuid = h.txn_uuid
-        ${whereSql}
-        ORDER BY h.id DESC
+        ${fromJoin}
+        ORDER BY ${orderBy}
         LIMIT ? OFFSET ?`;
 
     const rows = await db.unsafe(sql, [...values, limit, offset]);
 
     return {
         status: "success" as const,
-        total: rows.length,
+        total,
         records: rows,
     };
 }

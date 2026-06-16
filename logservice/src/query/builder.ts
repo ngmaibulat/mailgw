@@ -4,10 +4,17 @@ export type SearchOperator =
 
 export type SearchLogic = "AND" | "OR";
 
+export type SortDirection = "asc" | "desc";
+
 export interface SearchParam {
     field: string;
     operator: SearchOperator;
     value: string | number | [string | number, string | number];
+}
+
+export interface SortParam {
+    field: string;
+    direction?: SortDirection;
 }
 
 export interface SearchQuery {
@@ -15,6 +22,7 @@ export interface SearchQuery {
     offset?: number;
     search?: SearchParam[];
     searchLogic?: SearchLogic;
+    sort?: SortParam[];
 }
 
 export interface WhereClause {
@@ -88,6 +96,34 @@ export function buildWhere(
         sql: conditions.length > 0 ? conditions.join(` ${logic} `) : "",
         values,
     };
+}
+
+// Build a safe `ORDER BY` body from caller-supplied sort params. Like
+// `buildWhere`, every field is checked against `allowedFields` (silently
+// dropped otherwise) and quoted, and the direction is normalised to the literal
+// `ASC`/`DESC` (default `DESC`) — so neither field names nor direction are ever
+// interpolated from raw input. Returns `fallback` when no valid sort remains,
+// so the SQL always has a deterministic order (callers pass e.g. "`id` DESC").
+export function buildOrderBy(
+    sort: SortParam[] | undefined,
+    allowedFields: Set<string>,
+    fallback: string,
+    tablePrefix?: string,
+): string {
+    if (!sort || sort.length === 0) return fallback;
+
+    const parts: string[] = [];
+    for (const item of sort) {
+        if (!allowedFields.has(item.field)) continue;
+        const col = tablePrefix
+            ? `\`${tablePrefix}\`.\`${item.field}\``
+            : `\`${item.field}\``;
+        const dir =
+            String(item.direction).toLowerCase() === "asc" ? "ASC" : "DESC";
+        parts.push(`${col} ${dir}`);
+    }
+
+    return parts.length > 0 ? parts.join(", ") : fallback;
 }
 
 export function parseSearchQuery(raw: string | null): SearchQuery {

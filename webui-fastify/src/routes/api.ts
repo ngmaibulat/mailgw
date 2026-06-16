@@ -5,7 +5,7 @@ import { parseSearchRequest } from "../validation/search.ts";
 
 type SearchQuery = { request?: string };
 
-// Read-only query endpoints backing the log-viewer grids (public/js/log-*.js).
+// Read-only query endpoints backing the AG Grid log viewers (public/js/grids/).
 // All are proxied to logservice, which owns the log data (event ingestion + the
 // MD5 filter live there). The webui no longer reads any log table directly.
 //
