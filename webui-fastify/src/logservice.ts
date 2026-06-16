@@ -11,13 +11,13 @@ const API_KEY = process.env.LOGSERVICE_API_KEY || "";
 // The frontend sends its search payload as `?request=<json>`; logservice reads
 // it from `?q=<json>`. Same JSON structure ({ search, searchLogic, limit,
 // offset }), just a different param name — so we forward it across.
-export async function search(path, rawRequest) {
+export async function search(path: string, rawRequest?: string): Promise<unknown> {
     const url = new URL(BASE + path);
     if (rawRequest) {
         url.searchParams.set("q", rawRequest);
     }
 
-    const headers = {};
+    const headers: Record<string, string> = {};
     if (API_KEY) {
         headers["X-API-Key"] = API_KEY;
     }

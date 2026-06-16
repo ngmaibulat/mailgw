@@ -1,4 +1,6 @@
-export default async function logRoutes(fastify) {
+import type { FastifyInstance } from "fastify";
+
+export default async function logRoutes(fastify: FastifyInstance) {
     fastify.get("/delivery", async (request, reply) => {
         return reply.view("log-delivery", {});
     });

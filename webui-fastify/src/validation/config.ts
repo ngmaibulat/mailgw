@@ -2,9 +2,9 @@ import { createInsertSchema } from "drizzle-zod";
 // drizzle-zod 0.8 emits zod v4 schemas, so extend/refine with the v4 API
 // (zod 3.25+ ships it at "zod/v4"). The app's other schemas use classic v3 —
 // they're independent, so the two coexist fine.
-import { z } from "zod/v4";
+import { z, type ZodError } from "zod/v4";
 
-import { relays, relayGroups } from "../../db/index.mjs";
+import { relays, relayGroups } from "../../db/index.ts";
 
 // drizzle-zod derives these from the table definitions. `.pick()` whitelists the
 // fields a form may set (no `id`/timestamps), and zod strips anything else — so
@@ -34,7 +34,7 @@ export const relayGroupInsert = createInsertSchema(relayGroups)
     });
 
 // Form bodies arrive as strings; coerce the numeric relay fields before parse.
-export function parseRelayBody(body) {
+export function parseRelayBody(body: Record<string, unknown>) {
     return relayInsert.safeParse({
         ...body,
         group_id: Number(body.group_id),
@@ -43,7 +43,7 @@ export function parseRelayBody(body) {
     });
 }
 
-export function zodErr(error) {
+export function zodErr(error: ZodError): string {
     return error.issues
         .map((i) => `${i.path.join(".") || "field"}: ${i.message}`)
         .join("; ");

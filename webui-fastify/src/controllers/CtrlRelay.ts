@@ -1,11 +1,15 @@
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { eq } from "drizzle-orm";
 
-import { db, relays } from "../../db/index.mjs";
-import { parseRelayBody, zodErr } from "../validation/config.mjs";
+import { db, relays } from "../../db/index.ts";
+import { parseRelayBody, zodErr } from "../validation/config.ts";
+
+type GroupParams = { group_id: string };
+type IdParams = { id: string };
 
 export class CtrlRelay {
-    async create(request, reply) {
-        let id = +request.params.group_id;
+    async create(request: FastifyRequest, reply: FastifyReply) {
+        const id = +(request.params as GroupParams).group_id;
 
         return reply.view("routing/relay-form", {
             action: "Create",
@@ -20,10 +24,10 @@ export class CtrlRelay {
         });
     }
 
-    async createHandle(request, reply) {
-        let group_id = +request.params.group_id;
+    async createHandle(request: FastifyRequest, reply: FastifyReply) {
+        const group_id = +(request.params as GroupParams).group_id;
 
-        const parsed = parseRelayBody(request.body);
+        const parsed = parseRelayBody(request.body as Record<string, unknown>);
         if (!parsed.success) {
             return reply.code(400).view("routing/relay-form", {
                 action: "Create",
@@ -37,26 +41,27 @@ export class CtrlRelay {
         return reply.redirect(`/config/relaygrp/${group_id}`);
     }
 
-    async edit(request, reply) {
-        let id = +request.params.id;
+    async edit(request: FastifyRequest, reply: FastifyReply) {
+        const id = +(request.params as IdParams).id;
 
         const [data] = await db.select().from(relays).where(eq(relays.id, id)).limit(1);
 
         return reply.view("routing/relay-form", {
             action: "Update",
             data: data,
-            group_id: data.group_id,
+            group_id: data?.group_id,
         });
     }
 
-    async editHandle(request, reply) {
-        let id = +request.params.id;
+    async editHandle(request: FastifyRequest, reply: FastifyReply) {
+        const id = +(request.params as IdParams).id;
+        const body = request.body as Record<string, unknown>;
 
-        const parsed = parseRelayBody(request.body);
+        const parsed = parseRelayBody(body);
         if (!parsed.success) {
             return reply.code(400).view("routing/relay-form", {
                 action: "Update",
-                group_id: Number(request.body.group_id),
+                group_id: Number(body.group_id),
                 data: request.body,
                 error: zodErr(parsed.error),
             });
@@ -73,19 +78,19 @@ export class CtrlRelay {
         return reply.redirect(`/config/relaygrp/${parsed.data.group_id}`);
     }
 
-    async delete(request, reply) {
-        let id = +request.params.id;
+    async delete(request: FastifyRequest, reply: FastifyReply) {
+        const id = +(request.params as IdParams).id;
 
         const [data] = await db.select().from(relays).where(eq(relays.id, id)).limit(1);
 
         return reply.view("routing/relay-delete", { data: data });
     }
 
-    async deleteHandle(request, reply) {
-        let id = +request.params.id;
+    async deleteHandle(request: FastifyRequest, reply: FastifyReply) {
+        const id = +(request.params as IdParams).id;
 
         const [data] = await db.select().from(relays).where(eq(relays.id, id)).limit(1);
-        const group_id = data.group_id;
+        const group_id = data?.group_id;
         await db.delete(relays).where(eq(relays.id, id));
 
         return reply.redirect(`/config/relaygrp/${group_id}`);

@@ -1,4 +1,4 @@
-import { db, exceptions } from "../db/index.mjs";
+import { db, exceptions } from "../db/index.ts";
 
 process.on("uncaughtException", async function (err) {
     console.error(new Date().toUTCString() + " Exception:", err.message);
@@ -11,6 +11,6 @@ process.on("uncaughtException", async function (err) {
             info: err.message,
         });
     } catch (e) {
-        console.error("failed to persist exception:", e.message);
+        console.error("failed to persist exception:", (e as Error).message);
     }
 });

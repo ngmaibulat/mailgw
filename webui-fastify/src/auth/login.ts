@@ -1,10 +1,12 @@
-import { uuidv4 } from "../adapter.js";
+import type { FastifyReply, FastifyRequest } from "fastify";
 
-import { checkAuth } from "./util.mjs";
-import { sessions } from "../globals.mjs";
-import { AuthInfo } from "../validation/login.mjs";
+import { uuidv4 } from "../adapter.ts";
 
-export async function login(request, reply) {
+import { checkAuth } from "./util.ts";
+import { sessions } from "../globals.ts";
+import { AuthInfo } from "../validation/login.ts";
+
+export async function login(request: FastifyRequest, reply: FastifyReply) {
     const body = AuthInfo.safeParse(request.body);
 
     if (!body.success) {

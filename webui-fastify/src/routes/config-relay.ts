@@ -1,7 +1,9 @@
-import { CtrlRelayGroup } from "../controllers/CtrlRelayGroup.js";
-import { CtrlRelay } from "../controllers/CtrlRelay.js";
+import type { FastifyInstance } from "fastify";
 
-export default async function relayConfigRoutes(fastify) {
+import { CtrlRelayGroup } from "../controllers/CtrlRelayGroup.ts";
+import { CtrlRelay } from "../controllers/CtrlRelay.ts";
+
+export default async function relayConfigRoutes(fastify: FastifyInstance) {
     const ctrlRelayGroup = new CtrlRelayGroup();
     const ctrlRelay = new CtrlRelay();
 

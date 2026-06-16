@@ -1,10 +1,10 @@
-import "./src/checkenv.mjs"; // loads + validates env; MUST be first so it runs before db/index.mjs is evaluated (ESM imports are hoisted)
+import "./src/checkenv.ts"; // loads + validates env; MUST be first so it runs before db/index.ts is evaluated (ESM imports are hoisted)
 
 import bcrypt from "bcryptjs";
-import { db, users, closeDb } from "./db/index.mjs";
+import { db, users, closeDb } from "./db/index.ts";
 
 if (process.argv.length < 4) {
-    console.error("Usage node create_user.mjs <username> <password>");
+    console.error("Usage node create_user.ts <username> <password>");
     process.exit(1);
 }
 
@@ -18,7 +18,7 @@ try {
     await db.insert(users).values({ email, hash });
     console.log("User created!");
 } catch (err) {
-    console.error("Error creating user:", err.message);
+    console.error("Error creating user:", (err as Error).message);
 }
 
 await closeDb();

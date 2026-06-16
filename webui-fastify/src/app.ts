@@ -1,33 +1,44 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { SecureServerOptions } from "node:http2";
 
 import Fastify from "fastify";
+import type { FastifyInstance, FastifyServerOptions } from "fastify";
 import fastifyStatic from "@fastify/static";
 import fastifyFormbody from "@fastify/formbody";
 import fastifyCookie from "@fastify/cookie";
 import fastifyView from "@fastify/view";
 import * as pug from "pug";
 
-import { checkSession } from "./middleware/checkSession.mjs";
-import { logger } from "./middleware/logger.mjs";
+import { checkSession } from "./middleware/checkSession.ts";
+import { logger } from "./middleware/logger.ts";
 
-import { login } from "./auth/login.mjs";
-import { logout } from "./auth/logout.mjs";
-import { profile } from "./auth/profile.mjs";
-import { formLogin } from "./forms/formLogin.mjs";
+import { login } from "./auth/login.ts";
+import { logout } from "./auth/logout.ts";
+import { profile } from "./auth/profile.ts";
+import { formLogin } from "./forms/formLogin.ts";
 
-import rootRoutes from "./routes/root.mjs";
-import logRoutes from "./routes/log.mjs";
-import apiRoutes from "./routes/api.mjs";
-import relayConfigRoutes from "./routes/config-relay.mjs";
+import rootRoutes from "./routes/root.ts";
+import logRoutes from "./routes/log.ts";
+import apiRoutes from "./routes/api.ts";
+import relayConfigRoutes from "./routes/config-relay.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
 const templateDir = process.env.TEMPLATE_DIR || path.join(projectRoot, "templates", "pug");
 const publicDir = path.join(projectRoot, "public");
 
-export async function build(opts = {}) {
-    const app = Fastify(opts);
+// `Fastify()` is overloaded per transport; `build()` is also called by index.ts
+// with `{ http2, https }` to serve native HTTP/2 over TLS. Widen the base
+// server options with the http2/https keys so callers can pass them; the
+// factory still inspects them at runtime to pick the right server.
+export type BuildOptions = FastifyServerOptions & {
+    http2?: boolean;
+    https?: SecureServerOptions;
+};
+
+export async function build(opts: BuildOptions = {}): Promise<FastifyInstance> {
+    const app = Fastify(opts as FastifyServerOptions);
 
     const cookieSecret = process.env.SIGN_COOKIE || "sign";
 

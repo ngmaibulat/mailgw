@@ -1,0 +1,30 @@
+{
+  // The webui runs under Node's native TypeScript type-stripping (Node 23.6+,
+  // stable in Node 26) — there is NO build step and NO emit. Node strips the
+  // types at load time and runs the result directly (see package.json scripts),
+  // so this config exists only for editor IntelliSense and `pnpm typecheck`.
+  //
+  // Two settings keep the source compatible with type-stripping:
+  //   - erasableSyntaxOnly: bans enums / namespaces / parameter properties —
+  //     anything Node can't strip without code generation.
+  //   - verbatimModuleSyntax: forces `import type` for type-only imports, so the
+  //     stripper never leaves a dangling runtime import of a type.
+  // Relative imports therefore carry the real on-disk extension (`./app.ts`),
+  // which allowImportingTsExtensions permits (valid because noEmit is set).
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["esnext"],
+
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true
+  },
+  "include": ["src/**/*.ts", "db/**/*.ts", "*.ts"]
+}

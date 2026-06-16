@@ -1,18 +1,18 @@
-import "./checkenv.mjs"; // validates required env vars; must run before the DB-connecting imports below
-import "./errhandler.mjs";
+import "./checkenv.ts"; // validates required env vars; must run before the DB-connecting imports below
+import "./errhandler.ts";
 import fs from "node:fs";
 
-import { build } from "./app.mjs";
-import { assertDbConnection } from "../db/index.mjs";
+import { build } from "./app.ts";
+import { assertDbConnection } from "../db/index.ts";
 
-const port = process.env.PORT || 4000;
+const port = Number(process.env.PORT) || 4000;
 
 // Fail fast if the DB is unreachable (the webui does not create/migrate schema).
 try {
     await assertDbConnection();
     console.log("DB Connection: OK");
 } catch (err) {
-    console.error("DB Connection: FAIL —", err.message);
+    console.error("DB Connection: FAIL —", (err as Error).message);
     process.exit(1);
 }
 

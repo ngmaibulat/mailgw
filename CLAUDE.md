@@ -50,14 +50,15 @@ bun test tests/             # run the unit test suite
 A pnpm workspace member (`mailgw-webui-fastify`). The root `pnpm webui*` scripts target it:
 
 ```bash
-pnpm webui:dev                             # nodemon (auto-reload)  → src/index.mjs  (alias for pnpm --filter mailgw-webui-fastify)
-pnpm webui:start                           # node src/index.mjs (production)
+pnpm webui:dev                             # nodemon (auto-reload)  → src/index.ts  (alias for pnpm --filter mailgw-webui-fastify)
+pnpm webui:start                           # node src/index.ts (production)
 pnpm webui dev                             # same as webui:dev (the `webui` alias forwards args)
 pnpm --filter mailgw-webui-fastify test    # node --test  (no test files yet)
-cd webui-fastify && node create_user.mjs <email> <password>   # seed a login user
+pnpm --filter mailgw-webui-fastify typecheck  # tsc --noEmit (types only; runtime needs no build)
+cd webui-fastify && node create_user.ts <email> <password>   # seed a login user
 ```
 
-> Serves **native HTTP/2** (Fastify `{ http2: true, https: { allowHTTP1: true } }`) and reads `./certs/server.{key,crt}` (relative to its working dir) on boot — it will crash without those certs. Generate them with the `certs/` project (see below); locally a `certs` symlink points at `certs/generated/webui`, and in Docker the same dir is mounted. Templates are **pug-only** (`TEMPLATE_DIR`, default `./templates/pug`). Log-viewer reads proxy to logservice via `LOGSERVICE_URL` (default `http://localhost:3000`) + optional `LOGSERVICE_API_KEY` (sent as `X-API-Key`).
+> Written in **TypeScript** (`.ts`) and run directly by Node 26 via native type-stripping — **no build step / no emit**; `tsconfig.json` is for IntelliSense + `pnpm typecheck` only (`typescript` is a devDep, not needed at runtime, so the prod Docker image omits it). Source uses `verbatimModuleSyntax` + `erasableSyntaxOnly`, so relative imports carry the real `.ts` extension (`import { build } from "./app.ts"`). Serves **native HTTP/2** (Fastify `{ http2: true, https: { allowHTTP1: true } }`) and reads `./certs/server.{key,crt}` (relative to its working dir) on boot — it will crash without those certs. Generate them with the `certs/` project (see below); locally a `certs` symlink points at `certs/generated/webui`, and in Docker the same dir is mounted. Templates are **pug-only** (`TEMPLATE_DIR`, default `./templates/pug`). Log-viewer reads proxy to logservice via `LOGSERVICE_URL` (default `http://localhost:3000`) + optional `LOGSERVICE_API_KEY` (sent as `X-API-Key`).
 
 ### webui-express (legacy reference)
 
@@ -185,14 +186,14 @@ Data access uses raw SQL via Bun's `Bun.SQL` (`src/db.ts`, MySQL adapter) — th
 
 ### webui-fastify (active admin UI)
 
-Fastify app (`webui-fastify/src/app.mjs#build()`, started over native HTTP/2 by `src/index.mjs`). ESM throughout (`.mjs`). Composition:
+Fastify app (`webui-fastify/src/app.ts#build()`, started over native HTTP/2 by `src/index.ts`). **TypeScript ESM throughout (`.ts`)**, run directly via Node's native type-stripping (no build step — see the webui-fastify command section above). Composition:
 - **Plugins** registered at the root (inherited by all routes): `@fastify/formbody` (urlencoded), `@fastify/cookie` (signed, via `SIGN_COOKIE`), `@fastify/view` (pug), `@fastify/static` (`public/`, `index:false` so the dashboard owns `/`).
 - **Encapsulation = the auth boundary.** Three nested scopes: (1) root — static assets, public & unlogged; (2) a "logged" child that adds the `logger` `onRequest` hook and the public auth routes (`/login`, `/logout`, `/profile`); (3) a "secured" child inside it that adds the `checkSession` `preHandler` hook, then registers the protected routes. Hooks only apply to their own scope + descendants, so static stays unlogged and auth routes stay ungated — replacing Express's ordering-dependent `app.use()` chain.
 - **Routes** (`src/routes/`): `root` (dashboard), `log` (viewer pages), `api` (`/api/{connection,delivery,queue,hashlookups}` — **read-only**, proxied), `config-relay` (`/config/relay/*`, `/config/relaygrp/*` CRUD; `/config/routing` is a `notimpl` stub). There is **no ingest API and no `/filter/md5`** — those live in logservice.
-- **Read proxy** (`src/logservice.mjs`): the `/api/*` GETs forward the frontend's `?request=<json>` as logservice's `?q=<json>` and pass the response through verbatim (identical `{status,total,records}` shape). Path remaps: `queue` → logservice `/api/transaction`, `hashlookups` → `/api/hashlookup`. The webui **does not query the log tables directly**.
-- **Auth** (`src/auth/`): session login (`bcryptjs` vs `User.hash`), `/login` `/logout` `/profile`. Sessions are **in-memory** (`src/globals.mjs`); `checkSession` unsigns the cookie via `request.unsignCookie`. `/profile` is a `notimpl` stub. Users are seeded only via `create_user.mjs`.
-- **Data**: **Drizzle ORM** (MariaDB via `mysql2`), **scoped to only what the webui owns** — `users`, `relays`, `relayGroups`, `logs`, `exceptions` (`db/schema.mjs`). The webui **does not own/migrate this schema** — logservice's SQL migrations create the tables; `db/schema.mjs` just describes the columns to query (no `drizzle-kit`/DDL here). `db/index.mjs` exports the `db` instance (lazy `mysql2` pool, no import-time connect) + the table refs + `assertDbConnection()` (pinged at startup in `src/index.mjs`). `src/adapter.js` is now just a tiny re-export of uuid/bcrypt/zod.
-- **Config validation**: `src/validation/config.mjs` uses **drizzle-zod** (`createInsertSchema`) to derive relay/relaygroup insert schemas from the Drizzle tables, `.pick()`ed to form fields (prevents mass-assignment) and `.extend()`ed to require `name`/`host`. Note drizzle-zod 0.8 emits **zod v4** schemas, so that file imports `zod/v4` (the rest of the app uses classic v3 — they coexist). Relay edit uses a "leave blank to keep" rule so editing never wipes the stored `auth_pass`.
+- **Read proxy** (`src/logservice.ts`): the `/api/*` GETs forward the frontend's `?request=<json>` as logservice's `?q=<json>` and pass the response through verbatim (identical `{status,total,records}` shape). Path remaps: `queue` → logservice `/api/transaction`, `hashlookups` → `/api/hashlookup`. The webui **does not query the log tables directly**.
+- **Auth** (`src/auth/`): session login (`bcryptjs` vs `User.hash`), `/login` `/logout` `/profile`. Sessions are **in-memory** (`src/globals.ts`); `checkSession` unsigns the cookie via `request.unsignCookie`. `/profile` is a `notimpl` stub. Users are seeded only via `create_user.ts`.
+- **Data**: **Drizzle ORM** (MariaDB via `mysql2`), **scoped to only what the webui owns** — `users`, `relays`, `relayGroups`, `logs`, `exceptions` (`db/schema.ts`). The webui **does not own/migrate this schema** — logservice's SQL migrations create the tables; `db/schema.ts` just describes the columns to query (no `drizzle-kit`/DDL here). `db/index.ts` exports the `db` instance (lazy `mysql2` pool, no import-time connect) + the table refs + `assertDbConnection()` (pinged at startup in `src/index.ts`). `src/adapter.ts` is now just a tiny re-export of uuid/bcrypt/zod.
+- **Config validation**: `src/validation/config.ts` uses **drizzle-zod** (`createInsertSchema`) to derive relay/relaygroup insert schemas from the Drizzle tables, `.pick()`ed to form fields (prevents mass-assignment) and `.extend()`ed to require `name`/`host`. Note drizzle-zod 0.8 emits **zod v4** schemas, so that file imports `zod/v4` (the rest of the app uses classic v3 — they coexist). Relay edit uses a "leave blank to keep" rule so editing never wipes the stored `auth_pass`.
 
 Improvement backlog: `webui-fastify/TODO.md`.
 

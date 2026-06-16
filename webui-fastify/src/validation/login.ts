@@ -1,4 +1,4 @@
-import { zod as u } from "../adapter.js";
+import { zod as u } from "../adapter.ts";
 
 export const AuthInfo = u.object({
     email: u.string().min(4).max(50).email(),

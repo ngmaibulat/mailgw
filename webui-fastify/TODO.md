@@ -1,8 +1,8 @@
 # webui-fastify TODO
 
-Improvement backlog for the active admin UI (Fastify + Sequelize, pug-only,
-native HTTP/2). Items derived from reading the current code; file refs are
-where the work lands.
+Improvement backlog for the active admin UI (Fastify + Drizzle, pug-only,
+native HTTP/2, **TypeScript**). Items derived from reading the current code;
+file refs are where the work lands.
 
 **Legend:** `[x]` done · `[~]` partial / stubbed · `[ ]` not started
 
@@ -10,14 +10,15 @@ where the work lands.
 
 ## Snapshot — what exists today
 
-- Native HTTP/2 server (`src/index.mjs`, Fastify `{ http2, https: { allowHTTP1 } }`); requires `./certs/server.{key,crt}`.
+- **TypeScript** throughout (`.ts`), run directly by Node 26 via native type-stripping — no build step / no emit. `tsconfig.json` (`verbatimModuleSyntax` + `erasableSyntaxOnly`) is for `pnpm typecheck` + editor only; relative imports carry the real `.ts` extension. `typescript`/`@types/*` are devDeps, omitted from the prod image.
+- Native HTTP/2 server (`src/index.ts`, Fastify `{ http2, https: { allowHTTP1 } }`); requires `./certs/server.{key,crt}`.
 - Session login (`/login`, bcrypt vs `User.hash`), in-memory session store, `checkSession` preHandler guard.
-- Encapsulated auth scopes in `src/app.mjs` (public static → logged → secured).
+- Encapsulated auth scopes in `src/app.ts` (public static → logged → secured).
 - Log viewer pages (pug): connection, delivery, mails, lookups.
-- Read-only `/api/{connection,delivery,queue,hashlookups}` — **proxied to logservice** (`src/logservice.mjs`); no ingest API, no `/filter/md5`.
+- Read-only `/api/{connection,delivery,queue,hashlookups}` — **proxied to logservice** (`src/logservice.ts`); no ingest API, no `/filter/md5`.
 - Relay & relay-group CRUD under `/config` (`CtrlRelay`, `CtrlRelayGroup`), validated with drizzle-zod.
-- **Drizzle ORM** (`db/schema.mjs` + `db/index.mjs`), scoped to what the webui owns: `users`, `relays`, `relayGroups`, `logs`, `exceptions`. The webui does not own/migrate the schema (logservice does).
-- CLI user tools: `create_user.mjs`, `check_user.mjs`.
+- **Drizzle ORM** (`db/schema.ts` + `db/index.ts`), scoped to what the webui owns: `users`, `relays`, `relayGroups`, `logs`, `exceptions`. The webui does not own/migrate the schema (logservice does).
+- CLI user tools: `create_user.ts`, `check_user.ts`.
 
 ---
 
