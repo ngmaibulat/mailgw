@@ -1,7 +1,9 @@
 extends ../page.pug
 block content
-    div(id="content" class="p-3")
-        h3 Something went wrong
-        p.text-muted Error #{statusCode}
-        p= message
-        a.btn.btn-primary(href="/") Return home
+  .notice
+    p.notice-code Error #{statusCode}
+    h1 Something went wrong
+    p= message
+    a.btn.btn-accent(href='/')
+      +icon('arrow')
+      span Return home

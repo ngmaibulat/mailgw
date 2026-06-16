@@ -1,35 +1,30 @@
 extends ../page.pug
 block content
-    .row
-        .table-title.col-sm-12.col-md-12.col-lg-12.col-xl-11(style='margin: 20px')
-            h3(style='display: inline')
-                b Relay Group: &nbsp;
-                span=data.name
-            a.btn.btn-success(href=`/config/relay/create/${data.id}`)
-                i.material-icons &#xE147;
-                span Add Relay
-    .row.mt-3
-        .col-1
-        .col-sm-10.col-md-8.col-lg-8.col-xl-8
-            table#rows.table.table-bordered.border-secondary.nogrid
-                thead
-                    tr
-                        th ID
-                        th Host
-                        th Port
-                        th Priority
-                        th User
-                        th Action
-                tbody
-                    each row in relays
-                        tr
-                            td=row.id
-                            td=row.host
-                            td=row.port
-                            td=row.priority
-                            td=row.auth_user
-                            td
-                                a.edit(href=`/config/relay/edit/${row.id}`)
-                                    i.material-icons(data-toggle='tooltip' title='Edit') &#xE254;
-                                a.delete(href=`/config/relay/delete/${row.id}`)
-                                    i.material-icons(data-toggle='tooltip' title='Delete') &#xE872;
+  +pageHeader('Relay group', data.name)
+    a.btn.btn-accent(href=`/config/relay/create/${data.id}`)
+      +icon('plus')
+      span Add relay
+  table.data-table
+    thead
+      tr
+        th.num ID
+        th Host
+        th.num Port
+        th.num Priority
+        th User
+        th.col-actions Actions
+    tbody
+      if !relays || !relays.length
+        tr.empty-row: td(colspan='6') No relays in this group yet.
+      each row in relays
+        tr
+          td.num= row.id
+          td.mono= row.host
+          td.num= row.port
+          td.num= row.priority
+          td.mono= row.auth_user
+          td.col-actions
+            a.act.act-edit(href=`/config/relay/edit/${row.id}` title='Edit')
+              +icon('edit')
+            a.act.act-del(href=`/config/relay/delete/${row.id}` title='Delete')
+              +icon('trash')

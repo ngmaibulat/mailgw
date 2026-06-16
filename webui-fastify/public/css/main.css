@@ -1,147 +1,832 @@
-table.table td a {
-    font-weight: bold;
-    color: #566787;
-    display: inline-block;
-    text-decoration: none;
-    outline: none !important;
+/* ===========================================================================
+   NGM Mail Router — operator console theme
+   Dark, dense, monospace-for-data. One token system; everything below is
+   derived from it. This file is loaded AFTER bootstrap.css + w2ui-1.5.css, so
+   equal-specificity rules here win the cascade and re-skin both to the theme.
+   =========================================================================== */
+
+:root {
+    /* surfaces */
+    --bg: #0e1116;
+    --surface: #161b22;
+    --surface-2: #1c2230;
+    --surface-3: #232b39;
+
+    /* lines */
+    --border: #2a313c;
+    --border-strong: #3a434f;
+
+    /* text */
+    --ink: #e6edf3;
+    --ink-dim: #9ba7b4;
+    --ink-faint: #6e7b8a;
+
+    /* signals */
+    --accent: #3fb950; /* primary / delivered */
+    --accent-2: #2ea043;
+    --on-accent: #07120a;
+    --info: #58a6ff;
+    --warn: #d29922;
+    --danger: #f85149;
+    --danger-2: #da3633;
+
+    /* type */
+    --sans:
+        system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+        sans-serif;
+    --mono:
+        ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo,
+        Consolas, monospace;
+
+    --radius: 6px;
+    --radius-lg: 10px;
+    --shadow: 0 1px 0 rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+
+    --maxw: 1180px;
 }
-table.table td a:hover {
-    color: #2196f3;
-}
-table.table td a.edit {
-    color: #ffc107;
-}
-table.table td a.delete {
-    color: #f44336;
+
+* {
+    box-sizing: border-box;
 }
 
 body {
-    color: #566787;
-    background: #f5f5f5;
-    font-family: "Varela Round", sans-serif;
-    /* font-size: 13px; */
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
 }
 
-.table-title {
-    background: #435d7d;
+a {
+    color: var(--info);
+    text-decoration: none;
+}
+a:hover {
+    color: #79bbff;
+    text-decoration: underline;
+}
+
+/* Monospace for the things operators read by glyph: IPs, hashes, ports,
+   timestamps, hostnames. Applied via .mono where it matters. */
+.mono {
+    font-family: var(--mono);
+    font-variant-ligatures: none;
+}
+
+/* --- top bar ------------------------------------------------------------- */
+
+nav.topbar {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 52px;
+    padding: 0 1.25rem;
+    background: linear-gradient(180deg, #171d26, #12161d);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+}
+
+.brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+    color: var(--ink);
+    margin-right: 1.25rem;
+}
+.brand:hover {
+    color: var(--ink);
+    text-decoration: none;
+}
+.brand .brand-mark {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    background: linear-gradient(135deg, var(--accent), #1f6f33);
+    color: var(--on-accent);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.brand .brand-mark svg {
+    width: 16px;
+    height: 16px;
+}
+.brand b {
+    font-weight: 700;
+}
+.brand .brand-dim {
+    color: var(--ink-faint);
+    font-weight: 500;
+}
+
+/* Only the two top-level nav lists are flex rows. Use the child combinator so
+   this does NOT hit the nested `ul.dropdown-menu` (which must stay
+   display:none until Bootstrap adds `.show`) — otherwise the submenu items
+   render as an always-visible row under the bar. */
+nav.topbar > ul {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+nav.topbar > ul li {
+    list-style: none;
+}
+nav.topbar .nav-right {
+    margin-left: auto;
+}
+
+nav.topbar .nav-link,
+nav.topbar .dropdown-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.7rem;
+    border-radius: var(--radius);
+    color: var(--ink-dim);
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+}
+nav.topbar .nav-link:hover,
+nav.topbar .dropdown-toggle:hover {
+    color: var(--ink);
+    background: var(--surface-2);
+    text-decoration: none;
+}
+nav.topbar .nav-link.active {
+    color: var(--ink);
+    background: var(--surface-3);
+}
+nav.topbar .dropdown-toggle::after {
+    margin-left: 0.1rem;
+    opacity: 0.6;
+}
+
+/* dropdown menus (bootstrap structure, re-skinned) */
+.dropdown-menu {
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 0.3rem;
+    min-width: 11rem;
+}
+.dropdown-menu .dropdown-item {
+    color: var(--ink-dim);
+    border-radius: 4px;
+    padding: 0.4rem 0.6rem;
+    font-size: 13.5px;
+}
+.dropdown-menu .dropdown-item:hover,
+.dropdown-menu .dropdown-item:focus {
+    background: var(--surface-3);
+    color: var(--ink);
+}
+
+/* --- page shell ---------------------------------------------------------- */
+
+.page {
+    max-width: var(--maxw);
+    margin: 0 auto;
+    padding: 1.5rem 1.25rem 3rem;
+}
+.page-wide {
+    max-width: none;
+    padding: 1.25rem 1.25rem 1.5rem;
+}
+
+.page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 0 0 1.25rem;
+    padding-bottom: 0.9rem;
+    border-bottom: 1px solid var(--border);
+}
+.page-title {
+    font-size: 1.25rem;
+    font-weight: 650;
+    margin: 0;
+    letter-spacing: -0.01em;
+}
+.page-title .page-title-sub {
+    color: var(--ink-faint);
+    font-weight: 500;
+}
+.page-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+.page-eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-faint);
+    margin: 0 0 0.3rem;
+}
+
+/* --- inline svg icons ---------------------------------------------------- */
+
+.ic {
+    width: 1em;
+    height: 1em;
+    flex: 0 0 auto;
+    vertical-align: -0.125em;
+}
+
+/* --- buttons (re-skin bootstrap .btn) ------------------------------------ */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--ink);
+    font-size: 13.5px;
+    font-weight: 550;
+    line-height: 1.2;
+    cursor: pointer;
+    transition:
+        background 0.12s ease,
+        border-color 0.12s ease;
+}
+.btn:hover {
+    background: var(--surface-3);
+    color: var(--ink);
+    text-decoration: none;
+}
+.btn:focus-visible {
+    outline: 2px solid var(--info);
+    outline-offset: 2px;
+}
+.btn .ic {
+    font-size: 1.05em;
+}
+
+.btn-accent,
+.btn-success,
+.btn-primary {
+    background: var(--accent);
+    border-color: var(--accent-2);
+    color: var(--on-accent);
+}
+.btn-accent:hover,
+.btn-success:hover,
+.btn-primary:hover {
+    background: var(--accent-2);
+    color: var(--on-accent);
+}
+
+.btn-danger {
+    background: var(--danger);
+    border-color: var(--danger-2);
     color: #fff;
-    padding: 15px 30px;
-    border-radius: 3px 3px 0 0;
 }
-.table-title h2 {
-    margin: 5px 0 0;
-    font-size: 24px;
-}
-.table-title .btn-group {
-    float: right;
-}
-.table-title .btn {
+.btn-danger:hover {
+    background: var(--danger-2);
     color: #fff;
-    float: right;
+}
+
+.btn-ghost {
+    background: transparent;
+    border-color: var(--border-strong);
+    color: var(--ink-dim);
+}
+.btn-ghost:hover {
+    background: var(--surface-2);
+    color: var(--ink);
+}
+
+/* --- cards (re-skin bootstrap .card) ------------------------------------- */
+
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: none;
+    color: var(--ink);
+}
+.card-body {
+    padding: 1.25rem 1.35rem;
+}
+.card-title {
+    margin: 0 0 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+/* --- forms (re-skin bootstrap form controls) ---------------------------- */
+
+.form-card {
+    max-width: 560px;
+}
+
+.form-field {
+    margin-bottom: 1rem;
+}
+.form-field label,
+.form-label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-dim);
+    letter-spacing: 0.01em;
+}
+
+.form-control {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0.7rem;
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    color: var(--ink);
+    font-size: 14px;
+    font-family: var(--sans);
+    transition:
+        border-color 0.12s ease,
+        box-shadow 0.12s ease;
+}
+.form-control::placeholder {
+    color: var(--ink-faint);
+}
+.form-control:focus {
+    outline: none;
+    border-color: var(--info);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.18);
+}
+.form-control:disabled {
+    color: var(--ink-faint);
+    background: var(--surface);
+    cursor: not-allowed;
+}
+input[type="number"].form-control {
+    font-family: var(--mono);
+}
+
+.form-actions {
+    margin-top: 1.25rem;
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* --- alerts -------------------------------------------------------------- */
+
+.alert {
+    padding: 0.65rem 0.9rem;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    margin-bottom: 1rem;
+    font-size: 13.5px;
+}
+.alert-danger {
+    background: rgba(248, 81, 73, 0.12);
+    border-color: rgba(248, 81, 73, 0.4);
+    color: #ff9c96;
+}
+.alert-success {
+    background: rgba(63, 185, 80, 0.12);
+    border-color: rgba(63, 185, 80, 0.4);
+    color: #7ee787;
+}
+
+/* --- data tables (config/users lists) ------------------------------------ */
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    font-size: 13.5px;
+}
+.data-table thead th {
+    text-align: left;
+    padding: 0.6rem 0.9rem;
+    background: var(--surface-2);
+    color: var(--ink-faint);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+.data-table tbody td {
+    padding: 0.6rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--ink);
+    vertical-align: middle;
+}
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+.data-table tbody tr:hover {
+    background: var(--surface-2);
+}
+.data-table td.num,
+.data-table td.mono,
+.data-table th.num {
+    font-family: var(--mono);
+    color: var(--ink-dim);
+}
+.data-table .col-actions {
+    width: 1%;
+    white-space: nowrap;
+    text-align: right;
+}
+
+/* row action icon-buttons */
+.act {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius);
+    color: var(--ink-faint);
+    border: 1px solid transparent;
+}
+.act:hover {
+    text-decoration: none;
+    border-color: var(--border-strong);
+    background: var(--surface-3);
+}
+.act-edit:hover {
+    color: var(--warn);
+}
+.act-del:hover {
+    color: var(--danger);
+}
+
+.empty-row td {
+    text-align: center;
+    color: var(--ink-faint);
+    padding: 1.6rem;
+    font-style: italic;
+}
+
+/* --- dashboard ----------------------------------------------------------- */
+
+.dash-hero {
+    margin-bottom: 1.75rem;
+}
+.dash-hero h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.25rem;
+}
+.dash-hero p {
+    color: var(--ink-dim);
+    margin: 0;
+}
+
+.feed-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+.feed-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+}
+.feed-head .feed-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
     font-size: 13px;
-    border: none;
-    min-width: 50px;
-    border-radius: 2px;
-    border: none;
-    outline: none !important;
-    margin-left: 10px;
-    margin-right: 20px;
 }
-.table-title .btn i {
-    float: left;
-    font-size: 21px;
-    margin-right: 5px;
+.feed-head .live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.6);
+    animation: pulse 2s infinite;
 }
-.table-title .btn span {
-    float: left;
-    margin-top: 2px;
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.5);
+    }
+    70% {
+        box-shadow: 0 0 0 6px rgba(63, 185, 80, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(63, 185, 80, 0);
+    }
 }
+.feed-empty {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: var(--ink-faint);
+}
+
+/* section quick-launch grid */
+.section-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.9rem;
+}
+.section-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1rem 1.1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    color: var(--ink);
+    transition:
+        border-color 0.12s ease,
+        transform 0.12s ease;
+}
+.section-card:hover {
+    text-decoration: none;
+    border-color: var(--border-strong);
+    transform: translateY(-1px);
+    color: var(--ink);
+}
+.section-card .sc-icon {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: var(--surface-3);
+    color: var(--info);
+    flex: 0 0 auto;
+}
+.section-card .sc-icon svg {
+    width: 18px;
+    height: 18px;
+}
+.section-card .sc-title {
+    font-weight: 600;
+    margin: 0;
+}
+.section-card .sc-desc {
+    color: var(--ink-faint);
+    font-size: 12.5px;
+    margin: 0.1rem 0 0;
+}
+
+/* --- status pills (delivery response, tls, etc.) ------------------------- */
+
+.pill {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    font-family: var(--mono);
+    border: 1px solid var(--border-strong);
+    color: var(--ink-dim);
+}
+.pill-ok {
+    background: rgba(63, 185, 80, 0.14);
+    border-color: rgba(63, 185, 80, 0.4);
+    color: #7ee787;
+}
+.pill-warn {
+    background: rgba(210, 153, 34, 0.14);
+    border-color: rgba(210, 153, 34, 0.4);
+    color: #e3b341;
+}
+.pill-err {
+    background: rgba(248, 81, 73, 0.14);
+    border-color: rgba(248, 81, 73, 0.4);
+    color: #ff9c96;
+}
+
+/* --- profile ------------------------------------------------------------- */
 
 .profile-identity {
     display: flex;
     align-items: center;
     gap: 1.25rem;
-    background: #fff;
-    border-radius: 8px;
-    padding: 1.5rem 1.75rem;
-    box-shadow: 0 1px 3px rgba(67, 93, 125, 0.12);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+    max-width: 560px;
 }
-
 .profile-avatar {
     flex: 0 0 auto;
-    width: 64px;
-    height: 64px;
+    width: 56px;
+    height: 56px;
     border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 28px;
+    display: grid;
+    place-items: center;
+    font-size: 24px;
     font-weight: 700;
-    color: #fff;
-    background: linear-gradient(135deg, #435d7d, #2196f3);
+    color: var(--on-accent);
+    background: linear-gradient(135deg, var(--accent), #1f6f33);
     text-transform: uppercase;
     user-select: none;
 }
-
-.profile-meta {
-    min-width: 0;
-}
-
 .profile-email {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
-    color: #435d7d;
     word-break: break-all;
 }
-
 .profile-role {
     margin-top: 2px;
-    font-size: 13px;
-    color: #8a93a5;
+    font-size: 11px;
+    color: var(--ink-faint);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.08em;
 }
 
-table.nogrid td {
-    padding: 1em;
+/* --- log-viewer grid wrapper -------------------------------------------- */
+
+.log-grid {
+    height: calc(100vh - 150px);
+    min-height: 420px;
 }
 
-table.nogrid th {
-    padding: 1em;
+/* error / notimpl */
+.notice {
+    max-width: 520px;
+    margin: 4rem auto;
+    text-align: center;
+}
+.notice .notice-code {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+}
+.notice h1 {
+    font-size: 1.3rem;
+    margin: 0.4rem 0 0.6rem;
+}
+.notice p {
+    color: var(--ink-dim);
 }
 
-nav > ul > li > a {
-    text-decoration: none;
-    color: white;
+/* ===========================================================================
+   w2ui 1.5 grid — dark re-skin. w2ui ships a light theme; these override the
+   key surfaces so the log viewers match the console instead of looking bolted
+   on. Data rows are set in mono for IP/hash/timestamp legibility.
+   =========================================================================== */
+
+.w2ui-grid,
+.w2ui-grid * {
+    box-sizing: content-box;
+}
+.w2ui-grid {
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    color: var(--ink);
+}
+.w2ui-grid .w2ui-grid-header {
+    background: var(--surface-2) !important;
+    color: var(--ink) !important;
+    border-bottom: 1px solid var(--border) !important;
+    font-weight: 600;
+}
+.w2ui-grid .w2ui-grid-toolbar {
+    background: var(--surface) !important;
+    border-bottom: 1px solid var(--border) !important;
+}
+.w2ui-grid .w2ui-grid-body {
+    background: var(--surface) !important;
+}
+.w2ui-grid .w2ui-grid-columns,
+.w2ui-grid .w2ui-grid-columns td,
+.w2ui-grid .w2ui-column-header,
+.w2ui-grid td.w2ui-head {
+    background: var(--surface-2) !important;
+    color: var(--ink-dim) !important;
+    border-color: var(--border) !important;
+}
+.w2ui-grid .w2ui-grid-records td.w2ui-grid-data {
+    border-color: var(--border) !important;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 12.5px;
+}
+.w2ui-grid .w2ui-grid-records tr.w2ui-even td {
+    background: var(--surface) !important;
+}
+.w2ui-grid .w2ui-grid-records tr.w2ui-odd td {
+    background: var(--surface-2) !important;
+}
+.w2ui-grid .w2ui-grid-records tr:hover td,
+.w2ui-grid .w2ui-grid-records tr.w2ui-selected td {
+    background: var(--surface-3) !important;
+    color: var(--ink) !important;
+}
+.w2ui-grid .w2ui-grid-footer {
+    background: var(--surface-2) !important;
+    color: var(--ink-dim) !important;
+    border-top: 1px solid var(--border) !important;
+}
+.w2ui-grid .w2ui-col-number,
+.w2ui-grid .w2ui-col-select {
+    background: var(--bg) !important;
+    color: var(--ink-faint) !important;
 }
 
-nav > ul > li > a:hover {
-    text-decoration: none;
-    color: orange;
+/* --- w2ui toolbar search ------------------------------------------------- */
+/* w2ui's defaults assume a light toolbar: the search input is white/black and
+   the magnifier + button text are dim grays that vanish on the dark theme.
+   Re-skin the search field to the theme and turn the magnifier into a clearly
+   visible accent "Search" button. */
+.w2ui-grid .w2ui-toolbar-search .w2ui-search-all {
+    background-color: var(--bg) !important;
+    color: var(--ink) !important;
+    border: 1px solid var(--border-strong) !important;
+    /* extra left pad so text clears the wider magnifier button below */
+    padding-left: 28px !important;
+}
+.w2ui-grid .w2ui-toolbar-search .w2ui-search-all::placeholder {
+    color: var(--ink-faint);
+}
+.w2ui-grid .w2ui-toolbar-search .w2ui-search-down {
+    margin-top: -8px !important;
+    margin-left: 0 !important;
+    width: 20px;
+    height: 19px;
+    border-radius: 4px;
+    background: var(--accent);
+    color: var(--on-accent);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    z-index: 1;
+}
+.w2ui-grid .w2ui-toolbar-search .w2ui-search-down:hover {
+    background: var(--accent-2);
+}
+/* color the magnifier glyph (w2ui renders it via an icon-font span/:before) */
+.w2ui-grid .w2ui-toolbar-search .w2ui-search-down *,
+.w2ui-grid .w2ui-toolbar-search .w2ui-search-down:before {
+    color: var(--on-accent) !important;
+}
+.w2ui-grid .w2ui-toolbar-search .w2ui-search-clear {
+    color: var(--ink-faint);
 }
 
-nav > ul > li > a.active {
-    text-decoration: none;
-    color: red;
+/* generic toolbar buttons (columns / reload / etc.) — lift off the dark bar */
+.w2ui-grid .w2ui-toolbar table.w2ui-button .w2ui-tb-text {
+    color: var(--ink) !important;
+}
+.w2ui-grid .w2ui-toolbar table.w2ui-button .w2ui-tb-image > span {
+    color: var(--ink-dim) !important;
+}
+.w2ui-grid .w2ui-toolbar table.w2ui-button.over {
+    background-color: var(--surface-3) !important;
+    border-color: var(--border-strong) !important;
+}
+.w2ui-grid .w2ui-toolbar table.w2ui-button.over .w2ui-tb-text {
+    color: var(--ink) !important;
 }
 
-.nav-link.active {
-    text-decoration: none;
-    color: red;
+/* responsive: collapse top bar wrapping gracefully */
+@media (max-width: 640px) {
+    nav.topbar {
+        height: auto;
+        flex-wrap: wrap;
+        padding: 0.5rem 0.75rem;
+    }
+    .page-head {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 }
 
-nav > ul > li {
-    list-style: none;
-}
-
-nav {
-    background-color: black;
-    padding-top: 10px;
-}
-
-body {
-    /* background-color: #6c757d; */
-    background-color: #f1f1f1;
-    overflow-x: hidden;
-    overflow-y: auto;
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation: none !important;
+        transition: none !important;
+    }
 }

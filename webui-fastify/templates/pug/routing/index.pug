@@ -1,32 +1,27 @@
 extends ../page.pug
 block content
-    .row
-        .table-title.col-sm-12.col-md-12.col-lg-12.col-xl-11(style='margin: 20px')
-            h3(style='display: inline')
-                b Relay Groups
-            a.btn.btn-success(href='/config/relaygrp/create')
-                i.material-icons &#xE147;
-                span Add
-    .row.mt-3
-        .col-1
-        .col-sm-10.col-md-8.col-lg-8.col-xl-8
-            table#rows.table.table-bordered.border-secondary.nogrid
-                thead
-                    tr
-                        th ID
-                        th Name
-                        th Description
-                        th Action
-                tbody
-                    each row in data
-                        tr
-                            td=row.id
-                            td
-                                a(href=`/config/relaygrp/${row.id}`)=row.name
-                            td=row.description
-                            td
-                                a.edit(href=`/config/relaygrp/edit/${row.id}`)
-                                    i.material-icons(data-toggle='tooltip' title='Edit') &#xE254;
-                                a.delete(href=`/config/relaygrp/delete/${row.id}`)
-                                    i.material-icons(data-toggle='tooltip' title='Delete') &#xE872;
-
+  +pageHeader('Relay groups')
+    a.btn.btn-accent(href='/config/relaygrp/create')
+      +icon('plus')
+      span Add group
+  table.data-table
+    thead
+      tr
+        th.num ID
+        th Name
+        th Description
+        th.col-actions Actions
+    tbody
+      if !data || !data.length
+        tr.empty-row: td(colspan='4') No relay groups yet.
+      each row in data
+        tr
+          td.num= row.id
+          td
+            a(href=`/config/relaygrp/${row.id}`)= row.name
+          td= row.description
+          td.col-actions
+            a.act.act-edit(href=`/config/relaygrp/edit/${row.id}` title='Edit')
+              +icon('edit')
+            a.act.act-del(href=`/config/relaygrp/delete/${row.id}` title='Delete')
+              +icon('trash')

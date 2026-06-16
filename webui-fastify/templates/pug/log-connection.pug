@@ -1,6 +1,5 @@
 extends page.pug
 block content
-    #content.p-3
-        h3 Connections
-        #grid(style='height: 800px;')
-    script(type='text/javascript' src='/js/log-connection.js')
+  +pageHeader('Connections')
+  #grid.log-grid
+  script(type='text/javascript' src='/js/log-connection.js')

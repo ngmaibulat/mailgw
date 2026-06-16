@@ -1,17 +1,86 @@
 extends page.pug
+
 block content
-    div(id="content" class="p-3")
-        h3 NGM Mail Router
-        ul
-            li(class="p-1")
-                a(href="/log/delivery") Email Delivery
-            li(class="p-1")
-                a(href="/config/relaygrp") Relays
-            li(class="p-1")
-                a(href="/config/routing") Routing
-            li(class="p-1")
-                a(href="/users") Users
-            li(class="p-1")
-                a(href="/profile") Profile
-            li(class="p-1")
-                a(href="/logout") Logout
+  section.dash-hero
+    p.page-eyebrow SMTP gateway console
+    h1 Mail Router
+    p Inbound mail, routing, and attachment filtering at a glance.
+
+  //- Live feed of the most recent deliveries (newest first). The most
+  //- characteristic thing in this product is mail actually moving, so it leads.
+  .feed-card
+    .feed-head
+      span.feed-label
+        span.live-dot
+        | Recent deliveries
+      a.btn.btn-ghost(href='/log/delivery')
+        +icon('arrow')
+        span Open log
+    if feed.unavailable
+      .feed-empty Delivery log is unavailable. Check that logservice is reachable.
+    else if !feed.rows.length
+      .feed-empty No deliveries recorded yet.
+    else
+      table.data-table
+        thead
+          tr
+            th Time
+            th Sender
+            th Recipients
+            th Relay
+            th Response
+        tbody
+          each row in feed.rows
+            -
+              var resp = String(row.response || '');
+              var code = (resp.match(/\d{3}/) || [''])[0];
+              var pill = code.charAt(0) === '2' ? 'pill-ok' : (code.charAt(0) === '4' ? 'pill-warn' : (code.charAt(0) === '5' ? 'pill-err' : ''));
+            tr
+              td.mono= row.dt ? String(row.dt).slice(0, 19) : '—'
+              td.mono= row.sender || '—'
+              td.mono= row.rcpt_list || '—'
+              td.mono= row.host || '—'
+              td
+                if code
+                  span.pill(class=pill)= code
+                else
+                  | —
+
+  p.page-eyebrow Sections
+  .section-grid
+    a.section-card(href='/log/delivery')
+      span.sc-icon
+        +icon('activity')
+      span
+        p.sc-title Delivery log
+        p.sc-desc Outcome of every relayed message
+    a.section-card(href='/log/connection')
+      span.sc-icon
+        +icon('plug')
+      span
+        p.sc-title Connections
+        p.sc-desc Inbound SMTP connections
+    a.section-card(href='/log/lookups')
+      span.sc-icon
+        +icon('hash')
+      span
+        p.sc-title Hash lookups
+        p.sc-desc Attachment MD5 filter checks
+    a.section-card(href='/config/relaygrp')
+      span.sc-icon
+        +icon('mail')
+      span
+        p.sc-title Relays
+        p.sc-desc Relay groups and targets
+    a.section-card(href='/config/routing')
+      span.sc-icon
+        +icon('route')
+      span
+        p.sc-title Routing
+        p.sc-desc Sender/recipient route rules
+    a.section-card(href='/users')
+      span.sc-icon
+        +icon('users')
+      span
+        p.sc-title Users
+        p.sc-desc Console login accounts
