@@ -1,4 +1,8 @@
-import type { FastifyReply, FastifyRequest, HookHandlerDoneFunction } from "fastify";
+import type {
+    FastifyReply,
+    FastifyRequest,
+    HookHandlerDoneFunction,
+} from "fastify";
 
 import { db, logs } from "../../db/index.ts";
 
@@ -7,8 +11,8 @@ import { db, logs } from "../../db/index.ts";
 // dropped unknown attributes; Drizzle would reject them).
 export function logger(
     request: FastifyRequest,
-    reply: FastifyReply,
-    done: HookHandlerDoneFunction
+    _reply: FastifyReply,
+    done: HookHandlerDoneFunction,
 ): void {
     const h = request.headers;
     const row = {
@@ -24,9 +28,11 @@ export function logger(
         user: "-",
     };
 
-    Promise.resolve(db.insert(logs).values(row)).catch((err) => console.error(err));
+    Promise.resolve(db.insert(logs).values(row)).catch((err) =>
+        console.error(err),
+    );
 
-    if (process.env.NODE_ENV == "development") {
+    if (process.env.NODE_ENV === "development") {
         console.log(row);
     }
 

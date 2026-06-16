@@ -13,17 +13,20 @@ const REQUIRED = [
     { name: "DB_NAME", hint: "database name" },
     { name: "DB_USER", hint: "database user" },
     { name: "DB_PASS", hint: "database password" },
+    { name: "SIGN_COOKIE", hint: "cookie signing secret (random string)" },
 ];
 
 const missing = REQUIRED.filter(({ name }) => !process.env[name]);
 
 if (missing.length > 0) {
-    console.error("\nwebui cannot start: missing required environment variables\n");
+    console.error(
+        "\nwebui cannot start: missing required environment variables\n",
+    );
     for (const { name, hint } of missing) {
         console.error(`  - ${name}  (${hint})`);
     }
     console.error(
-        "\nSet them in a .env file (cwd) or the environment, then start again.\n"
+        "\nSet them in a .env file (cwd) or the environment, then start again.\n",
     );
     process.exit(1);
 }

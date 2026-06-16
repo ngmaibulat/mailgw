@@ -1,7 +1,7 @@
 import { db, exceptions } from "../db/index.ts";
 
-process.on("uncaughtException", async function (err) {
-    console.error(new Date().toUTCString() + " Exception:", err.message);
+process.on("uncaughtException", async (err) => {
+    console.error(`${new Date().toUTCString()} Exception:`, err.message);
     console.error(err.stack);
 
     try {

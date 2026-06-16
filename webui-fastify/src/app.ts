@@ -25,7 +25,8 @@ import relayConfigRoutes from "./routes/config-relay.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
-const templateDir = process.env.TEMPLATE_DIR || path.join(projectRoot, "templates", "pug");
+const templateDir =
+    process.env.TEMPLATE_DIR || path.join(projectRoot, "templates", "pug");
 const publicDir = path.join(projectRoot, "public");
 
 // `Fastify()` is overloaded per transport; `build()` is also called by index.ts

@@ -7,7 +7,7 @@ import { relayGroupInsert, zodErr } from "../validation/config.ts";
 type IdParams = { id: string };
 
 export class CtrlRelayGroup {
-    async create(request: FastifyRequest, reply: FastifyReply) {
+    async create(_request: FastifyRequest, reply: FastifyReply) {
         return reply.view("routing/relaygrp-form", {
             action: "Create",
             data: {
@@ -58,7 +58,10 @@ export class CtrlRelayGroup {
             });
         }
 
-        await db.update(relayGroups).set(parsed.data).where(eq(relayGroups.id, id));
+        await db
+            .update(relayGroups)
+            .set(parsed.data)
+            .where(eq(relayGroups.id, id));
         return reply.redirect("/config/relaygrp");
     }
 
@@ -84,7 +87,10 @@ export class CtrlRelayGroup {
     async details(request: FastifyRequest, reply: FastifyReply) {
         const id = +(request.params as IdParams).id;
 
-        const relayRows = await db.select().from(relays).where(eq(relays.group_id, id));
+        const relayRows = await db
+            .select()
+            .from(relays)
+            .where(eq(relays.group_id, id));
         const [data] = await db
             .select()
             .from(relayGroups)
@@ -97,7 +103,7 @@ export class CtrlRelayGroup {
         });
     }
 
-    async index(request: FastifyRequest, reply: FastifyReply) {
+    async index(_request: FastifyRequest, reply: FastifyReply) {
         const data = await db.select().from(relayGroups);
 
         return reply.view("routing/index", { data: data });

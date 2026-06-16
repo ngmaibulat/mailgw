@@ -5,13 +5,19 @@
 // shape the w2ui grids (public/js/log-*.js) expect, so responses pass through
 // verbatim.
 
-const BASE = (process.env.LOGSERVICE_URL || "http://localhost:3000").replace(/\/+$/, "");
+const BASE = (process.env.LOGSERVICE_URL || "http://localhost:3000").replace(
+    /\/+$/,
+    "",
+);
 const API_KEY = process.env.LOGSERVICE_API_KEY || "";
 
 // The frontend sends its search payload as `?request=<json>`; logservice reads
 // it from `?q=<json>`. Same JSON structure ({ search, searchLogic, limit,
 // offset }), just a different param name — so we forward it across.
-export async function search(path: string, rawRequest?: string): Promise<unknown> {
+export async function search(
+    path: string,
+    rawRequest?: string,
+): Promise<unknown> {
     const url = new URL(BASE + path);
     if (rawRequest) {
         url.searchParams.set("q", rawRequest);

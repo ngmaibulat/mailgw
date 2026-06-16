@@ -1,4 +1,10 @@
-import { mysqlTable, int, varchar, text, datetime } from "drizzle-orm/mysql-core";
+import {
+    mysqlTable,
+    int,
+    varchar,
+    text,
+    datetime,
+} from "drizzle-orm/mysql-core";
 
 // The webui does NOT own or migrate this schema — logservice's SQL migrations
 // create these tables. This file just describes the columns Drizzle queries,
@@ -8,7 +14,9 @@ import { mysqlTable, int, varchar, text, datetime } from "drizzle-orm/mysql-core
 // with no DB default, so we fill them app-side: $defaultFn on insert,
 // $onUpdate on update — the faithful Drizzle equivalent.
 const timestamps = {
-    createdAt: datetime("createdAt", { mode: "date" }).notNull().$defaultFn(() => new Date()),
+    createdAt: datetime("createdAt", { mode: "date" })
+        .notNull()
+        .$defaultFn(() => new Date()),
     updatedAt: datetime("updatedAt", { mode: "date" })
         .notNull()
         .$defaultFn(() => new Date())

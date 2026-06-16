@@ -34,7 +34,7 @@ export default async function relayConfigRoutes(fastify: FastifyInstance) {
 
     ///////////////////////////////////////////////////////
 
-    fastify.get("/routing", async (request, reply) => {
+    fastify.get("/routing", async (_request, reply) => {
         return reply.view("util/notimpl", {});
     });
 }

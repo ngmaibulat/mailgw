@@ -44,7 +44,11 @@ export class CtrlRelay {
     async edit(request: FastifyRequest, reply: FastifyReply) {
         const id = +(request.params as IdParams).id;
 
-        const [data] = await db.select().from(relays).where(eq(relays.id, id)).limit(1);
+        const [data] = await db
+            .select()
+            .from(relays)
+            .where(eq(relays.id, id))
+            .limit(1);
 
         return reply.view("routing/relay-form", {
             action: "Update",
@@ -81,7 +85,11 @@ export class CtrlRelay {
     async delete(request: FastifyRequest, reply: FastifyReply) {
         const id = +(request.params as IdParams).id;
 
-        const [data] = await db.select().from(relays).where(eq(relays.id, id)).limit(1);
+        const [data] = await db
+            .select()
+            .from(relays)
+            .where(eq(relays.id, id))
+            .limit(1);
 
         return reply.view("routing/relay-delete", { data: data });
     }
@@ -89,7 +97,11 @@ export class CtrlRelay {
     async deleteHandle(request: FastifyRequest, reply: FastifyReply) {
         const id = +(request.params as IdParams).id;
 
-        const [data] = await db.select().from(relays).where(eq(relays.id, id)).limit(1);
+        const [data] = await db
+            .select()
+            .from(relays)
+            .where(eq(relays.id, id))
+            .limit(1);
         const group_id = data?.group_id;
         await db.delete(relays).where(eq(relays.id, id));
 

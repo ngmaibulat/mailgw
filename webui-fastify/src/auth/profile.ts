@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-export async function profile(request: FastifyRequest, reply: FastifyReply) {
+export async function profile(_request: FastifyRequest, reply: FastifyReply) {
     return reply.view("util/notimpl", {});
 }
