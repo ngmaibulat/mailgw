@@ -40,8 +40,58 @@ describe("schemaDelivery", () => {
         expect(result.success).toBe(false);
     });
 
-    it("rejects invalid domain for host", () => {
-        const result = schemaDelivery.safeParse({ ...validPayload, host: "notadomain" });
+    // Changed deliberately: `host` used to require an FQDN, which rejected the
+    // delivery event for every successful relay to a single-label host —
+    // `localhost`, a container name like `dev-mailhog`, or a bare IP. Because
+    // the gateway posts these events asynchronously, the 400 was invisible and
+    // the audit row was simply lost.
+    it("accepts a single-label relay host", () => {
+        for (const host of ["localhost", "dev-mailhog", "mailhog"]) {
+            const result = schemaDelivery.safeParse({ ...validPayload, host });
+            expect(result.success).toBe(true);
+        }
+    });
+
+    it("accepts an IP literal as host", () => {
+        for (const host of ["127.0.0.1", "203.0.113.10"]) {
+            const result = schemaDelivery.safeParse({ ...validPayload, host });
+            expect(result.success).toBe(true);
+        }
+    });
+
+    it("still rejects a malformed host", () => {
+        for (const host of ["", "has space", "under_score", "-leading-dash"]) {
+            const result = schemaDelivery.safeParse({ ...validPayload, host });
+            expect(result.success).toBe(false);
+        }
+    });
+
+    // The null sender (MAIL FROM:<>) is what every bounce and DSN uses.
+    // Requiring a valid address here rejected the gateway's own DSN traffic.
+    it("accepts the null sender", () => {
+        const result = schemaDelivery.safeParse({ ...validPayload, sender: "" });
+        expect(result.success).toBe(true);
+    });
+
+    it("accepts IPv6 addresses", () => {
+        for (const ip of ["::1", "2001:db8::1", "::ffff:127.0.0.1"]) {
+            const result = schemaDelivery.safeParse({ ...validPayload, ip });
+            expect(result.success).toBe(true);
+        }
+    });
+
+    it("accepts an empty ip when the peer was never reached", () => {
+        const result = schemaDelivery.safeParse({ ...validPayload, ip: "" });
+        expect(result.success).toBe(true);
+    });
+
+    // rcpt_list and rcpt_accepted stay single-valued: the gateway emits one
+    // event per recipient rather than a comma-joined list.
+    it("rejects a comma-joined recipient list", () => {
+        const result = schemaDelivery.safeParse({
+            ...validPayload,
+            rcpt_accepted: "a@example.com,b@example.com",
+        });
         expect(result.success).toBe(false);
     });
 

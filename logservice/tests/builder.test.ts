@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { buildOrderBy, buildWhere } from "../src/query/builder";
+import { buildOrderBy, buildWhere, parseSearchQuery } from "../src/query/builder";
 
 const FIELDS = new Set(["sender", "dt", "host", "delay", "tls"]);
 
@@ -108,6 +108,91 @@ describe("buildWhere", () => {
             "AND", FIELDS
         );
         expect(sql).toBe("");
+    });
+
+    // The join operator used to be interpolated straight from caller-supplied
+    // JSON, so `searchLogic: "OR 1=1 OR"` was a filter-bypass SQL injection.
+    const TWO_PARAMS = [
+        { field: "sender", operator: "is", value: "a@a.com" },
+        { field: "host",   operator: "is", value: "smtp.example.com" },
+    ] as const;
+
+    it("never interpolates a hostile logic value into the sql", () => {
+        const { sql, values } = buildWhere(
+            [...TWO_PARAMS],
+            // biome-ignore lint/suspicious/noExplicitAny: testing bad input
+            "OR 1=1 OR" as any,
+            FIELDS
+        );
+        expect(sql).toBe("`sender` = ? AND `host` = ?");
+        expect(sql).not.toContain("1=1");
+        expect(values).toEqual(["a@a.com", "smtp.example.com"]);
+    });
+
+    it("normalises the logic operator case-insensitively", () => {
+        for (const logic of ["or", "Or", "OR"]) {
+            // biome-ignore lint/suspicious/noExplicitAny: testing bad input
+            const { sql } = buildWhere([...TWO_PARAMS], logic as any, FIELDS);
+            expect(sql).toBe("`sender` = ? OR `host` = ?");
+        }
+    });
+
+    it("falls back to AND for junk, empty and missing logic", () => {
+        // biome-ignore lint/suspicious/noExplicitAny: testing bad input
+        for (const logic of ["junk", "", null, undefined] as any[]) {
+            const { sql } = buildWhere([...TWO_PARAMS], logic, FIELDS);
+            expect(sql).toBe("`sender` = ? AND `host` = ?");
+        }
+    });
+
+    it("blocks subquery and time-based injection payloads", () => {
+        const payloads = [
+            "AND `id` IN (SELECT id FROM Users WHERE hash LIKE 'a%') AND",
+            "AND (SELECT SLEEP(5)) AND",
+            "UNION SELECT",
+        ];
+        for (const logic of payloads) {
+            // biome-ignore lint/suspicious/noExplicitAny: testing bad input
+            const { sql } = buildWhere([...TWO_PARAMS], logic as any, FIELDS);
+            expect(sql).toBe("`sender` = ? AND `host` = ?");
+        }
+    });
+});
+
+describe("parseSearchQuery", () => {
+    it("returns {} for missing or malformed input", () => {
+        expect(parseSearchQuery(null)).toEqual({});
+        expect(parseSearchQuery("")).toEqual({});
+        expect(parseSearchQuery("{not json")).toEqual({});
+    });
+
+    it("returns {} for non-object json", () => {
+        expect(parseSearchQuery("null")).toEqual({});
+        expect(parseSearchQuery('"str"')).toEqual({});
+        expect(parseSearchQuery("[1,2]")).toEqual({});
+        expect(parseSearchQuery("42")).toEqual({});
+    });
+
+    it("strips a hostile searchLogic down to AND", () => {
+        const q = parseSearchQuery('{"searchLogic":"OR 1=1 OR"}');
+        expect(q.searchLogic).toBe("AND");
+    });
+
+    it("preserves a valid searchLogic and the rest of the query", () => {
+        const q = parseSearchQuery(
+            '{"searchLogic":"OR","limit":50,"offset":10,' +
+                '"search":[{"field":"sender","operator":"is","value":"a@a.com"}]}'
+        );
+        expect(q.searchLogic).toBe("OR");
+        expect(q.limit).toBe(50);
+        expect(q.offset).toBe(10);
+        expect(q.search).toEqual([
+            { field: "sender", operator: "is", value: "a@a.com" },
+        ]);
+    });
+
+    it("defaults searchLogic to AND when absent", () => {
+        expect(parseSearchQuery('{"limit":10}').searchLogic).toBe("AND");
     });
 });
 

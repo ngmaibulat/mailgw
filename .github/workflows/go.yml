@@ -1,0 +1,51 @@
+name: mailgw-go
+
+on:
+    push:
+        paths:
+            - "mailgw-go/**"
+            - ".github/workflows/go.yml"
+    pull_request:
+        paths:
+            - "mailgw-go/**"
+            - ".github/workflows/go.yml"
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: mailgw-go
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-go@v5
+              with:
+                  go-version: "1.26"
+                  cache-dependency-path: mailgw-go/go.sum
+
+            - name: Verify formatting
+              run: |
+                  unformatted=$(gofmt -l ./cmd ./internal)
+                  if [ -n "$unformatted" ]; then
+                      echo "These files need gofmt:"
+                      echo "$unformatted"
+                      exit 1
+                  fi
+
+            - name: Vet
+              run: go vet ./...
+
+            - name: Test
+              run: go test -race ./...
+
+            - name: Build
+              run: go build ./...
+
+            # The shipped config must stay loadable; this is the same check an
+            # operator runs before a reload.
+            - name: Validate shipped configuration
+              run: |
+                  go run ./cmd/mailgw-go check -config ./testdata/config
+                  go run ./cmd/mailgw-go check -config ../mailgw-go/config

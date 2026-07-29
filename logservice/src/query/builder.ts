@@ -92,8 +92,16 @@ export function buildWhere(
         }
     }
 
+    // Re-normalise the join operator to a literal instead of trusting the
+    // declared `SearchLogic` type. `logic` originates from caller-supplied JSON
+    // (`?q=`), and a type annotation is erased at runtime — interpolating it
+    // directly is a SQL injection. Anything that isn't exactly "OR" degrades to
+    // the safer, more restrictive "AND". Same reasoning as the direction
+    // handling in `buildOrderBy` below; don't "simplify" this back.
+    const op = String(logic).toUpperCase() === "OR" ? "OR" : "AND";
+
     return {
-        sql: conditions.length > 0 ? conditions.join(` ${logic} `) : "",
+        sql: conditions.length > 0 ? conditions.join(` ${op} `) : "",
         values,
     };
 }
@@ -126,11 +134,32 @@ export function buildOrderBy(
     return parts.length > 0 ? parts.join(", ") : fallback;
 }
 
+// Parse the caller-supplied `?q=` JSON. Deliberately not a bare
+// `JSON.parse(raw) as SearchQuery`: the cast asserts a shape the input never
+// has to honour, so `null`, a string, or an array would flow on and blow up
+// downstream. Anything that isn't a plain object becomes `{}` (the callers'
+// defaults then apply), and `searchLogic` is narrowed to the union it claims to
+// be. `buildWhere` re-normalises the operator anyway — this is a second layer,
+// not the one that makes injection impossible.
 export function parseSearchQuery(raw: string | null): SearchQuery {
     if (!raw) return {};
+
+    let parsed: unknown;
     try {
-        return JSON.parse(raw) as SearchQuery;
+        parsed = JSON.parse(raw);
     } catch {
         return {};
     }
+
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        return {};
+    }
+
+    const q = parsed as SearchQuery;
+
+    return {
+        ...q,
+        searchLogic:
+            String(q.searchLogic).toUpperCase() === "OR" ? "OR" : "AND",
+    };
 }

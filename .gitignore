@@ -108,3 +108,11 @@ dist
 
 # TernJS port file
 .tern-port
+
+# Go / mailgw-go
+# (the bare `queue` and `log` patterns above already match at any depth; these
+# cover the build artefacts Go adds)
+mailgw-go/bin/
+mailgw-go/dist/
+mailgw-go/coverage.out
+*.test

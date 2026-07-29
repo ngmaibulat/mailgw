@@ -1,0 +1,60 @@
+# mailgw-go configuration for the compose stack.
+#
+# Replaces Haraka's connection.ini, smtp.ini, log.ini, me, smtpgreeting and
+# host_list. Values mirror mailgw/config/connection.ini.
+
+hostname: devbook.local
+local_domains: [devbook.local, ngm.dev]
+
+listen:
+    # 2525, not 25: the container runs as a non-root user. Compose maps it.
+    - addr: "0.0.0.0:2525"
+
+max:
+    bytes: 26214400 # connection.ini [max] bytes
+    line_length: 512 # connection.ini [max] line_length
+    recipients: 100
+    received_headers: 100 # connection.ini [headers] max_received
+    header_lines: 1000 # connection.ini [headers] max_lines
+
+smtputf8: true # connection.ini [main] smtputf8
+inactivity_timeout: 300s
+
+log:
+    level: info
+    format: json
+
+outbound:
+    concurrency: 10
+    per_group_connections: 5
+    # Ceiling on how long the scheduler sleeps, not a fixed tick: queued work
+    # wakes it exactly when due and a new message wakes it at once. This only
+    # bounds how long an envelope placed in q/ by hand goes unnoticed.
+    poll_interval: 5s
+    spool_dir: /opt/mailgw-go/queue
+    backoff: [60s, 5m, 15m, 30m, 1h, 2h, 4h, 8h]
+    max_lifetime: 96h
+    delay_warning_after: 4h
+    jitter: 0.15
+    connect_timeout: 30s
+    data_timeout: 10m
+
+dsn:
+    enabled: true
+    return: headers
+    postmaster: postmaster@devbook.local
+
+attach:
+    # Parity with the disabled #ngmFilterAttach entry in mailgw/config/plugins.
+    enabled: false
+    url: http://logservice:3000/filter/md5
+    timeout: 3s
+    fail: closed
+    include_inline: true
+
+events:
+    timeout: 3s
+    retries: 3
+    buffer_size: 4096
+    senders: 4
+    api_key_env: API_KEY

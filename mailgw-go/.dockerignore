@@ -1,0 +1,12 @@
+# Build artefacts and local state — never part of the image context.
+bin/
+dist/
+queue/
+coverage.out
+*.test
+
+# Docs and scripts are not needed to build the binary.
+README.md
+TODO.md
+container-*.sh
+bump.sh

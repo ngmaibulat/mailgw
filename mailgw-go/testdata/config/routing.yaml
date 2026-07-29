@@ -1,0 +1,67 @@
+# Routing and policy rules.
+#
+# When this file is present it replaces routing.json. Without it, routing.json
+# is read in its Haraka format and transpiled into exactly these structures, so
+# an existing deployment keeps working untouched:
+#
+#     mailgw-go convert-routing routing.json > routing.yaml
+#
+# `mailgw-go check` validates every field name, operator, type, regex, CIDR and
+# relay group before the gateway will start, and `mailgw-go explain` shows which
+# rule wins for a given envelope. `mailgw-go fields` lists what can be matched.
+
+version: 1
+
+# What happens to a recipient no route matched. Haraka's npRoute.js answered
+# DENYSOFT "No route found", which holds mail rather than bouncing it.
+default_action: { action: tempfail, code: 451, enhanced: "4.7.1", message: "No route found" }
+
+# ── policy ──────────────────────────────────────────────────────────────────
+# Rules that decide whether to accept, not where to send. Each is evaluated at
+# the earliest stage its fields allow, so a per-recipient refusal arrives at
+# RCPT rather than after the whole message has been transferred.
+policy:
+    - name: "reject mail loops"
+      # msg.received_count is a DATA-stage field, so this fires at end-of-DATA.
+      match: { field: msg.received_count, op: gt, value: 100 }
+      then:
+          - { action: reject, code: 554, enhanced: "5.4.6", message: "Too many hops" }
+
+    - name: "no mail to role accounts from outside"
+      priority: 20
+      match:
+          all:
+              - { field: rcpt.local, op: in, values: ["root", "admin", "webmaster"] }
+              - not: { field: conn.remote_ip, op: in_cidr, values: ["127.0.0.0/8", "10.0.0.0/8", "::1/128"] }
+      then:
+          - { action: reject, code: 550, enhanced: "5.7.1", message: "Not accepted from this network" }
+
+# ── routes ──────────────────────────────────────────────────────────────────
+# Evaluated once per recipient, lowest priority number first, first match wins.
+# A message whose recipients resolve differently is split into one envelope per
+# destination — the thing the four-field table could not do at all.
+routes:
+    - name: "bounces via a dedicated pool"
+      priority: 20
+      match: { field: mail.is_null_sender, op: eq, value: true }
+      then:
+          - { action: add_header, name: "X-NGM-Class", value: "bounce" }
+          - { action: relay, relay: Outbound }
+
+    - name: "internal mail to Exchange"
+      priority: 100
+      match:
+          any:
+              - { field: rcpt.domain, op: eq, value: "ngm.dev" }
+              # `*` stops at a dot for domain-shaped fields, so this covers
+              # mail.ngm.dev but not ngm.dev.evil.com. The old
+              # `rcpt_domain: "ngm.dev"` matched neither.
+              - { field: rcpt.domain, op: glob, value: "*.ngm.dev" }
+      then:
+          - { action: relay, relay: Exchange }
+
+    - name: "everything else"
+      priority: 1000
+      match: { always: true }
+      then:
+          - { action: relay, relay: Outbound }

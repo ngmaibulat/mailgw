@@ -117,5 +117,27 @@ services:
             - "8025:8025" # MailHog web interface
             - "1025:1025" # MailHog SMTP server
 
+    # The Go rewrite of the Haraka gateway, running SIDE BY SIDE with `mailgw`
+    # on a separate port until parity is proven. Haraka keeps port 25; this
+    # takes 2525. Both write to the same logservice — their uuid spaces are
+    # disjoint, and mailgw-go stamps `X-NGM-Gateway: go` on what it relays.
+    mailgw-go:
+        image: ngmaibulat/mailgw-go:latest
+        container_name: dev-mailgw-go
+        restart: unless-stopped
+        ports:
+            - "2525:2525"
+        environment:
+            API_KEY: ${API_KEY:-}
+        volumes:
+            - ./mailgw-go/config:/opt/mailgw-go/config:ro
+            # A named volume, not a bind: the image runs as uid 65532 and would
+            # otherwise need the host directory chowned to match.
+            - mailgw_go_queue:/opt/mailgw-go/queue
+        depends_on:
+            logservice:
+                condition: service_started
+
 volumes:
     mariadb_data:
+    mailgw_go_queue:

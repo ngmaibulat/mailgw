@@ -18,9 +18,12 @@
     "test:e2e:api": "bun test tests/api",
     "test:e2e:smtp": "bun test tests/smtp",
     "build:mailgw": "bash mailgw/container-push.sh",
+    "build:mailgw-go": "bash mailgw-go/container-push.sh",
     "build:logservice": "bash logservice/container-push.sh",
     "build:webui": "bash webui-fastify/container-push.sh",
-    "build:containers": "pnpm run build:mailgw && pnpm run build:logservice && pnpm run build:webui"
+    "build:containers": "pnpm run build:mailgw && pnpm run build:mailgw-go && pnpm run build:logservice && pnpm run build:webui",
+    "test:mailgw-go": "cd mailgw-go && go test ./...",
+    "test:e2e:smtp:go": "SMTP_PORT=2525 bun test tests/smtp"
   },
   "author": "Aibulat",
   "license": "MIT",
