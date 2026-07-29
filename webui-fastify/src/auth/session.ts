@@ -7,7 +7,9 @@ import { getSession } from "../globals.ts";
 // unsign the raw cookie via @fastify/cookie's request.unsignCookie (same as the
 // checkSession gate). Shared by `checkSession` (the auth boundary) and handlers
 // that need to know *who* is logged in (e.g. /profile).
-export function sessionEmail(request: FastifyRequest): string | null {
+export async function sessionEmail(
+    request: FastifyRequest,
+): Promise<string | null> {
     const raw = request.cookies?.session;
     const unsigned = raw
         ? request.unsignCookie(raw)
@@ -16,5 +18,5 @@ export function sessionEmail(request: FastifyRequest): string | null {
     if (!sessionID) {
         return null;
     }
-    return getSession(sessionID)?.email ?? null;
+    return (await getSession(sessionID))?.email ?? null;
 }

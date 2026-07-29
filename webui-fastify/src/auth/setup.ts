@@ -32,7 +32,9 @@ export async function setupSubmit(
     }
 
     try {
-        await createUser(body.data.email, body.data.pass);
+        // The first account must be an admin — otherwise nobody can approve a
+        // gateway or deploy configuration, and /setup is already closed.
+        await createUser(body.data.email, body.data.pass, "admin");
     } catch (err) {
         request.log.error(err);
         return reply.view("forms/setup", {

@@ -1,0 +1,21 @@
+extends ../page.pug
+block content
+  +pageHeader('Forget gateway')
+  .alert.alert-danger
+    | This deletes the gateway's record, its configuration versions and its
+    | deploy history. The gateway itself keeps running its last-good
+    | configuration, and will re-register as
+    strong  pending
+    |  the next time it starts.
+  .card.form-card
+    .card-body
+      form#frm(method='POST')
+        .form-field
+          label(for='name') Name
+          input#name.form-control(type='text' value=`${data.name || ''}` disabled='')
+        .form-field
+          label(for='fingerprint') Fingerprint
+          input#fingerprint.form-control(type='text' value=`${data.fingerprint}` disabled='')
+        .form-actions
+          button#btn_submit.btn.btn-danger(type='submit') Forget
+          a.btn.btn-ghost(href=`/gateways/${data.id}`) Cancel

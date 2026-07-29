@@ -72,12 +72,18 @@ block content
       span
         p.sc-title Relays
         p.sc-desc Relay groups and targets
-    a.section-card(href='/config/routing')
+    a.section-card(href='/gateways')
+      span.sc-icon
+        +icon('plug')
+      span
+        p.sc-title Gateways
+        p.sc-desc Registered instances and deploys
+    a.section-card(href='/config/profiles')
       span.sc-icon
         +icon('route')
       span
-        p.sc-title Routing
-        p.sc-desc Sender/recipient route rules
+        p.sc-title Config profiles
+        p.sc-desc Rulesets, allowlists, server settings
     a.section-card(href='/users')
       span.sc-icon
         +icon('users')

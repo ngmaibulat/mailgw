@@ -1,0 +1,29 @@
+extends ../page.pug
+block content
+  +pageHeader(`${action} config profile`)
+  if error
+    .alert.alert-danger= error
+  .card.form-card
+    .card-body
+      form#frm(method='POST')
+        .form-field
+          label(for='kind') Kind
+          select#kind.form-control(name='kind' required='')
+            each k in kinds
+              option(value=k selected=(data.kind === k))= k
+        .form-field
+          label(for='name') Name
+          input#name.form-control(type='text' name='name' value=`${data.name || ''}` required='')
+        .form-field
+          label(for='description') Description
+          input#description.form-control(type='text' name='description' value=`${data.description || ''}`)
+        .form-field
+          label(for='body') Body
+          textarea#body.form-control(name='body' rows='22' spellcheck='false' required='')= data.body || ''
+          small.muted
+            | Stored verbatim and validated by the gateway, which keeps its
+            | last-good configuration and reports the reason if this fails to
+            | compile.
+        .form-actions
+          button#btn_submit.btn.btn-accent(type='submit')= action
+          a.btn.btn-ghost(href='/config/profiles') Cancel

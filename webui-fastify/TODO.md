@@ -10,6 +10,11 @@ Last reconciled against source: **2026-07-29** (see `todo-report-2026-07-29.md`)
 
 ---
 
+> **Update:** the webui is now also the **Central Management** server for
+> mailgw-go gateways (mailgw-go M3). Items 10 and 11 below are **done** — they
+> were prerequisites for a fleet console — and the config-bridge epic (12–16) is
+> **closed as superseded**. See the bottom of this file.
+
 ## At a glance — 17 open (16 `[ ]` + 1 `[~]`), 17 done
 
 | # | Open item | Where | Size |
@@ -23,14 +28,21 @@ Last reconciled against source: **2026-07-29** (see `todo-report-2026-07-29.md`)
 | 7 | Delete vestigial uuid/bcrypt re-export | `src/adapter.ts` | XS |
 | 8 | `tests/` outside typecheck **and** lint; one test already stale | `tsconfig.json`, `biome.json`, `tests/checkSession.test.ts:20` | S |
 | 9 | No coverage for controllers, `purgeOldLogs`, session expiry, `errhandler`, `db/` | — | M |
-| 10 | `[~]` Sessions in-memory — restart logs everyone out, breaks with >1 replica | `src/globals.ts:9` | M |
-| 11 | Roles / per-user scoping — any logged-in user can manage users + config | `db/schema.ts` | M |
-| 12–16 | **Config-bridge epic** — `Routes` table → `/config/routing` CRUD → logservice `GET /api/config/routing` → `npRoute` pull w/ file fallback → `auth_pass` encryption | cross-service | L |
+| ~~10~~ | ~~Sessions in-memory~~ — **done**: DB-backed `Sessions` table (migration 021), same `getSession`/`deleteSession`/`sweepSessions` surface, swappable store for tests | `src/globals.ts` | M |
+| ~~11~~ | ~~Roles / per-user scoping~~ — **done**: `Users.role` (migration 020) + `requireAdmin` on gateway approval and every config mutation | `src/auth/roles.ts` | M |
+| ~~12–16~~ | ~~Config-bridge epic~~ — **closed as superseded** by Central Management | cross-service | L |
 
-Items 1–5 are the cheap, high-value pass. Item 12–16 is the only work that
-changes what the product does: **today the relay config UI does not affect mail
-flow at all** (see the next section). `auth_pass` encryption is stage 5 of that
-epic, not a standalone task — until stage 3 there is no consumer to decrypt it.
+Items 1–5 are the cheap, high-value pass, and are still open.
+
+The "relay config UI does not affect mail flow" problem described in the next
+section is **half solved**: `Relays`/`RelayGroups` finally have a consumer — the
+composed gateway bundle (`src/central/bundle.ts`) — but only for mailgw-go, and
+only once the gateway-side pull lands in mailgw-go M5. Haraka still routes
+purely from files on disk and is not being changed.
+
+`auth_pass` remains plaintext at rest. It is no longer blocked on "there is no
+consumer to decrypt it" — the bundle is that consumer — but the decrypting half
+lives in the gateway, so it is sequenced with mailgw-go M5.
 
 ---
 
@@ -115,11 +127,28 @@ at the bottom of this file:
 
 ---
 
-## Epic — DB → Haraka config bridge
+## Epic — DB → Haraka config bridge — **SUPERSEDED, closed**
 
-Closes the disconnect described at the top of this file: make the relay/routing
-rows the UI edits actually drive Haraka, and give `/config/routing` something to
-edit. **Recommended transport: an HTTP pull from logservice** — it already owns
+**Closed as obsolete.** Central Management (mailgw-go M3–M5) solves the same
+disconnect a better way, and Haraka is now explicitly the legacy gateway: it
+keeps reading its files on disk and is left alone.
+
+What actually shipped instead, and how it maps onto the five stages below:
+
+| Stage | Outcome |
+|---|---|
+| 1. `Routes` table | **Not built.** Routing is a `ConfigProfiles` row of kind `ruleset` holding mailgw-go's `routing.yaml` — the full rule DSL, not four fields and one operator. No `position` column is needed because the DSL has explicit `priority`. (The stage also claimed migration `015`, which was already taken by `015_widen_delivery_fields.sql`; the new tables are `016`–`021`.) |
+| 2. `/config/routing` CRUD | **Done differently** — `/config/profiles` CRUD (`src/controllers/CtrlProfile.ts`). The `notimpl` stub is gone; `/config/routing` now redirects there. |
+| 3. `GET /api/config/routing` on logservice | **Moved to the webui** — `GET /agent/config` (`src/routes/agent.ts`), serving a composed, versioned bundle instead of a live query, gated on Ed25519 signature + operator approval rather than a shared `X-API-Key`. |
+| 4. `npRoute` pull + file fallback | **Dropped.** Haraka is not being changed. mailgw-go M5 is the pull side. |
+| 5. `auth_pass` encryption at rest | **Still open**, and now finally designable — the bundle is a real decrypting consumer. Moved to mailgw-go M5. |
+
+The rest of this section is kept for the shape-mismatch notes, which
+`src/central/bundle.ts` now implements in one place.
+
+Original plan follows.
+
+**Recommended transport: an HTTP pull from logservice** — it already owns
 the migrations and the DB, mailgw already speaks HTTP to it (`npData`, `npQueue`,
 `npLogDelivery`), and it needs neither a shared volume nor a DB client inside
 Haraka.

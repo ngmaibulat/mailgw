@@ -15,7 +15,7 @@ export async function profileForm(
     request: FastifyRequest,
     reply: FastifyReply,
 ) {
-    const email = sessionEmail(request);
+    const email = await sessionEmail(request);
     if (!email) {
         return reply.redirect("/login");
     }
@@ -26,7 +26,7 @@ export async function profileSubmit(
     request: FastifyRequest,
     reply: FastifyReply,
 ) {
-    const email = sessionEmail(request);
+    const email = await sessionEmail(request);
     if (!email) {
         return reply.redirect("/login");
     }

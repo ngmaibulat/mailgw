@@ -9,7 +9,7 @@ import type { FastifyInstance } from "fastify";
 
 import { build } from "./app.ts";
 import { db, users } from "../db/index.ts";
-import { sessions } from "./globals.ts";
+import { setSessionStore, type Session, type SessionStore } from "./globals.ts";
 import { bcrypt } from "./adapter.ts";
 
 // Stub db.insert: the audit-log onRequest hook does a fire-and-forget insert on
@@ -113,11 +113,41 @@ function okResponse(): Response {
 
 let app: FastifyInstance;
 
+// The real session store is DB-backed (Sessions table, migration 021). Swap in
+// a Map so the auth gate works without a database — the generic db.select stub
+// above is per-test and would otherwise collide with session lookups.
+const memorySessions = new Map<string, Session>();
+const memorySessionStore: SessionStore = {
+    create: async (id, session) => {
+        memorySessions.set(id, session);
+    },
+    get: async (id) => {
+        const session = memorySessions.get(id);
+        if (session && session.expiresAt <= Date.now()) {
+            memorySessions.delete(id);
+            return undefined;
+        }
+        return session;
+    },
+    delete: async (id) => {
+        memorySessions.delete(id);
+    },
+    sweep: async () => {
+        for (const [id, s] of memorySessions) {
+            if (s.expiresAt <= Date.now()) memorySessions.delete(id);
+        }
+    },
+};
+setSessionStore(memorySessionStore);
+
 // A session cookie signed with the same secret the app uses, so checkSession
-// accepts it. The session is registered in the in-memory store first.
+// accepts it. The session is registered in the store first.
 function authCookie(): string {
     const sid = "test-session";
-    sessions[sid] = { email: "admin@test", expiresAt: Date.now() + 60_000 };
+    memorySessions.set(sid, {
+        email: "admin@test",
+        expiresAt: Date.now() + 60_000,
+    });
     return `session=${app.signCookie(sid)}`;
 }
 
@@ -444,7 +474,9 @@ describe("user management", () => {
             payload: { email: "bad", pass: "short" },
         });
         assert.equal(res.statusCode, 400);
-        assert.match(res.body, /Create User/);
+        // users/form.pug renders `${action} user` — the form is re-rendered
+        // with the validation error rather than the request being written.
+        assert.match(res.body, /Create user/);
         assert.equal(userInserts.length, 0);
     });
 

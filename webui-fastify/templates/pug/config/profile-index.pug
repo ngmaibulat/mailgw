@@ -1,0 +1,37 @@
+extends ../page.pug
+block content
+  +pageHeader('Config profiles', 'reusable blocks assigned to gateways')
+    a.btn.btn-accent(href='/config/profiles/create')
+      +icon('plus')
+      span Add profile
+  p.muted
+    | A profile is the raw file a gateway already understands —
+    code  routing.yaml
+    |  for a ruleset,
+    code  ngmfilter.json
+    |  for an allowlist,
+    code  server.yaml
+    |  for server settings. Editing one does not change what any gateway is
+    |  running until you press Deploy on that gateway.
+  table.data-table
+    thead
+      tr
+        th.num ID
+        th Kind
+        th Name
+        th Description
+        th.col-actions Actions
+    tbody
+      if !data || !data.length
+        tr.empty-row: td(colspan='5') No profiles yet.
+      each row in data
+        tr
+          td.num= row.id
+          td: span.pill= row.kind
+          td= row.name
+          td= row.description
+          td.col-actions
+            a.act.act-edit(href=`/config/profiles/edit/${row.id}` title='Edit')
+              +icon('edit')
+            a.act.act-del(href=`/config/profiles/delete/${row.id}` title='Delete')
+              +icon('trash')

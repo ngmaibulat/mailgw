@@ -1,8 +1,12 @@
 import {
     mysqlTable,
     int,
+    bigint,
+    boolean,
+    char,
     varchar,
     text,
+    longtext,
     datetime,
 } from "drizzle-orm/mysql-core";
 
@@ -27,7 +31,22 @@ export const users = mysqlTable("Users", {
     id: int("id").autoincrement().primaryKey(),
     email: varchar("email", { length: 255 }).notNull().unique(),
     hash: varchar("hash", { length: 255 }),
+    // "admin" | "viewer" (migration 020). Only an admin may approve gateways,
+    // deploy configuration or manage users.
+    role: varchar("role", { length: 32 }).notNull().default("viewer"),
     ...timestamps,
+});
+
+// Sessions moved out of process memory in migration 021 so a restart no longer
+// logs every operator out and the console can run more than one replica.
+// `id` is the uuid carried by the signed `session` cookie.
+export const sessions = mysqlTable("Sessions", {
+    id: char("id", { length: 36 }).primaryKey(),
+    email: varchar("email", { length: 255 }).notNull(),
+    expiresAt: datetime("expiresAt", { mode: "date" }).notNull(),
+    createdAt: datetime("createdAt", { mode: "date" })
+        .notNull()
+        .$defaultFn(() => new Date()),
 });
 
 export const relayGroups = mysqlTable("RelayGroups", {
@@ -72,4 +91,95 @@ export const exceptions = mysqlTable("Exceptions", {
     component: varchar("component", { length: 255 }),
     info: text("info"),
     ...timestamps,
+});
+
+// ---------------------------------------------------------------------------
+// Central Management (migrations 016–019)
+// ---------------------------------------------------------------------------
+
+// A registered mailgw-go instance. Registration is open — anything that can
+// reach us may ask — so a new row is always `pending` until an operator
+// approves its fingerprint. See migration 016.
+export const gateways = mysqlTable("Gateways", {
+    id: int("id").autoincrement().primaryKey(),
+    gateway_uid: char("gateway_uid", { length: 36 }).notNull().unique(),
+    name: varchar("name", { length: 255 }),
+    fingerprint: varchar("fingerprint", { length: 128 }).notNull().unique(),
+    pubkey: varchar("pubkey", { length: 255 }).notNull(),
+    // "pending" | "approved" | "rejected" | "revoked"
+    status: varchar("status", { length: 16 }).notNull().default("pending"),
+
+    // Self-declared systeminfo — display only, never a basis for a decision.
+    hostname: varchar("hostname", { length: 255 }),
+    os: varchar("os", { length: 64 }),
+    arch: varchar("arch", { length: 64 }),
+    cpus: int("cpus"),
+    mem_bytes: bigint("mem_bytes", { mode: "number" }),
+    ip_addrs: text("ip_addrs"),
+    version: varchar("version", { length: 64 }),
+
+    first_seen: datetime("first_seen", { mode: "date" }),
+    last_seen: datetime("last_seen", { mode: "date" }),
+    approved_by: varchar("approved_by", { length: 255 }),
+    approved_at: datetime("approved_at", { mode: "date" }),
+
+    desired_version_id: int("desired_version_id"),
+    applied_version_id: int("applied_version_id"),
+    apply_error: text("apply_error"),
+    restart_required: boolean("restart_required").notNull().default(false),
+
+    ...timestamps,
+});
+
+// Raw config text, reusable across gateways. `kind` is
+// "ruleset" (routing.yaml) | "allowlist" (ngmfilter.json) | "server"
+// (server.yaml). Relay definitions are not profiles — they stay in
+// RelayGroups/Relays. See migration 017.
+export const configProfiles = mysqlTable("ConfigProfiles", {
+    id: int("id").autoincrement().primaryKey(),
+    kind: varchar("kind", { length: 32 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: varchar("description", { length: 255 }),
+    body: longtext("body").notNull(),
+    ...timestamps,
+});
+
+// Exactly one of profile_id / relay_group_id is set, selected by `kind`.
+// See migration 018.
+export const gatewayAssignments = mysqlTable("GatewayAssignments", {
+    id: int("id").autoincrement().primaryKey(),
+    gateway_id: int("gateway_id").notNull(),
+    kind: varchar("kind", { length: 32 }).notNull(),
+    profile_id: int("profile_id"),
+    relay_group_id: int("relay_group_id"),
+    ...timestamps,
+});
+
+// Immutable composed bundles. Never updated — rollback repoints
+// Gateways.desired_version_id at an older row. See migration 019.
+export const configVersions = mysqlTable("ConfigVersions", {
+    id: int("id").autoincrement().primaryKey(),
+    gateway_id: int("gateway_id").notNull(),
+    version: int("version").notNull(),
+    bundle: longtext("bundle").notNull(),
+    bundle_sha256: char("bundle_sha256", { length: 64 }).notNull(),
+    note: varchar("note", { length: 255 }),
+    created_by: varchar("created_by", { length: 255 }),
+    createdAt: datetime("createdAt", { mode: "date" })
+        .notNull()
+        .$defaultFn(() => new Date()),
+});
+
+// Deploy/rollback audit trail. See migration 019.
+export const configDeployments = mysqlTable("ConfigDeployments", {
+    id: int("id").autoincrement().primaryKey(),
+    gateway_id: int("gateway_id").notNull(),
+    version_id: int("version_id").notNull(),
+    // "deploy" | "rollback"
+    action: varchar("action", { length: 16 }).notNull(),
+    actor: varchar("actor", { length: 255 }),
+    note: varchar("note", { length: 255 }),
+    createdAt: datetime("createdAt", { mode: "date" })
+        .notNull()
+        .$defaultFn(() => new Date()),
 });

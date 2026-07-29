@@ -1,6 +1,3 @@
-- rewrite modern-syslog in pure TS
-- use TS-7
-
 ### Tools
 
 - CA with webui

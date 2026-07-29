@@ -1,6 +1,7 @@
 ### 2026-07-30
 
--
+- Golang based MailGW
+- Central Management
 
 ### 2026-06-15
 

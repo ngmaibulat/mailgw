@@ -142,13 +142,13 @@ func load(dir string) (*loaded, error) {
 // but it cannot match yet, and a rule that silently never fires is exactly the
 // failure mode the schema registry exists to prevent.
 var unpopulated = map[string]string{
-	"attachment.filename":     "attachment scanning lands in M6",
-	"attachment.content_type": "attachment scanning lands in M6",
-	"attachment.md5":          "attachment scanning lands in M6",
-	"attachment.size":         "attachment scanning lands in M6",
-	"attachment.disposition":  "attachment scanning lands in M6",
-	"msg.has_attachment":      "attachment scanning lands in M6",
-	"msg.mime_part_count":     "the MIME walk lands in M6",
+	"attachment.filename":     "attachment scanning lands in M8",
+	"attachment.content_type": "attachment scanning lands in M8",
+	"attachment.md5":          "attachment scanning lands in M8",
+	"attachment.size":         "attachment scanning lands in M8",
+	"attachment.disposition":  "attachment scanning lands in M8",
+	"msg.has_attachment":      "attachment scanning lands in M8",
+	"msg.mime_part_count":     "the MIME walk lands in M8",
 	"auth.user":               "inbound AUTH is not implemented",
 	"auth.mechanism":          "inbound AUTH is not implemented",
 }

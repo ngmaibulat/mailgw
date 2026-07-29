@@ -1,0 +1,22 @@
+extends ../page.pug
+block content
+  +pageHeader('Delete config profile')
+  .alert.alert-danger Deleting a profile does not change any gateway until its next Deploy — at which point the gateway loses this block.
+  .card.form-card
+    .card-body
+      form#frm(method='POST')
+        .form-field
+          label(for='kind') Kind
+          input#kind.form-control(type='text' value=`${data.kind}` disabled='')
+        .form-field
+          label(for='name') Name
+          input#name.form-control(type='text' value=`${data.name}` disabled='')
+        .form-field
+          label(for='description') Description
+          input#description.form-control(type='text' value=`${data.description || ''}` disabled='')
+        .form-field
+          label(for='body') Body
+          textarea#body.form-control(rows='12' disabled='')= data.body
+        .form-actions
+          button#btn_submit.btn.btn-danger(type='submit') Delete
+          a.btn.btn-ghost(href='/config/profiles') Cancel

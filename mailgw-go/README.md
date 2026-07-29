@@ -167,7 +167,7 @@ MAILGW_DB_CHECK=1 SMTP_PORT=2525 bun test tests/smtp  # also checks the DB rows
   explicitly.
 - **A recipient refused only at DATA is dropped, not bounced.** That happens
   when a data-stage rule refuses one recipient of several. There is no reply
-  left to put it in, and DSN generation is M5; until then it is logged at WARN.
+  left to put it in, and DSN generation is M7; until then it is logged at WARN.
   Rules that can decide at RCPT do not have this problem.
 - **A crash mid-SMTP can redeliver.** Inherent to any spooling MTA: the
   alternative is losing mail.

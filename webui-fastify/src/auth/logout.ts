@@ -10,7 +10,7 @@ export async function logout(request: FastifyRequest, reply: FastifyReply) {
         ? request.unsignCookie(raw)
         : { valid: false as const, value: null };
     if (unsigned.valid && unsigned.value) {
-        deleteSession(unsigned.value);
+        await deleteSession(unsigned.value);
     }
 
     reply.clearCookie("session", { path: "/" });

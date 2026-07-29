@@ -1,0 +1,44 @@
+extends ../page.pug
+block content
+  +pageHeader('Gateways', 'registered mailgw-go instances')
+  p.muted
+    | Registration is open — any gateway that can reach this console may ask to
+    | join, and lands here as
+    strong  pending
+    | . It receives no configuration until an operator approves its fingerprint.
+  table.data-table
+    thead
+      tr
+        th.num ID
+        th Name
+        th Status
+        th Host
+        th Version
+        th Config
+        th Last seen
+    tbody
+      if !data || !data.length
+        tr.empty-row: td(colspan='7') No gateways have registered yet.
+      each row in data
+        tr
+          td.num= row.id
+          td
+            a(href=`/gateways/${row.id}`)= row.name || row.gateway_uid
+          td
+            span(class='pill pill-' + row.status)= row.status
+          td= row.hostname || '—'
+          td= row.version || '—'
+          td
+            if row.desired_version === null
+              span.muted not deployed
+            else if row.applied_version === row.desired_version
+              | v#{row.desired_version}
+            else
+              | v#{row.applied_version === null ? '—' : row.applied_version}
+              span.muted  →
+              | v#{row.desired_version}
+            if row.apply_error
+              span.pill.pill-rejected  error
+            if row.restart_required
+              span.pill.pill-pending  restart
+          td= row.last_seen ? new Date(row.last_seen).toISOString().replace('T', ' ').slice(0, 19) : '—'

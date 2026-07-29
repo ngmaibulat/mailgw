@@ -26,10 +26,12 @@ import { profileForm, profileSubmit } from "./auth/profile.ts";
 import { setupForm, setupSubmit } from "./auth/setup.ts";
 import { formLogin } from "./forms/formLogin.ts";
 
+import agentRoutes from "./routes/agent.ts";
 import rootRoutes from "./routes/root.ts";
 import logRoutes from "./routes/log.ts";
 import apiRoutes from "./routes/api.ts";
 import relayConfigRoutes from "./routes/config-relay.ts";
+import gatewayRoutes from "./routes/gateways.ts";
 import userRoutes from "./routes/users.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -157,10 +159,19 @@ export async function build(opts: BuildOptions = {}): Promise<FastifyInstance> {
         });
     });
 
-    // Sweep expired sessions periodically so the in-memory store can't grow
-    // without bound. Unref'd so it never keeps the process (or a test) alive;
-    // cleared on close.
-    const sweepTimer = setInterval(sweepSessions, 15 * 60 * 1000);
+    // Sweep expired sessions periodically so the store can't grow without
+    // bound. Unref'd so it never keeps the process (or a test) alive; cleared on
+    // close. The sweep now hits the database, so its rejection is caught here —
+    // an unhandled one from a timer would take the process down via
+    // errhandler.ts, and a failed cleanup is not worth that.
+    const sweepTimer = setInterval(
+        () => {
+            sweepSessions().catch((err) => {
+                app.log.error({ err }, "session sweep failed");
+            });
+        },
+        15 * 60 * 1000,
+    );
     sweepTimer.unref?.();
     app.addHook("onClose", async () => clearInterval(sweepTimer));
 
@@ -180,6 +191,14 @@ export async function build(opts: BuildOptions = {}): Promise<FastifyInstance> {
     // Deliberately does NOT touch the DB (liveness, not readiness): a DB blip
     // shouldn't cause the orchestrator to kill an otherwise-healthy process.
     app.get("/health", async () => ({ status: "ok" }));
+
+    // The gateway agent API. Registered at the root scope on purpose: it is
+    // machine-facing, so it must sit outside the cookie-session gate (which
+    // would bounce a gateway to /login) and outside the audit-log hook (a fleet
+    // polling every few seconds would flood the Logs table for no audit value —
+    // the same reasoning behind `isNoise()` skipping GET /api/*). It brings its
+    // own Ed25519 signature check; see src/agent/verify.ts.
+    await app.register(agentRoutes, { prefix: "/agent" });
 
     // Everything except static assets is request-logged. Adding the hook inside
     // this child scope keeps it off the static routes registered above.
@@ -221,6 +240,7 @@ export async function build(opts: BuildOptions = {}): Promise<FastifyInstance> {
             await secured.register(logRoutes, { prefix: "/log" });
             await secured.register(apiRoutes, { prefix: "/api" });
             await secured.register(relayConfigRoutes, { prefix: "/config" });
+            await secured.register(gatewayRoutes, { prefix: "/gateways" });
             await secured.register(userRoutes, { prefix: "/users" });
         });
     });

@@ -9,7 +9,7 @@ export async function checkSession(
     request: FastifyRequest,
     reply: FastifyReply,
 ) {
-    if (!sessionEmail(request)) {
+    if (!(await sessionEmail(request))) {
         const accept = String(request.headers.accept ?? "");
         const wantsJson = accept.includes("application/json");
         if (wantsJson) {

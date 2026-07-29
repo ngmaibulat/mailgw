@@ -830,3 +830,109 @@ input[type="number"].form-control {
         transition: none !important;
     }
 }
+
+/* --- central management -------------------------------------------------- */
+
+/* Gateway lifecycle pills. `pending` reads as "needs your attention" rather
+   than as an error: an unapproved gateway is the normal first state. */
+.pill-pending {
+    background: rgba(210, 153, 34, 0.14);
+    border-color: rgba(210, 153, 34, 0.4);
+    color: #e3b341;
+}
+.pill-approved {
+    background: rgba(63, 185, 80, 0.14);
+    border-color: rgba(63, 185, 80, 0.4);
+    color: #7ee787;
+}
+.pill-rejected,
+.pill-revoked {
+    background: rgba(248, 81, 73, 0.14);
+    border-color: rgba(248, 81, 73, 0.4);
+    color: #ff9c96;
+}
+
+/* Read-only label/value rows on the gateway detail page. */
+.kv {
+    display: flex;
+    gap: 1rem;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+}
+.kv:last-of-type {
+    border-bottom: 0;
+}
+.kv-key {
+    flex: 0 0 10rem;
+    color: var(--ink-dim);
+}
+.kv-val {
+    font-family: var(--mono);
+    color: var(--ink);
+    word-break: break-all;
+}
+
+/* Small action forms that sit inline under a card heading (approve, rename,
+   deploy, roll back) — several per card, so they must not stack full-width. */
+.inline-form {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    flex-wrap: wrap;
+}
+.inline-form .form-control {
+    width: auto;
+    min-width: 16rem;
+}
+.data-table .inline-form {
+    margin-top: 0;
+}
+
+.form-check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0;
+}
+.form-check-input {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--accent);
+}
+.form-check-label {
+    font-size: 14px;
+    color: var(--ink);
+}
+
+.muted {
+    color: var(--ink-dim);
+    font-size: 13px;
+}
+small.muted {
+    display: block;
+    margin-top: 0.35rem;
+}
+
+/* Config-profile bodies are YAML/JSON: monospace, and wide enough to read a
+   rule without horizontal scrolling. */
+textarea.form-control {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+    resize: vertical;
+}
+
+/* Apply errors are compiler output — keep the line breaks. */
+.pre-wrap {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    margin: 0.5rem 0 0;
+}
+
+.card + .card {
+    margin-top: 1rem;
+}

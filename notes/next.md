@@ -76,7 +76,3 @@
 - File Hashes
 - TLS
 - Connection Checks
-
-### Nextgen SMTP Server
-
-- https://puiusabin-bun-smtp.mintlify.app/examples/basic-server

@@ -4,7 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 // they're independent, so the two coexist fine.
 import { z, type ZodError } from "zod/v4";
 
-import { relays, relayGroups } from "../../db/index.ts";
+import { relays, relayGroups, configProfiles } from "../../db/index.ts";
 
 // drizzle-zod derives these from the table definitions. `.pick()` whitelists the
 // fields a form may set (no `id`/timestamps), and zod strips anything else — so
@@ -32,6 +32,54 @@ export const relayGroupInsert = createInsertSchema(relayGroups)
     .extend({
         name: z.string().min(1, "name is required"),
     });
+
+// The three kinds of reusable config block a gateway can be assigned. `ruleset`
+// and `server` are YAML text, `allowlist` is JSON — all stored verbatim and
+// validated authoritatively by the gateway (see src/central/bundle.ts).
+export const PROFILE_KINDS = ["ruleset", "allowlist", "server"] as const;
+export type ProfileKind = (typeof PROFILE_KINDS)[number];
+
+export const configProfileInsert = createInsertSchema(configProfiles)
+    .pick({
+        kind: true,
+        name: true,
+        description: true,
+        body: true,
+    })
+    .extend({
+        kind: z.enum(PROFILE_KINDS),
+        name: z.string().min(1, "name is required").max(255),
+        body: z.string().min(1, "body is required"),
+    });
+
+// Shape-only checks. The rule DSL is compiled by Go, so anything deeper would
+// be a second source of truth that can disagree with the gateway — what we can
+// usefully catch here is a body that is not even the right file format.
+export function parseProfileBody(body: Record<string, unknown>) {
+    const parsed = configProfileInsert.safeParse(body);
+    if (!parsed.success) {
+        return parsed;
+    }
+    if (parsed.data.kind === "allowlist") {
+        try {
+            const value = JSON.parse(parsed.data.body) as {
+                allowed?: unknown;
+            };
+            if (!Array.isArray(value?.allowed)) {
+                return {
+                    success: false as const,
+                    error: 'allowlist must be JSON of the form {"allowed": ["10.0.0.0/8", ...]}',
+                };
+            }
+        } catch (err) {
+            return {
+                success: false as const,
+                error: `allowlist is not valid JSON: ${(err as Error).message}`,
+            };
+        }
+    }
+    return parsed;
+}
 
 // Form bodies arrive as strings; coerce the numeric relay fields before parse.
 export function parseRelayBody(body: Record<string, unknown>) {

@@ -1,0 +1,158 @@
+extends ../page.pug
+
+mixin field(label, value)
+  .kv
+    span.kv-key= label
+    span.kv-val= value || '—'
+
+block content
+  +pageHeader(data.name || data.gateway_uid, data.gateway_uid)
+    a.btn.btn-ghost(href='/gateways')
+      +icon('arrow')
+      span All gateways
+
+  if data.apply_error
+    .alert.alert-danger
+      strong The gateway could not apply its configuration.
+      |  It is still running the last version that compiled.
+      pre.pre-wrap= data.apply_error
+
+  if data.restart_required
+    .alert.alert-danger
+      | The deployed configuration changes something only a restart can pick up
+      | (relay table, listeners, TLS or the spool directory). Rules and the
+      | allowlist reload live; the rest needs the process restarted.
+
+  //- ---- identity -------------------------------------------------------
+  .card
+    .card-body
+      h2.card-title Identity
+      +field('Status', data.status)
+      +field('Fingerprint', data.fingerprint)
+      +field('Approved by', data.approved_by)
+      +field('First seen', data.first_seen)
+      +field('Last seen', data.last_seen)
+      p.muted
+        | Approve only after checking this fingerprint against the one the
+        | gateway prints on its own status page. It is the whole of the
+        | gateway's identity — there is no token to compare.
+      form.inline-form(method='POST' action=`/gateways/${data.id}/status`)
+        if data.status !== 'approved'
+          button.btn.btn-accent(type='submit' name='status' value='approved') Approve
+        if data.status === 'pending'
+          button.btn.btn-ghost(type='submit' name='status' value='rejected') Reject
+        if data.status === 'approved'
+          button.btn.btn-danger(type='submit' name='status' value='revoked') Revoke
+      form.inline-form(method='POST' action=`/gateways/${data.id}/rename`)
+        input.form-control(type='text' name='name' value=`${data.name || ''}` placeholder='Display name')
+        button.btn.btn-ghost(type='submit') Rename
+
+  //- ---- system ---------------------------------------------------------
+  .card
+    .card-body
+      h2.card-title System
+      p.muted Self-declared by the gateway — display only.
+      +field('Hostname', data.hostname)
+      +field('OS / arch', data.os ? `${data.os}/${data.arch}` : null)
+      +field('CPUs', data.cpus)
+      +field('Memory', data.mem_bytes ? `${Math.round(data.mem_bytes / 1024 / 1024)} MB` : null)
+      +field('Addresses', data.ip_addrs)
+      +field('Version', data.version)
+
+  //- ---- assignments ----------------------------------------------------
+  .card
+    .card-body
+      h2.card-title Assigned configuration
+      form#frm-assign(method='POST' action=`/gateways/${data.id}/assignments`)
+        each kind in kinds
+          .form-field
+            label(for=`profile_${kind}`)= kind
+            select.form-control(id=`profile_${kind}` name=`profile_${kind}`)
+              option(value='') — none —
+              each p in profiles
+                if p.kind === kind
+                  option(value=p.id selected=(selectedProfile[kind] === p.id))= p.name
+        .form-field
+          label Relay groups
+          if !groups || !groups.length
+            p.muted
+              | No relay groups defined yet —
+              a(href='/config/relaygrp')  create one
+              | .
+          each g in groups
+            .form-check
+              input.form-check-input(type='checkbox' id=`grp_${g.id}` name='relay_groups' value=g.id checked=selectedGroups.has(g.id))
+              label.form-check-label(for=`grp_${g.id}`)= g.name
+        .form-actions
+          button.btn.btn-accent(type='submit') Save assignments
+
+  //- ---- deploy ---------------------------------------------------------
+  .card
+    .card-body
+      h2.card-title Deploy
+      +field('Deployed', desired_version === null ? 'nothing yet' : `v${desired_version}`)
+      +field('Running', applied_version === null ? 'unknown' : `v${applied_version}`)
+      p.muted
+        | Deploy freezes the assignments above into a new immutable version. The
+        | gateway picks it up on its next poll.
+      form.inline-form(method='POST' action=`/gateways/${data.id}/deploy`)
+        input.form-control(type='text' name='note' placeholder='Note (optional)' maxlength='255')
+        button.btn.btn-accent(type='submit') Deploy
+
+  //- ---- versions -------------------------------------------------------
+  .card
+    .card-body
+      h2.card-title Versions
+      table.data-table
+        thead
+          tr
+            th Version
+            th Digest
+            th Note
+            th By
+            th Created
+            th.col-actions Actions
+        tbody
+          if !versions || !versions.length
+            tr.empty-row: td(colspan='6') Nothing deployed yet.
+          each v in versions
+            tr
+              td
+                | v#{v.version}
+                if v.id === data.desired_version_id
+                  span.pill.pill-approved  current
+              td: code= v.bundle_sha256.slice(0, 12)
+              td= v.note
+              td= v.created_by
+              td= v.createdAt
+              td.col-actions
+                if v.id !== data.desired_version_id
+                  form.inline-form(method='POST' action=`/gateways/${data.id}/rollback`)
+                    input(type='hidden' name='version_id' value=v.id)
+                    button.btn.btn-ghost(type='submit') Roll back
+
+  //- ---- history --------------------------------------------------------
+  .card
+    .card-body
+      h2.card-title Deploy history
+      table.data-table
+        thead
+          tr
+            th Action
+            th Version
+            th By
+            th When
+        tbody
+          if !history || !history.length
+            tr.empty-row: td(colspan='4') No deploys yet.
+          each h in history
+            tr
+              td= h.action
+              td v#{historyVersion(h.version_id)}
+              td= h.actor
+              td= h.createdAt
+
+  .page-actions
+    a.btn.btn-danger(href=`/gateways/${data.id}/delete`)
+      +icon('trash')
+      span Forget gateway
