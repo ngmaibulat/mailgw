@@ -1,0 +1,12 @@
+From: sender@example.com
+To: rcpt@example.com
+Subject: malformed
+MIME-Version: 1.0
+Content-Type: multipart/mixed
+
+--B
+Content-Type: application/octet-stream
+Content-Disposition: attachment; filename="hidden.exe"
+
+payload
+--B--

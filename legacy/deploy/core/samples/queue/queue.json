@@ -1,0 +1,19 @@
+{
+  "uuid": "D990E936-D802-484F-8C89-63733CDA4DAC",
+  "dt": 1700140654349,
+  "state": 6,
+  "encoding": "utf8",
+  "remoteAddr": "127.0.0.1",
+  "remotePort": 54966,
+  "remote_is_local": true,
+  "remote_is_private": true,
+  "remote_host": "Unknown",
+  "remote_info": "Unknown",
+  "hello_name": "devbook.local",
+  "using_tls": false,
+  "tran_count": 1,
+  "pipelining": false,
+  "rcpt_count_accept": 1,
+  "rcpt_count_tempfail": 0,
+  "rcpt_count_reject": 0
+}

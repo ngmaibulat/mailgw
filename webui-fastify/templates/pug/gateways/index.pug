@@ -15,10 +15,12 @@ block content
         th Host
         th Version
         th Config
+        th.num Queue
+        th.num Delivered
         th Last seen
     tbody
       if !data || !data.length
-        tr.empty-row: td(colspan='7') No gateways have registered yet.
+        tr.empty-row: td(colspan='9') No gateways have registered yet.
       each row in data
         tr
           td.num= row.id
@@ -26,6 +28,10 @@ block content
             a(href=`/gateways/${row.id}`)= row.name || row.gateway_uid
           td
             span(class='pill pill-' + row.status)= row.status
+            //- Approved and stale are two separate facts and read together:
+            //- the gateway is meant to be talking to us and is not.
+            if row.stale
+              span.pill.pill-stale  stale
           td= row.hostname || '—'
           td= row.version || '—'
           td
@@ -41,4 +47,19 @@ block content
               span.pill.pill-rejected  error
             if row.restart_required
               span.pill.pill-pending  restart
+          //- Ready plus in flight: what is waiting to go out right now.
+          //- Quarantine and dead are on the detail page, where there is room to
+          //- say what they mean.
+          td.num
+            if row.metrics
+              = row.metrics.queueReady + row.metrics.queueInflight
+            else
+              span.muted —
+          //- Since the gateway last started, not since it registered: these are
+          //- process-lifetime counters and a restart resets them.
+          td.num
+            if row.metrics
+              = row.metrics.delivered
+            else
+              span.muted —
           td= row.last_seen ? new Date(row.last_seen).toISOString().replace('T', ' ').slice(0, 19) : '—'

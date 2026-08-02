@@ -1,0 +1,18 @@
+From: sender@example.com
+To: rcpt@example.com
+Subject: the AttachChecker.js:51 bypass
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="B"
+
+--B
+Content-Type: text/plain
+
+body
+--B
+Content-Type: application/octet-stream
+Content-Disposition: inline; filename="invoice.exe"
+Content-Transfer-Encoding: base64
+
+aW5saW5lIHBheWxvYWQK
+
+--B--

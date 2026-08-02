@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -62,6 +63,18 @@ type Relay struct {
 	// AuthPassEnv names an environment variable holding the password, so
 	// credentials need not sit in the config file. It wins over AuthPass.
 	AuthPassEnv string `json:"auth_pass_env,omitempty"`
+
+	// UseMX makes Exchange a DOMAIN whose MX records are resolved at delivery
+	// time, rather than a host to dial directly. The resolved exchangers are
+	// tried in preference order, each inheriting this relay's port, credentials
+	// and TLS policy.
+	//
+	// This is "smarthost named by domain", not direct-to-MX delivery: the
+	// recipient's own domain is not consulted. An envelope groups recipients by
+	// relay GROUP, so delivering per recipient domain would need the SMTP
+	// session to bucket by domain as well — a different delivery mode with its
+	// own TLS and reputation story, deliberately out of scope.
+	UseMX bool `json:"use_mx,omitempty"`
 
 	// TLS is one of none|opportunistic|required; empty means opportunistic.
 	TLS string `json:"tls,omitempty"`
@@ -173,6 +186,29 @@ func NewTable(byGroup map[string][]Relay) (*Table, error) {
 	return t, nil
 }
 
+// Equal reports whether two tables define the same groups with the same members
+// in the same order.
+//
+// Defined here rather than at the call site because groups is unexported: a
+// caller reaching in with reflect would break the moment Table grows a lock or
+// a cache. Used to decide whether a pulled configuration needs a restart — the
+// delivery runner holds its relay table for the life of the process.
+func (t *Table) Equal(o *Table) bool {
+	if t == nil || o == nil {
+		return t == o
+	}
+	if len(t.groups) != len(o.groups) {
+		return false
+	}
+	for name, g := range t.groups {
+		og, ok := o.groups[name]
+		if !ok || !reflect.DeepEqual(g, og) {
+			return false
+		}
+	}
+	return true
+}
+
 // Lookup returns the named group. The bool result distinguishes "absent" from
 // "present but empty", and an unknown name can never resolve to an inherited
 // property the way a JavaScript `in` check does.
@@ -202,6 +238,26 @@ func (t *Table) Names() []string {
 		out = append(out, n)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// AuthenticatedMX lists relays that both resolve their exchange by MX and send
+// credentials, so startup and `check` can warn.
+//
+// Rarely what anyone means. use_mx says "whichever host the DNS names today",
+// and a password is a relationship with one specific host — so this combination
+// sends a credential wherever a zone the operator may not control happens to
+// point. Legitimate for a smarthost whose owner runs several MX hosts under one
+// account, which is why it warns rather than refuses.
+func (t *Table) AuthenticatedMX() []string {
+	var out []string
+	for _, name := range t.Names() {
+		for _, m := range t.groups[name].Members {
+			if m.UseMX && m.AuthUser != "" {
+				out = append(out, name+"/"+m.Name)
+			}
+		}
+	}
 	return out
 }
 

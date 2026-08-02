@@ -136,23 +136,33 @@ type File struct {
 
 // LoadFile reads routing.yaml (or routing.json — the parser accepts both,
 // since YAML is a superset).
-//
-// Unknown keys are an error: a misspelled `piority:` that silently became
-// priority 0 would reorder the entire table.
 func LoadFile(path string) (*File, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
+	return ParseFile(raw, path)
+}
+
+// ParseFile parses rule-file bytes. name appears only in error messages: it is
+// a path on the file path and a bundle key on the central one.
+//
+// Separate from LoadFile so that tests, and the configuration bundle Central
+// Management deploys, get exactly the same validation — the split
+// relays.NewTable already establishes.
+//
+// Unknown keys are an error: a misspelled `piority:` that silently became
+// priority 0 would reorder the entire table.
+func ParseFile(raw []byte, name string) (*File, error) {
 	var f File
 	if err := yaml.UnmarshalStrict(raw, &f); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+		return nil, fmt.Errorf("parse %s: %w", name, err)
 	}
 	if f.Version == 0 {
 		f.Version = 1
 	}
 	if f.Version != 1 {
-		return nil, fmt.Errorf("%s: unsupported version %d (want 1)", path, f.Version)
+		return nil, fmt.Errorf("%s: unsupported version %d (want 1)", name, f.Version)
 	}
 	return &f, nil
 }

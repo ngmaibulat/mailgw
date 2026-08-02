@@ -1,7 +1,12 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { eq } from "drizzle-orm";
 
-import { db, gateways, configVersions } from "../../db/index.ts";
+import {
+    db,
+    gateways,
+    configVersions,
+    gatewayMetrics,
+} from "../../db/index.ts";
 import { uuidv4 } from "../adapter.ts";
 import {
     authenticateGateway,
@@ -11,8 +16,16 @@ import {
     checkTimestamp,
     verifySignature,
 } from "../agent/verify.ts";
+import { onGatewayChange } from "../central/notify.ts";
 import { RegisterInfo, ReportInfo } from "../validation/agent.ts";
 import { zodErr } from "../validation/config.ts";
+
+// How often a live socket re-reads its own gateway row.
+//
+// This is the cross-replica backstop, not the primary path: a deploy handled by
+// this process reaches the socket instantly through the bus. Slow enough that a
+// large fleet costs one trivial indexed query per gateway per interval.
+const WS_RECHECK_MS = 10_000;
 
 // The machine-facing API used by mailgw-go gateways.
 //
@@ -254,8 +267,6 @@ export default async function agentRoutes(fastify: FastifyInstance) {
             }
             const report = parsed.data;
 
-            // Metrics are accepted and logged now; persisting the time series
-            // is M6. Reporting them early keeps the gateway's client stable.
             const changes: Record<string, unknown> = { last_seen: new Date() };
             if (report.applied_version_id !== undefined) {
                 changes.applied_version_id = report.applied_version_id;
@@ -270,12 +281,123 @@ export default async function agentRoutes(fastify: FastifyInstance) {
                 changes.version = report.version;
             }
 
-            await db
-                .update(gateways)
-                .set(changes)
-                .where(eq(gateways.id, gateway.id));
+            // One transaction, so a gateway row can never carry a last_seen
+            // newer than the snapshot that arrived with it — which is what a
+            // stale-detection check on the fleet view reads.
+            await db.transaction(async (tx) => {
+                await tx
+                    .update(gateways)
+                    .set(changes)
+                    .where(eq(gateways.id, gateway.id));
+
+                // Absent rather than empty means the gateway has no registry
+                // (an old build, or one started without one). Leave the
+                // previous snapshot alone rather than overwriting it with
+                // nothing — a missing sample is not the same as a reset fleet.
+                if (report.metrics === undefined) return;
+
+                const now = new Date();
+                const body = JSON.stringify(report.metrics);
+                await tx
+                    .insert(gatewayMetrics)
+                    .values({
+                        gateway_id: gateway.id,
+                        metrics: body,
+                        updated_at: now,
+                    })
+                    // Keyed on gateway_id, so every later heartbeat replaces
+                    // the row rather than accumulating history. See migration
+                    // 024 for why this is a snapshot and not a time series.
+                    .onDuplicateKeyUpdate({
+                        set: { metrics: body, updated_at: now },
+                    });
+            });
 
             return reply.send({ status: "ok" });
+        });
+
+        // --- Change notification ------------------------------------------
+        //
+        // A gateway holds this open for the life of its process so a deploy
+        // lands in milliseconds rather than on its next 15-second poll. The
+        // upgrade request is signed exactly like every other route, so this
+        // introduces no new authentication.
+        //
+        // Frames carry no state. The gateway is told "something changed" and
+        // asks /agent/status what — which means a duplicated, delayed or
+        // spurious notification costs one cheap request and can never deliver
+        // wrong state. The gateway's poll loop is still running underneath, so
+        // a socket that never connects changes nothing but latency.
+        //
+        // Approval is NOT required. A pending gateway learning the moment it is
+        // approved is exactly the case this is most useful for.
+        signed.get("/ws", { websocket: true }, (socket, request) => {
+            const gateway = request.gateway;
+            if (!gateway) {
+                socket.close(1008, "unauthenticated");
+                return;
+            }
+
+            // "" means the baseline has not been read yet, which is why the
+            // first read is silent: the gateway polled /agent/status to get
+            // here, so it already knows the current state.
+            let lastSeen: string | null = null;
+
+            const push = async () => {
+                try {
+                    const [row] = await db
+                        .select({
+                            status: gateways.status,
+                            desired_version_id: gateways.desired_version_id,
+                        })
+                        .from(gateways)
+                        .where(eq(gateways.id, gateway.id))
+                        .limit(1);
+                    if (!row) {
+                        return;
+                    }
+
+                    // Only speak when something actually changed, so the slow
+                    // timer below is silent on an idle fleet.
+                    const state = `${row.status}:${row.desired_version_id ?? ""}`;
+                    const first = lastSeen === null;
+                    if (state === lastSeen) {
+                        return;
+                    }
+                    lastSeen = state;
+                    if (!first) {
+                        socket.send(JSON.stringify({ event: "changed" }));
+                    }
+                } catch (err) {
+                    request.log.warn(
+                        { err, gateway: gateway.gateway_uid },
+                        "gateway notification failed",
+                    );
+                }
+            };
+
+            const unsubscribe = onGatewayChange(gateway.id, () => {
+                void push();
+            });
+
+            // The cross-replica safety net: a deploy handled by another console
+            // replica never reaches this process's bus, so re-read the row
+            // periodically. Slow on purpose — it is a backstop, and the
+            // gateway's own poll is a second one behind it.
+            const timer = setInterval(() => {
+                void push();
+            }, WS_RECHECK_MS);
+
+            socket.on("close", () => {
+                unsubscribe();
+                clearInterval(timer);
+            });
+            socket.on("error", () => {
+                unsubscribe();
+                clearInterval(timer);
+            });
+
+            void push();
         });
     });
 }

@@ -37,27 +37,44 @@ func LoadAllowlist(path string) (*Allowlist, error) {
 	if err != nil {
 		return &Allowlist{}, fmt.Errorf("read %s: %w", path, err)
 	}
+	return ParseAllowlist(raw, path)
+}
+
+// ParseAllowlist parses ngmfilter.json bytes. name appears only in error
+// messages: it is a path on the file path and a bundle key on the central one.
+//
+// Separate from LoadAllowlist so that the configuration bundle Central
+// Management deploys gets exactly the same validation the file does — including
+// the fail-closed contract: every failure path returns a deny-all Allowlist
+// alongside the error, so a caller that ignores the error still denies traffic.
+func ParseAllowlist(raw []byte, name string) (*Allowlist, error) {
+	// A bundle whose allowlist key is absent arrives as a nil RawMessage, and
+	// json.Unmarshal would report "unexpected end of JSON input", which says
+	// nothing about what is actually wrong.
+	if len(raw) == 0 {
+		return &Allowlist{}, fmt.Errorf("%s: missing allowlist", name)
+	}
 
 	// A literal `null` unmarshals into the zero struct without error, so the
 	// Allowed==nil check below is what actually catches it.
 	var f ngmfilterFile
 	if err := json.Unmarshal(raw, &f); err != nil {
-		return &Allowlist{}, fmt.Errorf("parse %s: %w", path, err)
+		return &Allowlist{}, fmt.Errorf("parse %s: %w", name, err)
 	}
 	if len(f.Allowed) == 0 {
-		return &Allowlist{}, fmt.Errorf("%s: missing 'allowed' array", path)
+		return &Allowlist{}, fmt.Errorf("%s: missing 'allowed' array", name)
 	}
 
 	var entries []string
 	if err := json.Unmarshal(f.Allowed, &entries); err != nil {
-		return &Allowlist{}, fmt.Errorf("%s: 'allowed' must be an array of strings: %w", path, err)
+		return &Allowlist{}, fmt.Errorf("%s: 'allowed' must be an array of strings: %w", name, err)
 	}
 
 	list := &Allowlist{allowAll: f.AllowAll}
 	for i, e := range entries {
 		p, err := parseEntry(e)
 		if err != nil {
-			return &Allowlist{}, fmt.Errorf("%s: allowed[%d] %q: %w", path, i, e, err)
+			return &Allowlist{}, fmt.Errorf("%s: allowed[%d] %q: %w", name, i, e, err)
 		}
 		list.prefixes = append(list.prefixes, p)
 	}
@@ -66,10 +83,29 @@ func LoadAllowlist(path string) (*Allowlist, error) {
 	// getting it wrong in the other direction opens the relay. Require the
 	// operator to say so explicitly.
 	if len(list.prefixes) == 0 && !list.allowAll {
-		return &Allowlist{}, fmt.Errorf("%s: 'allowed' is empty; set \"allow_all\": true to accept every peer", path)
+		return &Allowlist{}, fmt.Errorf("%s: 'allowed' is empty; set \"allow_all\": true to accept every peer", name)
 	}
 
 	return list, nil
+}
+
+// ParsePrefixes parses a list of bare addresses and CIDR blocks, the same syntax
+// ngmfilter.json's "allowed" uses.
+//
+// Exported so listen[].proxy_trusted can be validated and built from the same
+// parser the allowlist uses — including its Masked() normalisation and its
+// ::ffff: rewrite — rather than internal/proxyproto growing a second one and a
+// dependency on this package.
+func ParsePrefixes(entries []string) ([]netip.Prefix, error) {
+	out := make([]netip.Prefix, 0, len(entries))
+	for _, e := range entries {
+		p, err := parseEntry(e)
+		if err != nil {
+			return nil, fmt.Errorf("%q: %w", e, err)
+		}
+		out = append(out, p)
+	}
+	return out, nil
 }
 
 // parseEntry accepts either a bare address ("127.0.0.1", "::1") or a CIDR

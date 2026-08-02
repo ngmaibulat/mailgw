@@ -23,6 +23,13 @@ block content
       | (relay table, listeners, TLS or the spool directory). Rules and the
       | allowlist reload live; the rest needs the process restarted.
 
+  if stale
+    .alert.alert-danger
+      strong This gateway has not reported recently.
+      |  It polls every 15 seconds, so silence for longer than that usually
+      | means the process is down or cannot reach this console. It keeps
+      | relaying on its cached configuration either way.
+
   //- ---- identity -------------------------------------------------------
   .card
     .card-body
@@ -59,6 +66,27 @@ block content
       +field('Addresses', data.ip_addrs)
       +field('Version', data.version)
 
+  //- ---- metrics --------------------------------------------------------
+  .card
+    .card-body
+      h2.card-title Activity
+      if !metrics
+        p.muted
+          | This gateway has not reported any counters yet. They arrive on its
+          | next heartbeat.
+      else
+        p.muted
+          | Counted since the gateway process last started, so a restart resets
+          | them. Reported #{metrics.updatedAt ? String(metrics.updatedAt.toISOString()).slice(0, 19).replace('T', ' ') : 'never'}.
+        +field('Queue', `${metrics.queueReady} ready, ${metrics.queueInflight} in flight`)
+        //- Quarantine has no release path yet (M7), so nothing drains it on
+        //- its own — worth showing even when it is usually zero.
+        +field('Held back', `${metrics.queueQuarantine} quarantined, ${metrics.queueDead} dead`)
+        +field('Messages accepted', metrics.messagesAccepted)
+        +field('Recipients delivered', metrics.delivered)
+        +field('Deferred / bounced', `${metrics.deferred} / ${metrics.bounced}`)
+        +field('Connections denied', metrics.connectionsDenied)
+
   //- ---- assignments ----------------------------------------------------
   .card
     .card-body
@@ -83,6 +111,16 @@ block content
             .form-check
               input.form-check-input(type='checkbox' id=`grp_${g.id}` name='relay_groups' value=g.id checked=selectedGroups.has(g.id))
               label.form-check-label(for=`grp_${g.id}`)= g.name
+        .form-field
+          label(for='credential_set_id') SMTP credentials
+          select#credential_set_id.form-control(name='credential_set_id')
+            option(value='') — none —
+            each cs in credentialSetList
+              option(value=cs.id selected=(selectedCredentialSet === cs.id))= cs.name
+          small.form-hint
+            | Inbound AUTH logins this gateway will accept. With none assigned
+            | it does not advertise AUTH at all, and the IP allowlist stays the
+            | only inbound gate.
         .form-actions
           button.btn.btn-accent(type='submit') Save assignments
 

@@ -1,0 +1,430 @@
+// Package dsn builds delivery status notifications — the bounce and delay
+// messages this gateway sends back to a sender when its mail does not arrive.
+//
+// The output is an RFC 3464 multipart/report: a human-readable explanation, a
+// machine-readable per-recipient status block, and as much of the original
+// message as policy allows. RFC 3464 is what makes a bounce parseable by the
+// sending system rather than only by a person.
+//
+// This package builds a message and nothing else. It does not know about the
+// spool, routing, or configuration, which is what makes it testable against a
+// golden file and reusable by both callers — the delivery runner giving up on a
+// queued envelope, and the SMTP session refusing a recipient after the message
+// was already accepted.
+package dsn
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"strings"
+	"time"
+)
+
+// Kind selects which report is being made.
+type Kind int
+
+const (
+	// KindFailed is a permanent failure: delivery was abandoned.
+	KindFailed Kind = iota
+	// KindDelayed warns that a message is still queued and still being retried.
+	// It is not a failure and the sender must not treat it as one.
+	KindDelayed
+	// KindRelayed reports that a message was handed to the next hop, for a
+	// sender that asked with NOTIFY=SUCCESS.
+	//
+	// "relayed", not "delivered", and the distinction is the honest one: this
+	// gateway knows a relay accepted the recipient, and nothing at all about
+	// what happened afterwards. RFC 3464 §2.3.3 reserves "delivered" for a final
+	// delivery, which only the destination system can report.
+	KindRelayed
+)
+
+// Action renders the RFC 3464 "Action" field value.
+func (k Kind) Action() string {
+	switch k {
+	case KindDelayed:
+		return "delayed"
+	case KindRelayed:
+		return "relayed"
+	}
+	return "failed"
+}
+
+func (k Kind) subject() string {
+	switch k {
+	case KindDelayed:
+		return "Delivery Status Notification (Delay)"
+	case KindRelayed:
+		return "Delivery Status Notification (Relayed)"
+	}
+	return "Delivery Status Notification (Failure)"
+}
+
+// Rcpt is one recipient's outcome, rendered as a per-recipient block.
+type Rcpt struct {
+	// Addr is the recipient the original message was addressed to.
+	Addr string
+	// OrigAddr is the address the sender used, from the RFC 3461 ORCPT
+	// parameter. Empty omits Original-Recipient, which is the normal case: the
+	// field carries information only when some hop rewrote the address, and this
+	// gateway does no rewriting of its own.
+	OrigAddr string
+	// OrigType is ORCPT's address type, almost always "rfc822". Empty alongside
+	// a non-empty OrigAddr defaults to that.
+	OrigType string
+	// Status is an RFC 3463 enhanced status code, e.g. "5.1.1". Required —
+	// Build fills in a default from Kind when it is empty, because a
+	// per-recipient block without one is not parseable.
+	Status string
+	// Diagnostic is the remote server's reply, or this gateway's reason. Emitted
+	// as "smtp; <text>" when it looks like an SMTP reply, otherwise "X-Local".
+	Diagnostic string
+	// RemoteMTA is the relay that issued Diagnostic, if any.
+	RemoteMTA string
+	// LastAttempt is when delivery was last tried. Zero omits the field.
+	LastAttempt time.Time
+}
+
+// Report is everything needed to render one notification.
+type Report struct {
+	// ReportingMTA is this gateway's hostname.
+	ReportingMTA string
+	// From is the postmaster address the notification is sent as.
+	From string
+	// To is the original message's sender — where the notification goes.
+	To string
+
+	Kind Kind
+
+	// OriginalID is the failed envelope's uuid, which ties a notification back
+	// to the delivery that produced it. It appears in Received and References.
+	//
+	// It is deliberately NOT Original-Envelope-Id: RFC 3464 §2.2.1 defines that
+	// field as the sender's own ENVID, and answering it with an identifier this
+	// gateway invented gives a sender that does use ENVID a confident non-match
+	// against something that looks like one. See EnvelopeID.
+	OriginalID string
+	// EnvelopeID is the sender's RFC 3461 ENVID parameter, and the only thing
+	// Original-Envelope-Id may carry. Empty omits the field.
+	EnvelopeID string
+	// MessageID is the notification's own Message-ID, without angle brackets.
+	MessageID string
+
+	// ArrivalDate is when the original message was accepted.
+	ArrivalDate time.Time
+	// Now is the notification's Date. Zero means time.Now, which every caller
+	// wants and no test does.
+	Now time.Time
+
+	Rcpts []Rcpt
+
+	// Original is the message being reported on: its header block, or the whole
+	// thing when Full is set. Nil omits the third part entirely.
+	Original io.Reader
+	// Full selects message/rfc822 over text/rfc822-headers.
+	Full bool
+
+	// RetryUntil, on a delay report, is when the gateway will give up.
+	RetryUntil time.Time
+}
+
+// boundary is fixed rather than random.
+//
+// It only has to not occur in the enclosed content, and every part this package
+// emits is either generated by it or a message being quoted — where a line
+// beginning with this exact string would already have had to survive being a
+// header or a body line. A constant keeps Build deterministic, which is what
+// lets the output be pinned by a golden test; a random one would only add the
+// illusion of safety.
+const boundary = "=_mailgw_dsn_boundary_ac2f19d0_="
+
+// Build renders the notification as a complete RFC 5322 message with CRLF line
+// endings, ready to be spooled as a message body.
+func Build(r Report) ([]byte, error) {
+	if r.ReportingMTA == "" {
+		return nil, fmt.Errorf("dsn: no reporting MTA")
+	}
+	if r.From == "" {
+		return nil, fmt.Errorf("dsn: no postmaster address")
+	}
+	if r.To == "" {
+		// A null sender has nowhere to send a bounce, which is the whole point
+		// of the null sender. Callers must not get this far.
+		return nil, fmt.Errorf("dsn: no recipient for the notification")
+	}
+	if len(r.Rcpts) == 0 {
+		return nil, fmt.Errorf("dsn: no recipients to report on")
+	}
+
+	now := r.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+
+	var b strings.Builder
+	writeTop(&b, r, now)
+	writeHuman(&b, r)
+	writeStatus(&b, r, now)
+	if err := writeOriginal(&b, r); err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(&b, "--%s--\r\n", boundary)
+
+	return []byte(b.String()), nil
+}
+
+// writeTop renders the message's own headers.
+//
+// The Received header matters more than it looks. A notification is created by
+// the delivery runner and never passes through an SMTP session, so it does not
+// get the trace header smtpsrv adds — and without one, msg.received_count can
+// never catch a bounce that loops back through this gateway.
+func writeTop(b *strings.Builder, r Report, now time.Time) {
+	header(b, "Received", fmt.Sprintf("by %s (mailgw-go) id %s; %s",
+		r.ReportingMTA, r.OriginalID, now.Format(time.RFC1123Z)))
+	header(b, "X-NGM-Gateway", "go")
+	header(b, "Date", now.Format(time.RFC1123Z))
+	header(b, "From", fmt.Sprintf("Mail Delivery System <%s>", r.From))
+	header(b, "To", "<"+r.To+">")
+	header(b, "Subject", r.Kind.subject())
+	if r.MessageID != "" {
+		header(b, "Message-ID", "<"+r.MessageID+">")
+	}
+	if r.OriginalID != "" {
+		header(b, "References", fmt.Sprintf("<%s@%s>", r.OriginalID, r.ReportingMTA))
+	}
+	// RFC 3834. Together with the null envelope sender, this is what stops a
+	// vacation responder or a ticket system answering a bounce.
+	header(b, "Auto-Submitted", "auto-replied")
+	header(b, "MIME-Version", "1.0")
+	header(b, "Content-Type",
+		fmt.Sprintf("multipart/report; report-type=delivery-status;\r\n\tboundary=\"%s\"", boundary))
+	b.WriteString("\r\n")
+	b.WriteString("This is a MIME-encapsulated message.\r\n\r\n")
+}
+
+func writeHuman(b *strings.Builder, r Report) {
+	part(b, "text/plain; charset=utf-8")
+
+	fmt.Fprintf(b, "This is the mail system at %s.\r\n\r\n", r.ReportingMTA)
+	switch r.Kind {
+	case KindDelayed:
+		b.WriteString("Your message has not yet been delivered. The mail system will keep\r\n")
+		b.WriteString("trying. You do not need to resend it.\r\n")
+		if !r.RetryUntil.IsZero() {
+			fmt.Fprintf(b, "\r\nDelivery will be attempted until %s.\r\n",
+				r.RetryUntil.Format(time.RFC1123Z))
+		}
+	case KindRelayed:
+		// Careful wording: you asked to be told, we handed it on, and that is
+		// all we know. Saying "delivered" here would be a claim about a system
+		// this gateway never spoke to.
+		b.WriteString("Your message has been relayed to the next mail system, as you\r\n")
+		b.WriteString("requested with NOTIFY=SUCCESS. This is not confirmation that it\r\n")
+		b.WriteString("reached the recipient's mailbox, and no further notification will\r\n")
+		b.WriteString("be sent for these recipients.\r\n")
+	default:
+		b.WriteString("Your message could not be delivered to one or more recipients.\r\n")
+		b.WriteString("No further attempts will be made.\r\n")
+	}
+
+	b.WriteString("\r\n")
+	for _, rc := range r.Rcpts {
+		fmt.Fprintf(b, "  <%s>\r\n", clean(rc.Addr))
+		if rc.Diagnostic != "" {
+			fmt.Fprintf(b, "    %s\r\n", clean(rc.Diagnostic))
+		}
+	}
+	b.WriteString("\r\n")
+}
+
+// writeStatus renders the machine-readable part: one per-message block, then one
+// block per recipient, per RFC 3464 §2.
+func writeStatus(b *strings.Builder, r Report, now time.Time) {
+	part(b, "message/delivery-status")
+
+	header(b, "Reporting-MTA", "dns; "+clean(r.ReportingMTA))
+	if r.EnvelopeID != "" {
+		// xtext on the way out because that is how ENVID arrived and how RFC
+		// 3461 §4.4 defines the field; go-smtp decoded it on the way in.
+		header(b, "Original-Envelope-Id", xtext(r.EnvelopeID))
+	}
+	if r.OriginalID != "" {
+		// This gateway's own identifier for the failed delivery. Not
+		// Original-Envelope-Id — see the field's doc comment — but still worth
+		// having where a parser can reach it, since Received and References are
+		// free text as far as tooling is concerned.
+		header(b, "X-NGM-Original-Envelope", clean(r.OriginalID))
+	}
+	if !r.ArrivalDate.IsZero() {
+		header(b, "Arrival-Date", r.ArrivalDate.Format(time.RFC1123Z))
+	}
+
+	for _, rc := range r.Rcpts {
+		b.WriteString("\r\n")
+		// Original-Recipient comes first: RFC 3464 §2.3 lists it ahead of
+		// Final-Recipient, which is the only required field of the two.
+		if rc.OrigAddr != "" {
+			t := strings.ToLower(rc.OrigType)
+			if t == "" {
+				t = "rfc822"
+			}
+			header(b, "Original-Recipient", clean(t)+"; "+xtext(rc.OrigAddr))
+		}
+		header(b, "Final-Recipient", "rfc822; "+clean(rc.Addr))
+		header(b, "Action", r.Kind.Action())
+		header(b, "Status", status(rc.Status, r.Kind))
+		if rc.RemoteMTA != "" {
+			header(b, "Remote-MTA", "dns; "+clean(rc.RemoteMTA))
+		}
+		if rc.Diagnostic != "" {
+			header(b, "Diagnostic-Code", diagnostic(rc.Diagnostic))
+		}
+		last := rc.LastAttempt
+		if last.IsZero() {
+			last = now
+		}
+		header(b, "Last-Attempt-Date", last.Format(time.RFC1123Z))
+	}
+	b.WriteString("\r\n")
+}
+
+func writeOriginal(b *strings.Builder, r Report) error {
+	if r.Original == nil {
+		return nil
+	}
+	if r.Full {
+		part(b, "message/rfc822")
+	} else {
+		part(b, "text/rfc822-headers")
+	}
+
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r.Original); err != nil {
+		return fmt.Errorf("dsn: read original message: %w", err)
+	}
+	b.Write(buf.Bytes())
+
+	// The quoted content may not end in a newline, and the closing boundary has
+	// to start on a line of its own.
+	if buf.Len() > 0 && !bytes.HasSuffix(buf.Bytes(), []byte("\n")) {
+		b.WriteString("\r\n")
+	}
+	b.WriteString("\r\n")
+	return nil
+}
+
+// part opens a MIME part with the given content type.
+func part(b *strings.Builder, contentType string) {
+	fmt.Fprintf(b, "--%s\r\n", boundary)
+	header(b, "Content-Type", contentType)
+	b.WriteString("\r\n")
+}
+
+// header writes one header line, with the value stripped of anything that could
+// end it early.
+//
+// Every value here is either generated by this package or derived from a remote
+// server's reply and a recipient address — both attacker-influenced. A bare
+// CRLF in a Diagnostic-Code is a header injection into a message this gateway
+// signs its own name to.
+func header(b *strings.Builder, name, value string) {
+	// Folded continuations are written by callers as "\r\n\t" and are legal, so
+	// clean() is applied per line rather than to the whole value.
+	lines := strings.Split(value, "\r\n\t")
+	for i, l := range lines {
+		if i > 0 {
+			b.WriteString("\r\n\t")
+		} else {
+			b.WriteString(clean(name))
+			b.WriteString(": ")
+		}
+		b.WriteString(clean(l))
+	}
+	b.WriteString("\r\n")
+}
+
+// clean neutralises a value for use on a header line.
+//
+// CR and LF become spaces rather than being deleted. Both stop the injection —
+// what makes a header is a line break, and there is no longer one — but folding
+// to a space keeps the smuggled text visibly inline instead of silently welding
+// it onto the end of the real value, where "user@example.com" and a following
+// "Bcc:" would run together into something that reads like neither.
+func clean(s string) string {
+	return strings.NewReplacer("\r", " ", "\n", " ").Replace(s)
+}
+
+// xtext encodes a value the way RFC 3461 §4 requires ORCPT and ENVID to appear.
+//
+// go-smtp decodes both on the way in and does not export an encoder, so this is
+// the other half of that round trip. Everything outside printable ASCII, plus
+// the two specials `+` and `=`, becomes `+XX` with two upper-case hex digits.
+//
+// The padding is not optional and is the reason this is not a two-line
+// wrapper around strconv: go-smtp's own unexported encoder formats the byte
+// without zero-padding, so a control character below 0x10 emits `+9` where
+// xtext demands `+09`. `+` matters far more in practice — user+tag@example.com
+// is an ordinary address, and emitting it raw produces a value the receiving
+// system decodes into something else.
+//
+// The result contains no CR, LF or space by construction, which makes it safe on
+// a header line without clean(); applying clean() as well would be harmless but
+// would suggest the encoding might let one through.
+func xtext(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := range len(s) {
+		c := s[i]
+		if c < '!' || c > '~' || c == '+' || c == '=' {
+			fmt.Fprintf(&b, "+%02X", c)
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+// status renders the enhanced status code, supplying one when the caller had
+// none and correcting a class that contradicts the report's own Action.
+//
+// The class and the action have to agree. RFC 3463 defines most conditions in
+// both classes — 4.4.7 and 5.4.7 are both "message expired" — so it is easy to
+// pair a 4.x with `Action: failed`, which tells a sender's software in one line
+// that the condition is transient and in the next that no further attempt will
+// be made. Receiving systems act on the status; the disagreement is the bug.
+//
+// Corrected here rather than trusted from each caller: this is the only place
+// that knows both halves at once.
+func status(s string, k Kind) string {
+	want := byte('5')
+	switch k {
+	case KindDelayed:
+		want = '4'
+	case KindRelayed:
+		want = '2'
+	}
+
+	s = clean(strings.TrimSpace(s))
+	if s == "" {
+		return string(want) + ".0.0"
+	}
+	if s[0] != want && (s[0] == '2' || s[0] == '4' || s[0] == '5') {
+		return string(want) + s[1:]
+	}
+	return s
+}
+
+// diagnostic tags the reply with its type. A reply that starts with a three
+// digit code came from a relay and is an SMTP diagnostic; anything else is this
+// gateway's own words and must not claim to be one.
+func diagnostic(s string) string {
+	s = clean(strings.TrimSpace(s))
+	if len(s) >= 3 && isDigit(s[0]) && isDigit(s[1]) && isDigit(s[2]) {
+		return "smtp; " + s
+	}
+	return "X-Local; " + s
+}
+
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }

@@ -50,7 +50,64 @@ type Ruleset struct {
 	Routes  []CompiledRule
 	Default Action
 	Schema  *Schema
+
+	needsMIME  bool
+	needsSPF   bool
+	needsDKIM  bool
+	needsDMARC bool
 }
+
+// NeedsMIME reports whether any rule reads a fact that only the MIME walk can
+// supply.
+//
+// Walking a message means reading the spooled body back — internal/smtpsrv's
+// bodyScan deliberately does not buffer it — so it is worth doing only when
+// something will actually read the result. A configuration with no attachment
+// rules and attach.enabled off pays nothing, which is the shipped default.
+func (rs *Ruleset) NeedsMIME() bool { return rs != nil && rs.needsMIME }
+
+// NeedsMIMEField reports whether a field name is one the MIME walk populates.
+//
+// Exported because `check` and the schema listing both need the same answer, and
+// a second list that drifted from this one would put the warning and the
+// behaviour out of step.
+func NeedsMIMEField(name string) bool {
+	switch name {
+	case "msg.has_attachment", "msg.mime_part_count":
+		return true
+	}
+	return strings.HasPrefix(name, "attachment.")
+}
+
+// NeedsSPF, NeedsDKIM and NeedsDMARC report whether any rule reads a fact the
+// corresponding check produces.
+//
+// Same reasoning as NeedsMIME, and the same shape deliberately. An SPF check is
+// a DNS walk of up to ten lookups per message, a DKIM verification re-reads the
+// spooled body and does a lookup and an RSA verify per signature, and a DMARC
+// evaluation needs both. None of that should be paid by a gateway whose rules
+// never ask — which is the shipped default, since every msgauth key is off.
+//
+// A DMARC rule implies the other two: DMARC is alignment over an SPF result and
+// a DKIM result, so asking for it without them would always answer "fail".
+func (rs *Ruleset) NeedsSPF() bool {
+	return rs != nil && (rs.needsSPF || rs.needsDMARC)
+}
+
+func (rs *Ruleset) NeedsDKIM() bool {
+	return rs != nil && (rs.needsDKIM || rs.needsDMARC)
+}
+
+func (rs *Ruleset) NeedsDMARC() bool { return rs != nil && rs.needsDMARC }
+
+// NeedsSPFField, NeedsDKIMField and NeedsDMARCField are exported for the reason
+// NeedsMIMEField is: `check`, the schema listing and the behaviour must all
+// answer from one list.
+func NeedsSPFField(name string) bool { return strings.HasPrefix(name, "spf.") }
+
+func NeedsDKIMField(name string) bool { return strings.HasPrefix(name, "dkim.") }
+
+func NeedsDMARCField(name string) bool { return strings.HasPrefix(name, "dmarc.") }
 
 // Decision is the outcome of routing one recipient.
 type Decision struct {
@@ -113,6 +170,16 @@ func Compile(f *File, tbl *relays.Table, sc *Schema) (*Ruleset, error) {
 	}
 	if rs.Routes, err = compileRules(f.Routes, tbl, sc, "routes"); err != nil {
 		return nil, err
+	}
+
+	// Answered once here rather than per message: whether this configuration
+	// needs the MIME walk, an SPF lookup or a DKIM verification is a property of
+	// the rules, and the rules are immutable once compiled.
+	for _, f := range rs.FieldsUsed() {
+		rs.needsMIME = rs.needsMIME || NeedsMIMEField(f)
+		rs.needsSPF = rs.needsSPF || NeedsSPFField(f)
+		rs.needsDKIM = rs.needsDKIM || NeedsDKIMField(f)
+		rs.needsDMARC = rs.needsDMARC || NeedsDMARCField(f)
 	}
 	return rs, nil
 }

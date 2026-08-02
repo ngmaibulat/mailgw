@@ -32,7 +32,10 @@ jobs:
 
             - run: echo "GITHUB_REF_NAME $GITHUB_REF_NAME"
 
-            - run: docker build . -t ngmaibulat/mailgw:$GITHUB_REF_NAME
+            # Root build context, explicit Dockerfile: there is no Dockerfile at
+            # the repo root (a bare `docker build .` here was broken), and the
+            # Haraka image now lives under legacy/.
+            - run: docker build -f legacy/mailgw/Dockerfile . -t ngmaibulat/mailgw:$GITHUB_REF_NAME
 
             - name: Login to Docker Hub
               uses: docker/login-action@v2

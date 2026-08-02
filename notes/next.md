@@ -1,21 +1,6 @@
-### Testing
-
-- TLS SMTP tests
-- API tests
-- Bruno tests: Contracts mainly
-- Bruno UI
-- OpenAPI specs
-
 ### Bun Native
 
 - File API in Migrations
-
-### Tools
-
-- Fetch/Search logs from API
-- Watch FS and send emails
-- Watch FS and index emails for Full Text Search
-- Watch FS and scan attachments
 
 ### Connection
 
@@ -46,7 +31,6 @@
 
 ### Advanced
 
-- WebUI
 - KeyCloack
 - RBAC
 - Alerts

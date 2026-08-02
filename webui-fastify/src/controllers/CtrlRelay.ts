@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { eq } from "drizzle-orm";
 
 import { db, relays } from "../../db/index.ts";
+import { encrypt } from "../central/secrets.ts";
 import { parseRelayBody, zodErr } from "../validation/config.ts";
 
 type GroupParams = { group_id: string };
@@ -20,6 +21,9 @@ export class CtrlRelay {
                 priority: 10,
                 auth_user: "",
                 auth_pass: "",
+                auth_pass_env: "",
+                tls: "",
+                allow_insecure_auth: false,
             },
         });
     }
@@ -37,7 +41,15 @@ export class CtrlRelay {
             });
         }
 
-        await db.insert(relays).values(parsed.data);
+        // Encrypted at rest — see src/central/secrets.ts. Without
+        // CONFIG_SECRET_KEY this is a no-op and the value is stored as before,
+        // so an existing install is not broken by the upgrade.
+        const values = { ...parsed.data };
+        if (values.auth_pass) {
+            values.auth_pass = encrypt(values.auth_pass);
+        }
+
+        await db.insert(relays).values(values);
         return reply.redirect(`/config/relaygrp/${group_id}`);
     }
 
@@ -73,8 +85,12 @@ export class CtrlRelay {
 
         const values = { ...parsed.data };
         // "Leave blank to keep" — don't overwrite the stored password with an
-        // empty one (the form never echoes the current password back).
-        if (!values.auth_pass) {
+        // empty one (the form never echoes the current password back). A value
+        // that IS supplied is re-encrypted, which is also how pre-migration
+        // plaintext rows get upgraded.
+        if (values.auth_pass) {
+            values.auth_pass = encrypt(values.auth_pass);
+        } else {
             delete values.auth_pass;
         }
 

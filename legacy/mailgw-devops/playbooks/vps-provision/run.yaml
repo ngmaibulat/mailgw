@@ -1,0 +1,66 @@
+---
+- name: Create DigitalOcean Droplet
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+      - vars.yaml
+  vars:
+      do_api_token: "{{ lookup('ansible.builtin.env', 'DO_TOKEN') }}"
+  tasks:
+      - name: Create a DO Droplet
+        community.digitalocean.digital_ocean_droplet:
+            state: present
+            oauth_token: '{{ do_api_token }}'
+            name: 'srv-m-01'
+            region: 'fra1'
+            size: 's-1vcpu-2gb'
+            image: 'ubuntu-23-10-x64'
+            vpc_uuid: '{{ vpc }}'
+            ssh_keys:
+                - '{{ ssh_key }}'
+        register: srv
+
+      - name: Pause for 1 minute
+        pause:
+            seconds: 30
+
+      - name: Wait for port 22 to become open on the host
+        wait_for:
+            host: '{{ srv.data.droplet.networks.v4[0].ip_address }}'
+            port: 22
+            state: started
+            delay: 10
+            sleep: 10
+            timeout: 300
+
+      - name: Rewrite inventory.txt
+        ansible.builtin.copy:
+            content: '{{ srv.data.droplet.networks.v4[0].ip_address }}'
+            dest: ../../inventory.txt
+
+      - name: Add new Droplet to inventory
+        add_host:
+            name: '{{ srv.data.droplet.networks.v4[0].ip_address }}'
+            groups: 'vps'
+            # You can also set variables for the new host here
+
+- name: Run baseline configuration
+  hosts: vps
+  vars_files:
+      - vars.yaml
+  tasks:
+      - name: Wait for cloud-init / user-data to finish
+        command: cloud-init status --wait
+        changed_when: false
+
+      - name: Update apt package index
+        apt:
+            update_cache: yes
+
+      - name: Install packages
+        apt:
+            name: tcpdump, vim, htop, cifs-utils, nala, git, python-is-python3, python3-pip, python3-pymysql, curl, mysql-client, ca-certificates, apt-transport-https, software-properties-common
+            state: present
+        become: yes
+        become_user: root
+        become_method: sudo

@@ -1,0 +1,27 @@
+From: sender@example.com
+To: rcpt@example.com
+Subject: nested
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="OUTER"
+
+--OUTER
+Content-Type: multipart/alternative; boundary="INNER"
+
+--INNER
+Content-Type: text/plain; charset=utf-8
+
+the body
+--INNER
+Content-Type: text/html; charset=utf-8
+
+<p>the body</p>
+--INNER--
+
+--OUTER
+Content-Type: application/octet-stream; name="report.q3.exe"
+Content-Disposition: attachment; filename="report.q3.exe"
+Content-Transfer-Encoding: base64
+
+aGVsbG8gYXR0YWNobWVudAo=
+
+--OUTER--

@@ -26,9 +26,26 @@ export const RegisterInfo = z.object({
 
 export type RegisterInfo = z.infer<typeof RegisterInfo>;
 
-// Counters the gateway reports on each heartbeat. Accepted and echoed to the
-// console now; persisting the time series is M6.
-export const AgentMetrics = z.record(z.string().max(64), z.number()).optional();
+// Counters the gateway reports on each heartbeat, stored as the latest
+// snapshot per gateway (GatewayMetrics, logservice migration 024).
+//
+// Bounded on every axis, because this is self-declared data from a caller we
+// have authenticated but do not otherwise trust, and it is now WRITTEN rather
+// than discarded. The gateway's own set is 28 keys as of M8 (the `counters`
+// table in mailgw-go/internal/obs, pinned there by a golden test); the cap
+// leaves generous room for it to keep growing without letting a misbehaving or
+// hostile node push an unbounded blob into the row.
+//
+// Values are finite non-negative integers because every one of them is a
+// monotonic counter. Rejecting NaN and Infinity here matters: they are not
+// representable in JSON, so they would surface as a serialisation failure
+// somewhere further downstream instead of a 400 here.
+export const AgentMetrics = z
+    .record(z.string().min(1).max(64), z.number().int().nonnegative().finite())
+    .refine((m) => Object.keys(m).length <= 128, {
+        message: "at most 128 metrics keys",
+    })
+    .optional();
 
 export const ReportInfo = z.object({
     // The ConfigVersions.id the gateway currently has applied. Null while it is

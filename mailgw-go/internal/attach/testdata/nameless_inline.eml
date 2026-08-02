@@ -1,0 +1,18 @@
+From: sender@example.com
+To: rcpt@example.com
+Subject: nameless inline part
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary="B"
+
+--B
+Content-Type: text/plain
+
+body
+--B
+Content-Type: image/png
+Content-ID: <logo>
+Content-Transfer-Encoding: base64
+
+UE5HLWlzaCBieXRlcwo=
+
+--B--

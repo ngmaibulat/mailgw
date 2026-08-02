@@ -1,6 +1,14 @@
 # Main
 
-queue
+# The Haraka spool, relative to its working directory.
+#
+# This was a bare `queue`, which matches a directory of that name at ANY depth —
+# and so silently excluded three source paths that are not spools at all:
+# mailgw-go/internal/queue (the whole outbound queue package, which was
+# consequently never committed) and the sample payloads under
+# {legacy/,}deploy/core/samples/queue. Leading slash and trailing slash: this
+# path, and only if it is a directory.
+/legacy/mailgw/queue/
 #config
 log
 
@@ -116,3 +124,7 @@ mailgw-go/bin/
 mailgw-go/dist/
 mailgw-go/coverage.out
 *.test
+
+# VitePress build output and cache
+docs/*/.vitepress/dist/
+docs/*/.vitepress/cache/

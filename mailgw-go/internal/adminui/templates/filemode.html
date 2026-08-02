@@ -1,0 +1,16 @@
+{{define "content"}}
+<h2>Status</h2>
+
+<p class="lead">This gateway runs from a configuration directory and is not
+centrally managed. There is nothing to provision here.</p>
+
+<dl>
+    <dt>Configuration</dt><dd class="mono">{{.ConfigDir}}</dd>
+    <dt>Queue</dt>
+    <dd>{{if .QueueError}}unavailable: {{.QueueError}}
+        {{else}}{{.QueueReady}} ready, {{.QueueInflight}} in flight, {{.QueueQuarantine}} quarantined, {{.QueueDead}} dead{{end}}</dd>
+</dl>
+
+<p class="hint">To place this gateway under Central Management, restart it
+without <code>-config</code> and with a <code>-data</code> directory.</p>
+{{end}}

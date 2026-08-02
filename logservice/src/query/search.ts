@@ -8,21 +8,29 @@ export interface SearchResult<T> {
     records: T[];
 }
 
-const DELIVERY_FIELDS = new Set([
+// These sets are what makes a column filterable and sortable. buildWhere
+// SILENTLY SKIPS a field that is not listed (src/query/builder.ts), so a column
+// added to a table and a grid but forgotten here produces a filter that appears
+// to work and returns every row. They are exported so a unit test can assert
+// membership without a database.
+export const DELIVERY_FIELDS = new Set([
     "id", "uuid", "dt", "sender", "rcpt_domain", "rcpt_list", "rcpt_accepted",
     "tls_forced", "tls", "auth", "host", "ip", "port", "response", "delay",
+    "gateway", "route_rule",
 ]);
 
-const CONNECTION_FIELDS = new Set([
+export const CONNECTION_FIELDS = new Set([
     "id", "uuid", "dt", "encoding", "hello_name", "remoteAddr", "remotePort",
     "remote_host", "remote_info", "remote_is_local", "remote_is_private",
     "using_tls", "tran_count", "rcpt_count_accept", "rcpt_count_tempfail", "rcpt_count_reject",
+    "gateway",
 ]);
 
-const TRANSACTION_FIELDS = new Set([
+export const TRANSACTION_FIELDS = new Set([
     "id", "uuid", "dt", "action", "encoding", "sender", "rcpt_list",
     "rcpt_count_accept", "rcpt_count_tempfail", "rcpt_count_reject",
     "delay_data_post", "data_bytes", "mime_part_count",
+    "gateway",
 ]);
 
 // Only HashLookups columns are searchable; the joined Transaction columns

@@ -11,7 +11,11 @@ import {
     configDeployments,
     relayGroups,
     relays,
+    smtpCredentials,
 } from "../../db/index.ts";
+import type { DB } from "../../db/index.ts";
+import { notifyGateway } from "./notify.ts";
+import { decrypt } from "./secrets.ts";
 
 // Composes a gateway's assigned profiles and relay groups into the one JSON
 // document it pulls from GET /agent/config.
@@ -24,6 +28,7 @@ import {
 //   allowlist -> ngmfilter.json
 //   relays    -> relays.json
 //   logging   -> logging.json
+//   admin     -> admin.json
 //
 // The rule DSL is compiled and type-checked by Go. Re-implementing that here
 // would give two sources of truth that can disagree, so the gateway is
@@ -37,6 +42,18 @@ export interface BundleRelay {
     priority: number;
     auth_user?: string;
     auth_pass?: string;
+    // Name of an environment variable on the gateway holding the password.
+    // Keeps the credential out of the bundle entirely; mailgw-go prefers it
+    // over auth_pass when both are present.
+    auth_pass_env?: string;
+    // none | opportunistic | required. Omitted when unset, where mailgw-go
+    // defaults to opportunistic.
+    tls?: string;
+    allow_insecure_auth?: boolean;
+    // Resolve `exchange` as a domain and deliver to its MX hosts in preference
+    // order, rather than dialling it directly. Omitted when false so an
+    // unchanged configuration keeps hashing identically.
+    use_mx?: boolean;
 }
 
 export interface GatewayBundle {
@@ -45,12 +62,43 @@ export interface GatewayBundle {
     format: 1;
     server: string | null;
     routing: string | null;
-    allowlist: { allowed: string[] };
+    // allow_all is carried through rather than dropped: mailgw-go's allowlist
+    // is fail-closed and rejects an empty list unless it is set, so without
+    // this there is no way to express an allow-all gateway from the console at
+    // all — and the gateway's own error message would advise an option the UI
+    // cannot produce.
+    allowlist: { allowed: string[]; allow_all?: boolean };
     relays: Record<string, BundleRelay[]>;
     logging: {
         url_conn: string;
         url_queue: string;
         url_delivery: string;
+        // The logservice credential. A managed gateway has no environment to
+        // read it from, so it has to arrive here or events cannot be posted at
+        // all.
+        api_key?: string;
+    };
+    // The gateway's local admin listener. Omitted entirely when there is
+    // nothing to say, so every existing bundle keeps its digest.
+    admin?: {
+        // Bearer token for the gateway's /metrics and /readyz. A scraper needs
+        // a credential it can present without a browser, which is why this is
+        // not the session the gateway's own wizard runs on. Empty means those
+        // endpoints stay open, which is what every install that firewalled port
+        // 8080 already has.
+        metrics_token?: string;
+    };
+    // Inbound SMTP AUTH credentials, as bcrypt hashes. Omitted entirely when
+    // the gateway has no credential set assigned, so every bundle composed
+    // before this key existed keeps its digest and nothing in the fleet
+    // re-pulls.
+    //
+    // Hashes, not passwords, and therefore nothing to do with secrets.ts: the
+    // gateway only ever VERIFIES an inbound credential, so unlike a relay
+    // password it never needs the plaintext back and a leaked bundle costs an
+    // offline bcrypt attack rather than a working login.
+    auth?: {
+        users: { user: string; hash: string }[];
     };
 }
 
@@ -66,11 +114,35 @@ function loggingEndpoints(): GatewayBundle["logging"] {
         "http://localhost:3000"
     ).replace(/\/+$/, "");
 
-    return {
+    const logging: GatewayBundle["logging"] = {
         url_conn: `${base}/api/connection`,
         url_queue: `${base}/api/queue`,
         url_delivery: `${base}/api/delivery`,
     };
+
+    // Same split as the URL above, for the same reason: the key the webui uses
+    // for its own read proxy is not necessarily the one the fleet should send.
+    // Omitted rather than empty when unset, so an unchanged configuration keeps
+    // hashing identically.
+    const apiKey =
+        process.env.GATEWAY_LOGSERVICE_API_KEY ||
+        process.env.LOGSERVICE_API_KEY;
+    if (apiKey) {
+        logging.api_key = apiKey;
+    }
+    return logging;
+}
+
+// The gateway admin listener's settings. Infrastructure rather than per-gateway
+// policy, on the same reasoning as loggingEndpoints above: a fleet is scraped by
+// one Prometheus with one credential.
+//
+// Returns undefined rather than an empty object when there is nothing to say —
+// stableStringify drops undefined, so an install that never sets a token keeps
+// every existing bundle digest and no gateway re-pulls.
+function adminSettings(): GatewayBundle["admin"] {
+    const token = process.env.GATEWAY_METRICS_TOKEN;
+    return token ? { metrics_token: token } : undefined;
 }
 
 // A gateway with no allowlist profile gets an empty list, and mailgw-go's
@@ -79,7 +151,7 @@ function loggingEndpoints(): GatewayBundle["logging"] {
 // deploying one.
 const EMPTY_ALLOWLIST = { allowed: [] as string[] };
 
-function parseAllowlist(body: string): { allowed: string[] } {
+function parseAllowlist(body: string): GatewayBundle["allowlist"] {
     const parsed = JSON.parse(body) as unknown;
     if (
         !parsed ||
@@ -88,11 +160,22 @@ function parseAllowlist(body: string): { allowed: string[] } {
     ) {
         throw new Error('allowlist profile must be {"allowed": [...]}');
     }
-    return { allowed: (parsed as { allowed: string[] }).allowed };
+
+    const value = parsed as { allowed: string[]; allow_all?: unknown };
+    const out: GatewayBundle["allowlist"] = { allowed: value.allowed };
+    // Only emitted when the operator actually set it, so an unchanged profile
+    // keeps its digest.
+    if (value.allow_all === true) {
+        out.allow_all = true;
+    }
+    return out;
 }
 
-export async function composeBundle(gatewayId: number): Promise<GatewayBundle> {
-    const assignments = await db
+export async function composeBundle(
+    gatewayId: number,
+    conn: DB = db,
+): Promise<GatewayBundle> {
+    const assignments = await conn
         .select()
         .from(gatewayAssignments)
         .where(eq(gatewayAssignments.gateway_id, gatewayId));
@@ -102,7 +185,7 @@ export async function composeBundle(gatewayId: number): Promise<GatewayBundle> {
         .filter((id): id is number => id !== null);
 
     const profiles = profileIds.length
-        ? await db
+        ? await conn
               .select()
               .from(configProfiles)
               .where(inArray(configProfiles.id, profileIds))
@@ -127,11 +210,11 @@ export async function composeBundle(gatewayId: number): Promise<GatewayBundle> {
 
     const relayTable: Record<string, BundleRelay[]> = {};
     if (groupIds.length) {
-        const groups = await db
+        const groups = await conn
             .select()
             .from(relayGroups)
             .where(inArray(relayGroups.id, groupIds));
-        const members = await db
+        const members = await conn
             .select()
             .from(relays)
             .where(inArray(relays.group_id, groupIds));
@@ -160,8 +243,22 @@ export async function composeBundle(gatewayId: number): Promise<GatewayBundle> {
                     if (m.auth_user) {
                         relay.auth_user = m.auth_user;
                     }
+                    // Decrypted here, on the console, so no key ever has to
+                    // reach a gateway. See src/central/secrets.ts.
                     if (m.auth_pass) {
-                        relay.auth_pass = m.auth_pass;
+                        relay.auth_pass = decrypt(m.auth_pass);
+                    }
+                    if (m.auth_pass_env) {
+                        relay.auth_pass_env = m.auth_pass_env;
+                    }
+                    if (m.tls) {
+                        relay.tls = m.tls;
+                    }
+                    if (m.use_mx) {
+                        relay.use_mx = true;
+                    }
+                    if (m.allow_insecure_auth) {
+                        relay.allow_insecure_auth = true;
                     }
                     return relay;
                 });
@@ -179,6 +276,44 @@ export async function composeBundle(gatewayId: number): Promise<GatewayBundle> {
             : EMPTY_ALLOWLIST,
         relays: relayTable,
         logging: loggingEndpoints(),
+        admin: adminSettings(),
+        auth: await inboundAuth(assignments, conn),
+    };
+}
+
+// The inbound SMTP AUTH credentials assigned to this gateway.
+//
+// Returns undefined — never {} and never {users: []} — when there is no set or
+// the set is empty, on the same rule adminSettings() states: stableStringify
+// drops undefined, so an install that never issues a credential keeps every
+// existing bundle digest.
+//
+// Sorted by username because stableStringify deliberately does not sort arrays,
+// so without this the digest would follow whatever order MySQL happened to
+// return the rows in and an untouched configuration could churn.
+async function inboundAuth(
+    assignments: { kind: string; credential_set_id: number | null }[],
+    conn: DB,
+): Promise<GatewayBundle["auth"]> {
+    const setId = assignments.find(
+        (a) => a.kind === "credentialset" && a.credential_set_id !== null,
+    )?.credential_set_id;
+    if (!setId) {
+        return undefined;
+    }
+
+    const rows = await conn
+        .select()
+        .from(smtpCredentials)
+        .where(eq(smtpCredentials.set_id, setId));
+    if (!rows.length) {
+        return undefined;
+    }
+
+    return {
+        users: rows
+            .map((r) => ({ user: r.username, hash: r.hash }))
+            .sort((a, b) => (a.user < b.user ? -1 : a.user > b.user ? 1 : 0)),
     };
 }
 
@@ -204,7 +339,9 @@ function stableStringify(value: unknown): string {
     return `{${entries.join(",")}}`;
 }
 
-function serialiseBundle(bundle: GatewayBundle): string {
+// Exported for bundle.test.ts, which pins the one property this whole file is
+// built around: an unchanged configuration must serialise identically.
+export function serialiseBundle(bundle: GatewayBundle): string {
     return stableStringify(bundle);
 }
 
@@ -222,85 +359,110 @@ export interface DeployResult {
 // Deploy: compose, freeze as a new immutable version, and point the gateway at
 // it. Never updates an existing ConfigVersions row — that immutability is what
 // makes rollback exact rather than approximate.
+// The whole thing runs in one transaction: composing reads the assignments,
+// and the writes that follow (version row, gateway pointer, audit row) are only
+// meaningful together. A failure part-way used to be able to leave a gateway
+// pointing at a version with no deployment record, or none at all.
 export async function deployBundle(
     gatewayId: number,
     actor: string,
     note?: string,
 ): Promise<DeployResult> {
-    const bundle = await composeBundle(gatewayId);
-    const serialised = serialiseBundle(bundle);
-    const sha256 = bundleDigest(serialised);
+    const result = await deployInTransaction(gatewayId, actor, note);
+    // After the commit, never inside it: a gateway woken by a notification
+    // fetches immediately, and a notification sent from inside the transaction
+    // could arrive before the row it describes is visible.
+    notifyGateway(gatewayId);
+    return result;
+}
 
-    const [latest] = await db
-        .select({
-            id: configVersions.id,
-            version: configVersions.version,
-            bundle_sha256: configVersions.bundle_sha256,
-        })
-        .from(configVersions)
-        .where(eq(configVersions.gateway_id, gatewayId))
-        .orderBy(desc(configVersions.version))
-        .limit(1);
+async function deployInTransaction(
+    gatewayId: number,
+    actor: string,
+    note?: string,
+): Promise<DeployResult> {
+    return await db.transaction(async (tx) => {
+        const bundle = await composeBundle(gatewayId, tx);
+        const serialised = serialiseBundle(bundle);
+        const sha256 = bundleDigest(serialised);
 
-    // Deploying an unchanged configuration would pile up identical versions and
-    // make the history unreadable. Re-point at the existing one instead.
-    if (latest && latest.bundle_sha256 === sha256) {
-        await db
+        const [latest] = await tx
+            .select({
+                id: configVersions.id,
+                version: configVersions.version,
+                bundle_sha256: configVersions.bundle_sha256,
+            })
+            .from(configVersions)
+            .where(eq(configVersions.gateway_id, gatewayId))
+            .orderBy(desc(configVersions.version))
+            .limit(1);
+
+        // Deploying an unchanged configuration would pile up identical versions
+        // and make the history unreadable. Re-point at the existing one instead.
+        if (latest && latest.bundle_sha256 === sha256) {
+            await tx
+                .update(gateways)
+                .set({ desired_version_id: latest.id })
+                .where(eq(gateways.id, gatewayId));
+
+            return {
+                versionId: latest.id,
+                version: latest.version,
+                sha256,
+                unchanged: true,
+            };
+        }
+
+        const version = (latest?.version ?? 0) + 1;
+        await tx.insert(configVersions).values({
+            gateway_id: gatewayId,
+            version,
+            bundle: serialised,
+            bundle_sha256: sha256,
+            note: note ?? null,
+            created_by: actor,
+        });
+
+        // Inside the transaction on purpose: the uniq_version_gateway index
+        // (migration 019) already stops concurrent deploys from corrupting the
+        // numbering, so this read-back is about seeing our own write, not the
+        // race.
+        const [created] = await tx
+            .select({ id: configVersions.id })
+            .from(configVersions)
+            .where(
+                and(
+                    eq(configVersions.gateway_id, gatewayId),
+                    eq(configVersions.version, version),
+                ),
+            )
+            .limit(1);
+
+        if (!created) {
+            throw new Error(
+                "config version disappeared immediately after insert",
+            );
+        }
+
+        await tx
             .update(gateways)
-            .set({ desired_version_id: latest.id })
+            .set({
+                desired_version_id: created.id,
+                // The previous error described the previous bundle.
+                apply_error: null,
+            })
             .where(eq(gateways.id, gatewayId));
 
-        return {
-            versionId: latest.id,
-            version: latest.version,
-            sha256,
-            unchanged: true,
-        };
-    }
+        await tx.insert(configDeployments).values({
+            gateway_id: gatewayId,
+            version_id: created.id,
+            action: "deploy",
+            actor,
+            note: note ?? null,
+        });
 
-    const version = (latest?.version ?? 0) + 1;
-    await db.insert(configVersions).values({
-        gateway_id: gatewayId,
-        version,
-        bundle: serialised,
-        bundle_sha256: sha256,
-        note: note ?? null,
-        created_by: actor,
+        return { versionId: created.id, version, sha256, unchanged: false };
     });
-
-    const [created] = await db
-        .select({ id: configVersions.id })
-        .from(configVersions)
-        .where(
-            and(
-                eq(configVersions.gateway_id, gatewayId),
-                eq(configVersions.version, version),
-            ),
-        )
-        .limit(1);
-
-    if (!created) {
-        throw new Error("config version disappeared immediately after insert");
-    }
-
-    await db
-        .update(gateways)
-        .set({
-            desired_version_id: created.id,
-            // The previous error described the previous bundle.
-            apply_error: null,
-        })
-        .where(eq(gateways.id, gatewayId));
-
-    await db.insert(configDeployments).values({
-        gateway_id: gatewayId,
-        version_id: created.id,
-        action: "deploy",
-        actor,
-        note: note ?? null,
-    });
-
-    return { versionId: created.id, version, sha256, unchanged: false };
 }
 
 // Rollback repoints at an existing version rather than minting a new one, so
@@ -310,36 +472,50 @@ export async function rollbackTo(
     versionId: number,
     actor: string,
 ): Promise<{ version: number }> {
-    const [target] = await db
-        .select({ id: configVersions.id, version: configVersions.version })
-        .from(configVersions)
-        .where(
-            and(
-                eq(configVersions.id, versionId),
-                // Scoped to the gateway so a crafted id cannot pull another
-                // gateway's bundle — which would leak its relay credentials.
-                eq(configVersions.gateway_id, gatewayId),
-            ),
-        )
-        .limit(1);
+    const result = await rollbackInTransaction(gatewayId, versionId, actor);
+    notifyGateway(gatewayId);
+    return result;
+}
 
-    if (!target) {
-        throw new Error("no such configuration version for this gateway");
-    }
+async function rollbackInTransaction(
+    gatewayId: number,
+    versionId: number,
+    actor: string,
+): Promise<{ version: number }> {
+    return await db.transaction(async (tx) => {
+        const [target] = await tx
+            .select({ id: configVersions.id, version: configVersions.version })
+            .from(configVersions)
+            .where(
+                and(
+                    eq(configVersions.id, versionId),
+                    // Scoped to the gateway so a crafted id cannot pull another
+                    // gateway's bundle — which would leak its relay credentials.
+                    eq(configVersions.gateway_id, gatewayId),
+                ),
+            )
+            .limit(1);
 
-    await db
-        .update(gateways)
-        .set({ desired_version_id: target.id, apply_error: null })
-        .where(eq(gateways.id, gatewayId));
+        // Throwing inside the callback aborts the transaction, which is exactly
+        // what should happen: nothing has been written yet, and nothing should be.
+        if (!target) {
+            throw new Error("no such configuration version for this gateway");
+        }
 
-    await db.insert(configDeployments).values({
-        gateway_id: gatewayId,
-        version_id: target.id,
-        action: "rollback",
-        actor,
+        await tx
+            .update(gateways)
+            .set({ desired_version_id: target.id, apply_error: null })
+            .where(eq(gateways.id, gatewayId));
+
+        await tx.insert(configDeployments).values({
+            gateway_id: gatewayId,
+            version_id: target.id,
+            action: "rollback",
+            actor,
+        });
+
+        return { version: target.version };
     });
-
-    return { version: target.version };
 }
 
 export async function listVersions(gatewayId: number) {

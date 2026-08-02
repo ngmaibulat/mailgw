@@ -3,6 +3,7 @@ LogGrid.create({
     url: "/api/queue",
     columns: [
         LogGrid.dt("dt", "DT"),
+        LogGrid.text("gateway", "Gateway", { maxWidth: 160 }),
         LogGrid.text("sender", "Sender"),
         LogGrid.text("rcpt_list", "Rcpt"),
         LogGrid.num("rcpt_count_accept", "Rcpt Accepted", { maxWidth: 150 }),

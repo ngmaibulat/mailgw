@@ -1,0 +1,177 @@
+---
+- name: Create DigitalOcean Droplet
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+      - vars.yaml
+  tasks:
+      - name: Create a DO Droplet
+        community.digitalocean.digital_ocean_droplet:
+            state: present
+            oauth_token: "{{ do_api_token }}"
+            name: "srv-m-01"
+            region: "fra1"
+            size: "s-1vcpu-2gb"
+            image: "ubuntu-23-10-x64"
+            vpc_uuid: "d02044c0-1c69-4da7-ad45-27fe9a2ceaf6"
+            ssh_keys:
+                - 37590350
+        register: srv
+
+      - name: Wait for port 22 to become open on the host
+        wait_for:
+            host: "{{ srv.data.droplet.networks.v4[0].ip_address }}"
+            port: 22
+            state: started
+            delay: 10
+            sleep: 10
+            timeout: 300
+
+      - name: Add new Droplet to inventory
+        add_host:
+            name: "{{ srv.data.droplet.networks.v4[0].ip_address }}"
+            groups: "all"
+            # You can also set variables for the new host here
+
+- name: Run baseline configuration
+  hosts: all
+  vars_files:
+      - vars.yaml
+  tasks:
+      - name: Wait for cloud-init / user-data to finish
+        command: cloud-init status --wait
+        changed_when: false
+
+      - name: Update apt package index
+        apt:
+            update_cache: yes
+
+      - name: Install packages
+        apt:
+            name: tcpdump, vim, htop, cifs-utils, nala, git, python-is-python3, python3-pip, python3-pymysql, curl, mysql-client, ca-certificates, apt-transport-https, software-properties-common
+            state: present
+        become: yes
+        become_user: root
+        become_method: sudo
+
+      - name: bashrc
+        template:
+            src: ../templates/bashrc.sh
+            dest: /root/.bashrc
+            owner: root
+            group: root
+            mode: "0644"
+
+      - name: bashrc-skel
+        template:
+            src: ../templates/bashrc.sh
+            dest: /etc/skel/.bashrc
+            owner: root
+            group: root
+            mode: "0644"
+
+      - name: env file
+        template:
+            src: ../templates/.env
+            dest: /opt/.env
+            owner: root
+            group: root
+            mode: "0644"
+
+      - name: Add Docker’s official GPG key
+        apt_key:
+            url: https://download.docker.com/linux/ubuntu/gpg
+            state: present
+
+      - name: Add Docker repository
+        apt_repository:
+            repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+            state: present
+
+      #   - name: Update apt package index
+      #     apt:
+      #         update_cache: yes
+
+      - name: Install Docker CE
+        apt:
+            name: docker-ce
+            state: present
+
+      - name: Pull mysql Docker image
+        docker_image:
+            name: mysql
+            source: pull
+
+      - name: Pull DB Migrator Docker image
+        docker_image:
+            name: ngmaibulat/db-migrator
+            source: pull
+
+      - name: Pull MailGW Docker image
+        docker_image:
+            name: ngmaibulat/mailgw
+            source: pull
+
+      - name: Pull LogService Docker image
+        docker_image:
+            name: ngmaibulat/logservice
+            source: pull
+
+      - name: Run mysql container
+        docker_container:
+            name: dblocal
+            image: mysql
+            state: started
+            detach: true
+            published_ports:
+                - "127.0.0.1:3306:3306"
+            env:
+                MYSQL_ROOT_PASSWORD: "{{ mysql_pw }}"
+                MYSQL_DATABASE: "{{ db_name }}"
+                MYSQL_USER: "{{ db_user }}"
+                MYSQL_PASSWORD: "{{ mysql_pw }}"
+
+      - name: Pause for 1 minute
+        pause:
+            minutes: 1
+
+      - name: Wait for port 3306 to become open on the host
+        wait_for:
+            host: 127.0.0.1
+            port: 3306
+            state: started
+            delay: 10
+            sleep: 10
+            timeout: 300
+
+      - name: Run db-migrator container
+        docker_container:
+            name: db-migrator
+            image: "ngmaibulat/db-migrator"
+            state: started
+            network_mode: host
+            env_file: /opt/.env
+            interactive: no
+            tty: no
+            auto_remove: yes
+
+      - name: Pause for 1 minute
+        pause:
+            minutes: 1
+
+      - name: Get list of tables from a specific database
+        mysql_query:
+            login_user: root
+            login_password: "{{ mysql_pw }}"
+            login_host: "127.0.0.1"
+            login_port: 3306
+            query: "SELECT table_name FROM information_schema.tables WHERE table_schema = '{{ db_name  }}'"
+        register: table_list
+
+      - name: Output list of tables
+        debug:
+            var: table_list.query_result
+
+      - name: Print message on control host
+        debug:
+            msg: "ssh root@{{ inventory_hostname }}"

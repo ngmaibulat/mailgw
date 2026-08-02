@@ -11,7 +11,8 @@ if [ ! -f .env ]; then
 fi
 
 docker compose pull
-# Re-run schema migrations, then recreate services on the new images.
+# Re-run schema migrations, then recreate services on the new images. The webui
+# reads this schema but does not own it, so the migrator must run first.
 docker compose run --rm db-migrator
 docker compose up -d
 

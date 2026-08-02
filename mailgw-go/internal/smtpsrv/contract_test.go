@@ -2,6 +2,7 @@ package smtpsrv
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,8 +16,11 @@ import (
 	"testing"
 	"time"
 
+	smtp "github.com/emersion/go-smtp"
+
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/config"
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/events"
+	"github.com/ngmaibulat/mailgw/mailgw-go/internal/obs"
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/queue"
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/relays"
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/ruleset"
@@ -56,8 +60,44 @@ type harness struct {
 	addr     string
 	spool    *queue.Spool
 	events   *capturedEvents
+	metrics  *obs.Metrics
 	queued   chan []*queue.Envelope
+	bounces  *capturedBounces
+	srv      *smtp.Server
 	shutdown func()
+}
+
+// capturedBounces records the delivery status notifications a session asked for,
+// without needing a real Bouncer, a relay group or a postmaster address.
+type capturedBounces struct {
+	mu  sync.Mutex
+	req []queue.Request
+}
+
+func (c *capturedBounces) record(r queue.Request) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.req = append(c.req, r)
+	return true, nil
+}
+
+// addrs lists every recipient reported across every notification.
+func (c *capturedBounces) addrs() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []string
+	for _, r := range c.req {
+		for _, rc := range r.Rcpts {
+			out = append(out, rc.Addr)
+		}
+	}
+	return out
+}
+
+func (c *capturedBounces) len() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.req)
 }
 
 func startServer(t *testing.T, routes *ruleset.LegacyTable) *harness {
@@ -66,6 +106,15 @@ func startServer(t *testing.T, routes *ruleset.LegacyTable) *harness {
 }
 
 func startServerWithRules(t *testing.T, rs *ruleset.Ruleset) *harness {
+	t.Helper()
+	return startServerTuned(t, rs, nil)
+}
+
+// startServerTuned is startServerWithRules with a hook for the tests that need
+// to change the configuration or the backend before the server is built —
+// attachment scanning and inbound TLS, both of which are off in the default
+// harness because they are off in the shipped defaults.
+func startServerTuned(t *testing.T, rs *ruleset.Ruleset, tune func(*config.Config, *Backend)) *harness {
 	t.Helper()
 
 	cfg := &config.Config{
@@ -88,9 +137,11 @@ func startServerWithRules(t *testing.T, rs *ruleset.Ruleset) *harness {
 	}
 
 	h := &harness{
-		spool:  spool,
-		events: &capturedEvents{},
-		queued: make(chan []*queue.Envelope, 16),
+		spool:   spool,
+		events:  &capturedEvents{},
+		metrics: obs.New(),
+		queued:  make(chan []*queue.Envelope, 16),
+		bounces: &capturedBounces{},
 	}
 
 	b := &Backend{
@@ -98,14 +149,31 @@ func startServerWithRules(t *testing.T, rs *ruleset.Ruleset) *harness {
 		Rules:    StaticRules(rs),
 		Spool:    spool,
 		Events:   h.events,
+		Metrics:  h.metrics,
 		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		OnQueued: func(es []*queue.Envelope) { h.queued <- es },
+		Bounce:   h.bounces.record,
+	}
+	if tune != nil {
+		tune(cfg, b)
 	}
 
-	srv, err := NewServer(b, &cfg.Server, nil)
+	// Mirrors gateway.serverTLS: a keypair plus a configuration that wants to
+	// use it. The default harness has neither, so every existing test still runs
+	// on a listener with no TLS at all.
+	var tlsCfg *tls.Config
+	if cfg.Server.TLS.ConfiguredPublic() && cfg.Server.WantsTLS() {
+		tlsCfg, err = NewTLSConfig(cfg.Server.TLS.Cert, cfg.Server.TLS.Key)
+		if err != nil {
+			t.Fatalf("NewTLSConfig: %v", err)
+		}
+	}
+
+	srv, err := NewServer(b, &cfg.Server, tlsCfg, nil)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
+	h.srv = srv
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

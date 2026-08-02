@@ -1,0 +1,41 @@
+{{define "layout.html" -}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{{if .Refresh}}<meta http-equiv="refresh" content="5">{{end}}
+<title>mailgw-go</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+    <h1>mailgw-go</h1>
+    <p class="version">{{.Version}} ({{.Commit}})</p>
+    {{if .Authenticated}}
+    <form method="post" action="/logout" class="signout">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit">Sign out</button>
+    </form>
+    {{end}}
+</header>
+<main>
+{{template "content" .}}
+</main>
+<footer>
+    {{/* File mode has no claim code and nothing to sign in to, so the managed
+         wording below would be a false claim on that page. */}}
+    {{if .FileMode}}
+    <p>This page is read-only: a gateway run from a configuration directory has
+    nothing to provision. Restrict the port to your management network anyway
+    &mdash; it reports queue depths and the running version.</p>
+    {{else}}
+    <p>Restrict this interface to your management network at the firewall.
+    It is authenticated, but it configures a gateway that holds relay
+    credentials and on an edge node it runs as root &mdash; so narrowing what
+    can reach it is still worth doing.</p>
+    {{end}}
+</footer>
+</body>
+</html>
+{{- end}}

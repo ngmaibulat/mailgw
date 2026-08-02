@@ -3,6 +3,7 @@ LogGrid.create({
     url: "/api/connection",
     columns: [
         LogGrid.dt("dt", "DT"),
+        LogGrid.text("gateway", "Gateway", { maxWidth: 160 }),
         LogGrid.text("hello_name", "Src HELO"),
         LogGrid.text("remoteAddr", "Src Addr"),
         LogGrid.text("remote_is_private", "isPrivate", { maxWidth: 120 }),

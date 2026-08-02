@@ -1,0 +1,10 @@
+[Unit]
+Description=Mailgw
+
+[Service]
+Restart=always
+ExecStart=/usr/bin/podman start -a mailgw
+ExecStop=/usr/bin/podman stop -t 2 mailgw
+
+[Install]
+WantedBy=local.target

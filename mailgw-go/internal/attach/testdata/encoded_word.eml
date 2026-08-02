@@ -1,0 +1,18 @@
+From: sender@example.com
+To: rcpt@example.com
+Subject: rfc 2047 filename
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="B"
+
+--B
+Content-Type: text/plain
+
+body
+--B
+Content-Type: application/octet-stream
+Content-Disposition: attachment; filename="=?utf-8?B?csOpc3Vtw6kucGRm?="
+Content-Transfer-Encoding: base64
+
+aGVsbG8gYXR0YWNobWVudAo=
+
+--B--

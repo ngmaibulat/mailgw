@@ -139,19 +139,50 @@ func DefaultSchema() *Schema {
 		{Name: "conn.tls", Stage: StageHelo, Kind: KindBool, Desc: "session is encrypted"},
 		{Name: "conn.tls_version", Stage: StageHelo, Kind: KindString, CI: true, Desc: "negotiated TLS version, e.g. TLS1.3"},
 		{Name: "conn.tls_cipher", Stage: StageHelo, Kind: KindString, CI: true, Desc: "negotiated cipher suite"},
-		{Name: "auth.user", Stage: StageHelo, Kind: KindString, CI: true, Desc: "authenticated user, empty when unauthenticated"},
-		{Name: "auth.mechanism", Stage: StageHelo, Kind: KindString, CI: true, Desc: "SASL mechanism used"},
 
 		// ── mail ─────────────────────────────────────────────────────────
+		//
+		// The auth.* fields sit here rather than with the helo facts above, even
+		// though AUTH is a connection-scoped command that runs between EHLO and
+		// MAIL. Connect- and helo-stage policy is evaluated inside
+		// Backend.NewSession, and go-smtp refuses to process AUTH until EHLO has
+		// been answered — so a rule inferred to StageHelo would be evaluated
+		// before the client had any opportunity to authenticate, and could never
+		// match. MAIL is the earliest stage at which the answer is reliable,
+		// which is exactly what a field's stage means.
+		{Name: "auth.authenticated", Stage: StageMail, Kind: KindBool, Desc: "the client completed AUTH"},
+		{Name: "auth.user", Stage: StageMail, Kind: KindString, CI: true, Desc: "authenticated user, empty when unauthenticated"},
+		{Name: "auth.mechanism", Stage: StageMail, Kind: KindString, CI: true, Desc: "SASL mechanism used, PLAIN or LOGIN"},
 		{Name: "mail.from", Stage: StageMail, Kind: KindString, CI: true, Desc: "envelope sender, empty for a null sender"},
 		{Name: "mail.from_local", Stage: StageMail, Kind: KindString, CI: true, Desc: "local part of the envelope sender"},
 		{Name: "mail.from_domain", Stage: StageMail, Kind: KindString, CI: true, DotGlob: true, Desc: "domain of the envelope sender"},
 		{Name: "mail.is_null_sender", Stage: StageMail, Kind: KindBool, Desc: "MAIL FROM:<>"},
 		{Name: "mail.is_dsn", Stage: StageMail, Kind: KindBool, Desc: "message is a bounce (null sender)"},
 		{Name: "mail.size_declared", Stage: StageMail, Kind: KindInt, Desc: "SIZE= parameter, 0 when absent"},
-		{Name: "mail.body", Stage: StageMail, Kind: KindString, CI: true, Desc: "BODY= parameter: 7BIT, 8BITMIME or BINARYMIME"},
+		// BINARYMIME is listed for completeness and cannot occur: EnableBINARYMIME
+		// is not set, so go-smtp answers BODY=BINARYMIME with 504 and the
+		// parameter never reaches a rule. Said here rather than in `unpopulated`
+		// because that map is keyed by field name, and this field IS populated —
+		// an entry there would warn on every working mail.body rule.
+		{Name: "mail.body", Stage: StageMail, Kind: KindString, CI: true, Desc: "BODY= parameter: 7BIT or 8BITMIME (BINARYMIME is never advertised, so it cannot appear)"},
 		{Name: "mail.smtputf8", Stage: StageMail, Kind: KindBool, Desc: "SMTPUTF8 was requested"},
 		{Name: "mail.requiretls", Stage: StageMail, Kind: KindBool, Desc: "REQUIRETLS was requested"},
+
+		// SPF is answerable as soon as MAIL FROM is known — it is a DNS walk
+		// over the sender's domain and the peer's address, with no reference to
+		// the message at all. That is why it is here and DKIM is not, and it is
+		// what lets "refuse mail that fails SPF" be answered on the sender's own
+		// MAIL line rather than after a megabyte of DATA.
+		//
+		// These sit under spf./dkim./dmarc. rather than beside auth.*, which
+		// since M13 means "this CLIENT authenticated with a credential we
+		// issued". Message authentication is a different claim about a different
+		// party, and one prefix covering both would make `auth.authenticated`
+		// ambiguous in exactly the rules that most need to be unambiguous.
+		{Name: "spf.result", Stage: StageMail, Kind: KindString, CI: true,
+			Desc: "SPF result: pass, fail, softfail, neutral, none, temperror or permerror"},
+		{Name: "spf.domain", Stage: StageMail, Kind: KindString, CI: true, DotGlob: true,
+			Desc: "domain SPF was evaluated for: the sender's domain, or the HELO name for a null sender"},
 
 		// ── rcpt ─────────────────────────────────────────────────────────
 		{Name: "rcpt.to", Stage: StageRcpt, Kind: KindString, CI: true, Desc: "the recipient being evaluated"},
@@ -173,6 +204,17 @@ func DefaultSchema() *Schema {
 		{Name: "attachment.md5", Stage: StageData, Kind: KindString, List: true, CI: true, Desc: "attachment MD5 digests"},
 		{Name: "attachment.size", Stage: StageData, Kind: KindInt, List: true, Desc: "attachment sizes in bytes"},
 		{Name: "attachment.disposition", Stage: StageData, Kind: KindString, List: true, CI: true, Desc: "attachment dispositions"},
+
+		// DKIM needs the body and DMARC needs the From header, so both are DATA
+		// facts however early SPF was answered.
+		{Name: "dkim.result", Stage: StageData, Kind: KindString, CI: true,
+			Desc: "DKIM result: pass if any signature verified, else fail, temperror, permerror or none"},
+		{Name: "dkim.domains", Stage: StageData, Kind: KindString, List: true, CI: true, DotGlob: true,
+			Desc: "d= of every signature that VERIFIED; a failed signature's claim is not listed"},
+		{Name: "dmarc.result", Stage: StageData, Kind: KindString, CI: true,
+			Desc: "DMARC result: pass, fail, none, temperror or permerror"},
+		{Name: "dmarc.policy", Stage: StageData, Kind: KindString, CI: true,
+			Desc: "policy the From domain published for this message: none, quarantine or reject (empty when it published none)"},
 	}
 
 	s := &Schema{byName: make(map[string]FieldDef, len(defs))}

@@ -1,0 +1,30 @@
+{{define "content"}}
+<h2>Claim this gateway</h2>
+
+<p class="lead">This admin interface is locked. It was given a claim code the
+first time it started; enter that code to take control of it.</p>
+
+{{if .ClaimError}}
+<p class="error" role="alert">{{.ClaimError}}</p>
+{{end}}
+
+<form method="post" action="/claim">
+    <label for="code">Claim code</label>
+    <input type="text" id="code" name="code" required autofocus
+           autocomplete="off" spellcheck="false"
+           placeholder="ABCDE-FGHJK-MNPQR-STVWX">
+    <p class="hint">Case and dashes do not matter. It is printed in this
+    gateway's log at startup &mdash; <code>docker logs mailgw-go</code>. Lost
+    it? <code>mailgw-go claim reset</code> on the host mints a new one and signs
+    everybody out.</p>
+
+    <button type="submit">Sign in</button>
+</form>
+
+<h3>This gateway's fingerprint</h3>
+<p class="hint">An operator approves this exact string in the console. It is
+shown here, before anyone has signed in, because it exists before registration
+so that this gateway can be pre-approved &mdash; and because it is the hash of a
+public key, which grants nothing to whoever reads it.</p>
+<p class="fingerprint">{{.State.Fingerprint}}</p>
+{{end}}

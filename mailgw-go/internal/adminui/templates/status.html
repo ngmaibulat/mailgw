@@ -1,0 +1,64 @@
+{{define "content"}}
+<h2>Status</h2>
+
+{{if .State.InsecureTLS}}
+<p class="error" role="alert"><strong>TLS verification is disabled</strong> for
+the connection to Central Management. Anyone able to intercept it can serve
+this gateway a configuration of their choosing.</p>
+{{end}}
+
+{{if eq .State.Approval "approved"}}
+<p class="ok">Approved by Central Management.</p>
+{{else if eq .State.Approval ""}}
+<p class="warn">Waiting for the first successful contact with Central
+Management.</p>
+{{else}}
+<p class="warn">Approval state: <strong>{{.State.Approval}}</strong>. An
+operator must approve this gateway's fingerprint in the console before it
+receives any configuration.</p>
+{{end}}
+
+{{if .State.LastError}}
+<p class="error" role="alert">{{.State.LastError}}</p>
+{{end}}
+
+{{if .State.ApplyError}}
+<p class="error" role="alert">The last configuration could not be applied, so
+this gateway is still running its previous one: {{.State.ApplyError}}</p>
+{{end}}
+
+{{if .State.RestartRequired}}
+<p class="warn">The running configuration applied, but these changes need a
+restart to take effect: <strong>{{range $i, $w := .State.RestartRequired}}{{if $i}}, {{end}}{{$w}}{{end}}</strong>.</p>
+{{end}}
+
+<dl>
+    <dt>Fingerprint</dt><dd class="fingerprint">{{.State.Fingerprint}}</dd>
+    <dt>Gateway ID</dt><dd class="mono">{{.State.GatewayUID}}</dd>
+    <dt>Central Management</dt><dd class="mono">{{.State.CentralURL}}</dd>
+    {{if .State.CAFile}}<dt>CA bundle</dt><dd class="mono">{{.State.CAFile}}</dd>{{end}}
+    <dt>Config version applied</dt>
+    <dd>{{if .State.AppliedVersion}}v{{.State.AppliedVersion}}{{else}}none{{end}}</dd>
+    <dt>Config version wanted</dt>
+    <dd>{{if .State.DesiredVersion}}v{{.State.DesiredVersion}}{{else}}none{{end}}</dd>
+    <dt>Queue</dt>
+    <dd>{{if .QueueError}}unavailable: {{.QueueError}}
+        {{else}}{{.QueueReady}} ready, {{.QueueInflight}} in flight, {{.QueueQuarantine}} quarantined, {{.QueueDead}} dead{{end}}</dd>
+</dl>
+
+{{if .State.Serving}}
+<p class="ok">SMTP is listening.</p>
+{{else}}
+<p class="warn">SMTP is <strong>not</strong> listening: this gateway has no
+configuration to serve mail with. It starts as soon as Central Management
+deploys one and it applies cleanly.</p>
+{{end}}
+
+<form method="post" action="/register">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="central_url" value="{{.State.CentralURL}}">
+    {{if .State.InsecureTLS}}<input type="hidden" name="insecure_tls" value="1">{{end}}
+    <input type="hidden" name="ca_file" value="{{.State.CAFile}}">
+    <button type="submit">Re-register</button>
+</form>
+{{end}}

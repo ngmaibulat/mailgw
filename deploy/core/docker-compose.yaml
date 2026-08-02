@@ -1,5 +1,7 @@
-# Core node: logservice + db (+ webui later). Runs on a single host; the mailgw
-# edge nodes POST to this node's logservice over the network (see deploy/mailgw).
+# Core node of the modern stack: mariadb + logservice + webui-fastify.
+# Runs on a single host; the mailgw-go edge nodes POST their events to this
+# node's logservice and pull their configuration from this node's webui
+# (Central Management). See deploy/gateway for the edge side.
 # Secrets come from deploy/core/.env (copy from .env.example).
 services:
     mariadb:
@@ -13,14 +15,17 @@ services:
             MARIADB_PASSWORD: ${DB_PASS}
         volumes:
             - mariadb_data:/var/lib/mysql
-        # Not published to the host by default — only logservice (same compose
-        # network) needs it. Add a ports mapping only if you need external DB access.
+        # Not published to the host by default — only logservice and the webui
+        # (same compose network) need it. Add a ports mapping only if you need
+        # external DB access.
 
     db-migrator:
         image: ngmaibulat/logservice:latest
         container_name: core-db-migrator
         command: ["bun", "src/dbmigrate.ts"]
         restart: "no"
+        # logservice owns the SQL schema for the whole stack, including the
+        # tables the webui reads (users, relays, gateways, config profiles).
         environment:
             DB_HOST: core-mariadb
             DB_NAME: ${DB_NAME}
@@ -34,11 +39,11 @@ services:
         container_name: core-logservice
         restart: unless-stopped
         ports:
-            - "3000:3000" # reachable by the edge mailgw nodes
+            - "3000:3000" # reachable by the edge mailgw-go nodes
         environment:
             PORT: 3000
             # Required across hosts: enforces X-API-Key (logservice auth.ts).
-            # Edge mailgw nodes must send the same value.
+            # Edge gateways must send the same value.
             API_KEY: ${API_KEY}
             DB_HOST: core-mariadb
             DB_NAME: ${DB_NAME}
@@ -48,17 +53,56 @@ services:
             db-migrator:
                 condition: service_completed_successfully
 
-    # webui: arrives later — placeholder so the core compose documents intent.
-    # webui:
-    #     image: ngmaibulat/webui:latest
-    #     container_name: core-webui
-    #     restart: unless-stopped
-    #     ports:
-    #         - "8080:8080"
-    #     environment:
-    #         API_BASE: http://core-logservice:3000
-    #     depends_on:
-    #         - logservice
+    webui:
+        image: ngmaibulat/mailgw-webui-fastify:latest
+        container_name: core-webui
+        restart: unless-stopped
+        ports:
+            - "4000:4000" # admin UI + /agent/* machine API (native HTTP/2 over TLS)
+        environment:
+            NODE_ENV: production
+            PORT: 4000
+            # Signs the session cookie. MUST be a real secret here.
+            SIGN_COOKIE: ${SIGN_COOKIE}
+            DB_DRIVER: mysql
+            DB_HOST: core-mariadb
+            DB_NAME: ${DB_NAME}
+            DB_USER: ${DB_USER}
+            DB_PASS: ${DB_PASS}
+            # The webui proxies its log-viewer reads to logservice.
+            LOGSERVICE_URL: http://core-logservice:3000
+            LOGSERVICE_API_KEY: ${API_KEY}
+            # The logservice URL written INTO gateway config bundles by Central
+            # Management. It must be resolvable FROM THE EDGE NODES, so unlike
+            # LOGSERVICE_URL above it cannot be the container-internal name.
+            GATEWAY_LOGSERVICE_URL: http://${CORE_HOST}:3000
+            # ...and the key they send with it. Edge nodes are zero-config: they
+            # have no environment of their own, so this travels in the bundle.
+            # Same split as the URL above — falls back to LOGSERVICE_API_KEY.
+            GATEWAY_LOGSERVICE_API_KEY: ${API_KEY:-}
+            # Bearer token for every gateway's /metrics and /readyz. Travels in
+            # the bundle for the same reason as the key above — an edge node has
+            # no environment of its own. Leave it empty and those endpoints stay
+            # open, which is what the firewall rule already covers.
+            GATEWAY_METRICS_TOKEN: ${GATEWAY_METRICS_TOKEN:-}
+            # Encrypts relay passwords at rest in the database (AES-256-GCM).
+            # Decryption happens here, when a bundle is composed, so no key ever
+            # reaches a gateway. Rotating it makes existing passwords unreadable
+            # — re-enter them, or keep the old key.
+            CONFIG_SECRET_KEY: ${CONFIG_SECRET_KEY:-}
+            # Set if a reverse proxy terminates TLS in front of this service.
+            # TRUSTED_PROXIES: "10.0.0.0/8"
+        volumes:
+            # Serves HTTP/2 over TLS and reads ./certs/server.{key,crt} on boot;
+            # it will not start without them. Generate with the certs project:
+            #   pnpm certs   (repo root)
+            # and copy certs/generated/webui here, or drop a real cert pair in.
+            - ./certs:/app/certs:ro
+        depends_on:
+            db-migrator:
+                condition: service_completed_successfully
+            logservice:
+                condition: service_started
 
 volumes:
     mariadb_data:

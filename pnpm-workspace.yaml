@@ -1,23 +1,32 @@
 packages:
-    # logservice/ and tests/ are Bun projects (own bun.lock) and are
-    # intentionally NOT pnpm workspace members, so pnpm and Bun don't fight over
-    # their node_modules. mailgw/, webui-express/ and webui-fastify/ are
-    # Node/pnpm packages. webui-fastify is the Fastify rewrite of webui-express
-    # (kept side by side during the migration).
-    - mailgw
-    - webui-express
-    - webui-fastify
+  # webui-fastify is the only pnpm workspace member that ships anything.
+  # logservice/, tests/ and certs/ are Bun projects (own bun.lock) and are
+  # intentionally excluded so pnpm and Bun don't fight over their
+  # node_modules; mailgw-go/ is a Go module. legacy/mailgw (Haraka) and
+  # legacy/webui-express are frozen — they are deliberately NOT members, so a
+  # root `pnpm install` ignores them. Install them on their own:
+  # `cd legacy/mailgw && pnpm install`.
+  - webui-fastify
+  # The three documentation sites (VitePress). Node-only and dev-time only —
+  # nothing here is imported by a service, so adding them to the workspace
+  # costs a shared lockfile entry and nothing else.
+  - docs/*
 
 pnpm:
-    minimumReleaseAge: 10080
-    blockExoticSubdeps: true
+  minimumReleaseAge: 10080
+  blockExoticSubdeps: true
 
-# Haraka 3.3.1 and its freshly-published deps are exempted from the 7-day
-# maturity window so the upgrade can resolve. Trim this list once they age out.
+# Haraka-only settings. They are inert now that legacy/mailgw is outside the
+# workspace (its own install reads its own config) — kept so re-adding it as a
+# member is a one-line change rather than a rediscovery. `allowBuilds` is also
+# duplicated inside legacy/mailgw/Dockerfile, which installs standalone.
 minimumReleaseAgeExclude:
-    - Haraka
-    - "haraka-*"
-    - semver
+  - Haraka
+  - "haraka-*"
+  - semver
 
 allowBuilds:
-    modern-syslog: true
+  # Vite's bundler, pulled in by the three VitePress sites. Its postinstall
+  # unpacks the platform binary, so without this the docs cannot build at all.
+  esbuild: true
+  modern-syslog: true

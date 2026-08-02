@@ -46,6 +46,61 @@ block content
                 else
                   | —
 
+  //- Fleet health. Everything here is "should you go and look, and at what" —
+  //- the detail lives on /gateways. Pending approvals lead because they are the
+  //- only item that cannot resolve itself without a human.
+  .feed-card
+    .feed-head
+      span.feed-label
+        span.live-dot
+        | Gateway fleet
+      a.btn.btn-ghost(href='/gateways')
+        +icon('arrow')
+        span Open fleet
+    if fleet.unavailable
+      .feed-empty Fleet status is unavailable. Check the database connection.
+    else if !fleet.summary.total
+      .feed-empty No gateways have registered yet.
+    else
+      .fleet-body
+        .fleet-counts
+          .fleet-count
+            span.fleet-n= fleet.summary.total
+            span.fleet-label Registered
+          .fleet-count
+            span.fleet-n.ok= fleet.summary.approved
+            span.fleet-label Approved
+          if fleet.summary.other
+            .fleet-count
+              span.fleet-n= fleet.summary.other
+              span.fleet-label Rejected or revoked
+
+        if fleet.summary.pending
+          a.fleet-alert.fleet-alert-pending(href='/gateways')
+            strong= fleet.summary.pending
+            |  #{fleet.summary.pending === 1 ? 'gateway is' : 'gateways are'} waiting for approval
+            span.fleet-alert-hint Approve a fingerprint to let it pull its configuration.
+
+        each row in fleet.summary.errored
+          a.fleet-alert.fleet-alert-err(href='/gateways/' + row.id)
+            strong= row.name || row.hostname || ('gateway ' + row.id)
+            |  could not apply its configuration
+            span.fleet-alert-hint= row.apply_error
+
+        each row in fleet.summary.stale
+          a.fleet-alert.fleet-alert-warn(href='/gateways/' + row.id)
+            strong= row.name || row.hostname || ('gateway ' + row.id)
+            |  has not reported recently
+            span.fleet-alert-hint Last seen #{row.last_seen ? String(row.last_seen.toISOString()).slice(0, 19).replace('T', ' ') : 'never'}.
+
+        each row in fleet.summary.needRestart
+          a.fleet-alert.fleet-alert-warn(href='/gateways/' + row.id)
+            strong= row.name || row.hostname || ('gateway ' + row.id)
+            |  needs a restart to finish applying its configuration
+
+        if fleet.summary.healthy
+          p.fleet-ok All gateways are approved, current and reporting.
+
   p.page-eyebrow Sections
   .section-grid
     a.section-card(href='/log/delivery')

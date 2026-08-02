@@ -48,9 +48,17 @@ Content-Type: application/json
     "ip": "74.125.0.1",
     "port": "25",
     "response": "250 OK",
-    "delay": 1.23
+    "delay": 1.23,
+    "gateway": "11111111-2222-3333-4444-555555555555",
+    "route_rule": "partner subdomains over the TLS relay"
 }
 ```
+
+`gateway` and `route_rule` are **optional** (migration 023). `gateway` is the
+sending gateway's Central Management uid, or its `server.hostname` when it runs
+from files; `route_rule` names the routing rule that chose this recipient's
+relay group, and is empty when the default action applied. Both are stored
+NULL when absent, which is also what every row written before 023 holds.
 
 **Response**
 ```json
@@ -91,9 +99,14 @@ Content-Type: application/json
     "tran_count": 1,
     "rcpt_count_accept": 1,
     "rcpt_count_tempfail": 0,
-    "rcpt_count_reject": 0
+    "rcpt_count_reject": 0,
+    "gateway": "11111111-2222-3333-4444-555555555555"
 }
 ```
+
+`gateway` is optional (migration 023). Unlike `/api/delivery` this endpoint does
+no validation at all, so an unrecognised field is silently dropped rather than
+rejected.
 
 **Response**
 ```json
@@ -111,7 +124,9 @@ POST /api/queue
 Content-Type: application/json
 ```
 
-**Request body** — same shape as `/api/connection`
+**Request body** — same shape as `/api/connection`, plus the transaction fields
+(`sender`, `rcpt_list`, `delay_data_post`, `data_bytes`, `mime_part_count`) and
+the optional `gateway`.
 
 **Response**
 ```json
@@ -146,7 +161,8 @@ GET /api/delivery?q=<json>
 | `value`    | any    | Filter value (`[v1, v2]` for `between`)        |
 
 **Allowed fields:** `id`, `uuid`, `dt`, `sender`, `rcpt_domain`, `rcpt_list`,
-`rcpt_accepted`, `tls_forced`, `tls`, `auth`, `host`, `ip`, `port`, `response`, `delay`
+`rcpt_accepted`, `tls_forced`, `tls`, `auth`, `host`, `ip`, `port`, `response`,
+`delay`, `gateway`, `route_rule`
 
 **Operators:**
 
@@ -205,7 +221,8 @@ Same query format as `/api/delivery`.
 
 **Allowed fields:** `id`, `uuid`, `dt`, `encoding`, `hello_name`, `remoteAddr`,
 `remotePort`, `remote_host`, `remote_info`, `remote_is_local`, `remote_is_private`,
-`using_tls`, `tran_count`, `rcpt_count_accept`, `rcpt_count_tempfail`, `rcpt_count_reject`
+`using_tls`, `tran_count`, `rcpt_count_accept`, `rcpt_count_tempfail`,
+`rcpt_count_reject`, `gateway`
 
 **Example** — find all connections from a specific IP:
 ```
@@ -226,7 +243,7 @@ Same query format as `/api/delivery`.
 
 **Allowed fields:** `id`, `uuid`, `dt`, `action`, `encoding`, `sender`, `rcpt_list`,
 `rcpt_count_accept`, `rcpt_count_tempfail`, `rcpt_count_reject`,
-`delay_data_post`, `data_bytes`, `mime_part_count`
+`delay_data_post`, `data_bytes`, `mime_part_count`, `gateway`
 
 **Example** — find large messages:
 ```

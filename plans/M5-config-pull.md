@@ -1,6 +1,12 @@
 # M5 — Config pull, SQLite cache, versioned apply and rollback
 
-**Package:** `mailgw-go`  ·  **Depends on:** M4  ·  **Blocks:** M6
+**Status:** **done** (2026-07-29)  ·  **Packages:** `mailgw-go`, `webui-fastify`, `logservice/migrations`, `deploy`  ·  **Depends on:** M4 (done)  ·  **Blocks:** M6
+
+> Read **[What was built differently, and why](#what-was-built-differently-and-why)**
+> at the end before using this document as a description of the code. The scope
+> grew: the shipped node is now zero-configuration, which moved three things out
+> of the gateway's environment and into what Central Management serves, and added
+> a WebSocket notification channel that is not described below.
 
 Read [README.md](./README.md) for the bundle format and signing contract.
 
@@ -249,3 +255,79 @@ End to end, against a running console with an approved gateway:
    and allowlist still applied; the relay table did not change until restart.
 8. Stop the console. Restart the gateway. It boots from the cache and serves
    mail. Start the console again; it reconciles without operator action.
+
+---
+
+## What was built differently, and why
+
+Seven deliberate deviations from the plan above, all found while implementing it.
+
+**The node became fully managed, which was not in scope here.** The decision
+taken during implementation was that a shipped gateway has **no environment
+variables, no CLI arguments and no configuration files on the host** — it boots
+empty, is provisioned through the wizard, and takes everything else from Central
+Management. That forced three things out of the gateway and into the bundle
+(§5.7 below), made the admin UI a permanent listener rather than an opt-in one,
+and turned `deploy/gateway` into a compose file with no `command:` and no
+`environment:` at all. `-config <dir>` survives as a CLI capability, unchanged,
+because `check`, `explain`, `testdata/config`, the contract suite and the Bun
+SMTP e2e all run on it.
+
+**The `Source` interface was dropped.** `Load() (*loaded, error)` has nowhere to
+carry the version id or the `MarkApplied`/`MarkApplyError` bookkeeping the
+central path needs, and `CentralSource` would have needed a gateway to apply to.
+Two free functions returning the same type — `load(dir)` and `loadBundle(raw,
+opts, source)` — give the same source-agnosticism with no interface to keep
+honest. `Describe()` is the `loaded.source` string that `check` already printed.
+
+**Boot follows recorded intent, not a timestamp.** §5.4's "the applied cached
+config, else the latest" is wrong in two directions, and both were caught by
+tests rather than by reading. `applied_at` and `fetched_at` have one-second
+resolution, and a rollback lands in the same second as the deploy it undoes, so
+either ordering tie-breaks on `version_id` — which is precisely the bundle the
+operator just rejected. Two fixes: a new `applied_seq` column (store migration 2)
+makes "most recently applied" answerable, and a new `desired_version_id` setting
+records what the console last asked for, which is what boot actually reads.
+Without the second, a restart-required deploy would restart into the *old*
+bundle and the operator's action would do nothing.
+
+**`MarkApplied` fires on a partial apply too**, for the same reason: boot reads
+the applied row.
+
+**`Report.RestartRequired` is always sent.** It carries `omitempty` and the
+console merges on `!== undefined`, so a nil pointer could never clear a stale
+`restart_required: true` — it would haunt the gateway's row for the life of the
+process. `apply_error` is truncated to 4000 characters, because the console's
+schema rejects anything over 4096 and a rejected report loses the heartbeat as
+well as the error.
+
+**§5.6 took option (1), as recommended** — the console decrypts before composing
+— but the migration it needed was bigger than "encrypt a column". A managed
+gateway with no environment cannot use `auth_pass_env`, cannot be told to require
+TLS to a relay, and cannot authenticate to logservice, so migration 022 adds
+`tls`, `allow_insecure_auth` and `auth_pass_env` to `Relays`, and the bundle
+gained `logging.api_key` and `allowlist.allow_all`. That last one was a real
+hole: the console stripped `allow_all`, so an allow-all gateway was unreachable
+from the UI while the gateway's own error message advised setting it.
+
+**A WebSocket notification channel was added (not in the original plan).**
+`GET /agent/ws`, authenticated by the same Ed25519 signature over the upgrade
+request, so it introduces no new authentication. Frames carry no state: the
+gateway is told "go and look" and asks `/agent/status` what changed, which makes
+a duplicated or delayed notification harmless. The 15-second poll is untouched
+and still does the same job underneath — a socket that never connects costs only
+latency. Two consequences worth knowing: the Go dialer must use an **HTTP/1.1**
+transport (`ws` speaks the HTTP/1.1 upgrade, not RFC 8441 over h2, which is why
+the console's `allowHTTP1: true` matters), and a second console replica's deploy
+does not reach this process's in-memory bus, so each live socket also re-reads
+its own gateway row every 10 seconds as a backstop.
+
+### Accepted risk: the admin UI
+
+Making the wizard the only provisioning path means it is always listening,
+unauthenticated, on a root process on an internet-facing relay. Anyone who
+reaches port 8080 can re-point a gateway at a hostile Central Manager and be
+handed its relay credentials. `deploy/gateway/05-firewall.sh` is now **required
+rather than optional** and is referenced from `04-gateway.sh`'s output. A
+first-boot claim code remains the tracked follow-up that would make the listener
+safe on its own.

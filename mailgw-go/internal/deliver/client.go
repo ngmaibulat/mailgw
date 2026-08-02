@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/emersion/go-sasl"
@@ -53,11 +54,33 @@ type Result struct {
 	TLSForced bool // encryption was required by policy
 	Auth      bool // the session authenticated
 
+	// TLSDowngraded records that an opportunistic STARTTLS upgrade was attempted
+	// and failed, so the message went out in the clear. TLSDowngradeReason is
+	// why.
+	//
+	// Reported rather than counted here because this package has no obs.Metrics
+	// and no logger — every delivery counter is incremented by the caller from
+	// this struct, the way Reused and TLS already are. The silence was the
+	// defect: a stripped session left no trace but TLS=false on the audit row.
+	TLSDowngraded      bool
+	TLSDowngradeReason string
+
 	Response string        // the relay's reply to end-of-DATA
 	Delay    time.Duration // wall time for the attempt
 
+	// Reused reports that this attempt was carried by an already-open connection
+	// rather than a fresh dial.
+	Reused bool
+
 	Rcpts []RcptResult
 	Err   error
+
+	// poolable records that the session ended in a state a further message could
+	// be sent on. Unexported: it is a conversation between Deliver and the pool,
+	// not something a caller should act on.
+	poolable bool
+	// messages is how many messages this connection has carried, in and out.
+	messages int
 }
 
 // Accepted lists the recipients the relay took.
@@ -90,6 +113,9 @@ type Options struct {
 	TLSConfig *tls.Config
 	// Dial is overridable so tests can inject a connection.
 	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
+	// Pool reuses relay connections across envelopes. Nil dials every time,
+	// which is the default and every existing deployment.
+	Pool *Pool
 }
 
 // Deliver makes one attempt against one relay.
@@ -117,17 +143,58 @@ func Deliver(ctx context.Context, relay relays.Relay, msg Message, opts Options)
 		opts.LocalName = "localhost"
 	}
 
-	c, err := connect(ctx, relay, opts, res)
-	if err != nil {
-		res.Err = err
-		return res
-	}
-	defer c.Close()
+	// Armed before the first dial, so a cancelled context interrupts the
+	// handshake as well as the long DATA phase.
+	guard := newConnGuard(ctx)
+	defer guard.release()
 
-	if err := authenticate(c, relay, res); err != nil {
-		res.Err = err
-		return res
+	// A pooled connection is already greeted, TLS-negotiated and authenticated,
+	// and has just answered RSET. Everything below is identical either way —
+	// including the guard, which is armed on the borrowed socket too. Without
+	// that, cancellation simply did not reach a reused connection and an
+	// in-flight DATA ran to SubmissionTimeout.
+	c, conn := acquire(relay, opts, res, guard)
+	reused := c != nil
+	if c == nil {
+		var err error
+		c, conn, err = connect(ctx, relay, opts, res, guard)
+		if err != nil {
+			res.Err = err
+			return res
+		}
+		if err := authenticate(c, relay, res); err != nil {
+			res.Err = err
+			// Never pooled: a connection that failed AUTH is not one to keep.
+			_ = c.Close()
+			return res
+		}
+	} else {
+		guard.use(conn)
 	}
+	res.Reused = reused
+
+	// One place decides the connection's fate, whichever way this function
+	// returns. Anything that ended in an error is discarded rather than pooled:
+	// after a failed command the protocol state is unknown, and reusing it would
+	// carry this message's failure into the next one.
+	defer func() {
+		// Disarm FIRST. Defers run LIFO, so this one runs BEFORE the
+		// `defer guard.release()` registered above — which would otherwise leave
+		// a window where the connection is back in the pool and the guard is
+		// still armed on it, and a cancellation landing there would close a
+		// connection this attempt no longer owns. release is safe to call twice.
+		guard.release()
+
+		switch {
+		case opts.Pool == nil:
+			// No pooling: QUIT and close, exactly as before this existed.
+			_ = quietQuit(c)
+		case res.Err == nil && res.poolable:
+			opts.Pool.Put(relay, opts, c, conn, res.messages)
+		default:
+			opts.Pool.Discard(c)
+		}
+	}()
 
 	mailOpts := &smtp.MailOptions{}
 	if msg.SMTPUTF8 {
@@ -155,8 +222,15 @@ func Deliver(ctx context.Context, relay relays.Relay, msg Message, opts Options)
 		accepted = append(accepted, addr)
 	}
 	if len(accepted) == 0 {
-		// Nothing to send; every recipient already has an outcome.
-		_ = c.Quit()
+		// Nothing to send; every recipient already has an outcome. The session
+		// itself is healthy — the relay answered every command — so it can carry
+		// the next message once RSET clears the aborted transaction.
+		//
+		// Counted all the same: the relay counted this transaction, and relays
+		// that cap invalid recipients per connection answer the next message
+		// with a 421 — which is exactly what MaxMessages exists to get ahead of.
+		res.messages++
+		res.poolable = true
 		return res
 	}
 
@@ -195,8 +269,50 @@ func Deliver(ctx context.Context, relay relays.Relay, msg Message, opts Options)
 			Message: res.Response,
 		})
 	}
-	_ = c.Quit()
+
+	// The message completed cleanly, so the connection is in a known-good state
+	// and has now carried one more message.
+	res.messages++
+	res.poolable = true
 	return res
+}
+
+// acquire tries to borrow an open connection for this relay, returning it with
+// the socket underneath it.
+//
+// Returns nils whenever pooling is off or nothing usable is available. A pool
+// miss is never an error and is deliberately indistinguishable from pooling
+// being disabled: the caller dials, exactly as it always did.
+func acquire(relay relays.Relay, opts Options, res *Result, guard *connGuard) (*smtp.Client, net.Conn) {
+	if opts.Pool == nil {
+		return nil, nil
+	}
+	// Armed and bounded before the pool probes the candidate with RSET, not
+	// after: the probe is a network round trip on a socket that may already be
+	// black-holing, and until M16 neither the context nor the configured
+	// timeouts reached it.
+	c, conn, messages := opts.Pool.Get(relay, opts, func(client *smtp.Client, raw net.Conn) {
+		guard.use(raw)
+		applyTimeouts(client, opts)
+	})
+	if c == nil {
+		return nil, nil
+	}
+
+	// A reused connection carries no fresh EHLO or handshake, so the audit
+	// event is filled in from what the relay configuration already states.
+	res.Host = relay.Exchange
+	res.Port = relay.Port.String()
+	res.TLS = relay.TLSPolicy() != relays.TLSNone
+	res.Auth = relay.AuthUser != ""
+	res.messages = messages
+
+	// The peer IP used to be left blank here, on the grounds that claiming an
+	// address this attempt never resolved would be a guess. With the socket in
+	// hand it is not a guess — it is the address this message is being sent
+	// over — so the audit row gains a fact it previously omitted.
+	recordPeer(conn, res)
+	return c, conn
 }
 
 func dial(ctx context.Context, addr string, opts Options) (net.Conn, error) {
@@ -215,47 +331,153 @@ func dial(ctx context.Context, addr string, opts Options) (net.Conn, error) {
 // turns out not to offer STARTTLS, that means one wasted connection and a
 // redial in the clear — acceptable because these are configured smarthosts
 // whose capabilities are stable, not hosts discovered per message.
-func connect(ctx context.Context, relay relays.Relay, opts Options, res *Result) (*smtp.Client, error) {
+// Each dialled connection is published to guard so a context cancellation can
+// close it: go-smtp's client calls take no context, and closing the connection
+// underneath them is the only way to interrupt one in flight.
+// It returns the raw net.Conn alongside the client so the caller can hand it to
+// the pool: a borrowed connection needs the same guard a dialled one gets, and
+// the pool is the only thing that can carry the socket between attempts.
+func connect(ctx context.Context, relay relays.Relay, opts Options, res *Result, guard *connGuard) (*smtp.Client, net.Conn, error) {
 	policy := relay.TLSPolicy()
 
 	if policy != relays.TLSNone {
 		conn, err := dial(ctx, relay.Addr(), opts)
 		if err != nil {
-			return nil, fmt.Errorf("dial %s: %w", relay.Addr(), err)
+			return nil, nil, fmt.Errorf("dial %s: %w", relay.Addr(), err)
 		}
 		recordPeer(conn, res)
+		guard.use(conn)
 
+		// NewClientStartTLS builds its own client and runs the greeting and the
+		// STARTTLS handshake before we can reach it, so that one window keeps
+		// go-smtp's 5-minute default; everything after it is bounded below.
 		c, err := smtp.NewClientStartTLS(conn, tlsConfigFor(relay, opts))
 		if err == nil {
-			res.TLS = true
+			applyTimeouts(c, opts)
 			// STARTTLS resets the session, so EHLO again with our real name.
 			if err := c.Hello(opts.LocalName); err != nil {
 				c.Close()
-				return nil, fmt.Errorf("EHLO after STARTTLS: %w", err)
+				return nil, nil, fmt.Errorf("EHLO after STARTTLS: %w", err)
 			}
-			return c, nil
+			// Recorded only once the encrypted session has carried a command.
+			// Go completes the handshake lazily, so a certificate that
+			// `required` rejects surfaces on the EHLO above rather than out of
+			// NewClientStartTLS — setting this any earlier stamped TLS=true on
+			// the audit row for a session that never authenticated the peer.
+			res.TLS = true
+			return c, conn, nil
 		}
 
 		// NewClientStartTLS closes the connection on failure.
 		if policy == relays.TLSRequired {
-			return nil, fmt.Errorf("relay %s requires TLS but STARTTLS failed: %w", relay.Name, err)
+			return nil, nil, fmt.Errorf("relay %s requires TLS but STARTTLS failed: %w", relay.Name, err)
 		}
-		// Opportunistic: fall back to an unencrypted session.
+		// Opportunistic: fall back to an unencrypted session, and say so. With
+		// verification off above, reaching here means the relay would not or
+		// could not encrypt at all — not that its certificate was unacceptable.
 		res.TLS = false
+		res.TLSDowngraded = true
+		res.TLSDowngradeReason = err.Error()
 	}
 
 	conn, err := dial(ctx, relay.Addr(), opts)
 	if err != nil {
-		return nil, fmt.Errorf("dial %s: %w", relay.Addr(), err)
+		return nil, nil, fmt.Errorf("dial %s: %w", relay.Addr(), err)
 	}
 	recordPeer(conn, res)
+	guard.use(conn)
 
 	c := smtp.NewClient(conn)
+	applyTimeouts(c, opts)
 	if err := c.Hello(opts.LocalName); err != nil {
 		c.Close()
-		return nil, fmt.Errorf("EHLO: %w", err)
+		return nil, nil, fmt.Errorf("EHLO: %w", err)
 	}
-	return c, nil
+	return c, conn, nil
+}
+
+// connGuard closes whichever connection is currently live when the context is
+// cancelled.
+//
+// It exists because go-smtp's client API takes no context: once a command is
+// blocked on a read, only closing the connection unblocks it. The guard is armed
+// before the first dial rather than after connect returns, because the greeting
+// and the STARTTLS handshake can stall just as easily as the DATA phase.
+type connGuard struct {
+	mu   sync.Mutex
+	conn net.Conn
+	stop func() bool
+}
+
+func newConnGuard(ctx context.Context) *connGuard {
+	g := &connGuard{}
+	if ctx != nil {
+		g.stop = context.AfterFunc(ctx, g.closeConn)
+	}
+	return g
+}
+
+// use publishes the connection the attempt is now running on. An opportunistic
+// relay that turns out not to offer STARTTLS is redialled, so this can be called
+// more than once; the previous conn has already been closed by go-smtp.
+func (g *connGuard) use(c net.Conn) {
+	g.mu.Lock()
+	g.conn = c
+	g.mu.Unlock()
+}
+
+func (g *connGuard) closeConn() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.conn != nil {
+		_ = g.conn.Close()
+	}
+}
+
+// release detaches the guard from the context once the attempt is over, so a
+// later cancellation cannot close a connection this attempt no longer owns.
+//
+// Stopping the AfterFunc is not enough on its own. Its contract is that a false
+// return means the context has ALREADY ended and closeConn has already been
+// started on its own goroutine — where it may simply be blocked on g.mu. So the
+// connection is cleared here, under that same mutex: either closeConn gets there
+// first (and the connection is dead before it is offered to the pool, which the
+// checkout probe catches) or this does, and there is nothing left for it to
+// close. Without it, a cancellation landing in that window closes a socket that
+// by then belongs to another delivery.
+func (g *connGuard) release() {
+	if g.stop != nil {
+		g.stop()
+	}
+	g.mu.Lock()
+	g.conn = nil
+	g.mu.Unlock()
+}
+
+// applyTimeouts maps the configured budgets onto the go-smtp client.
+//
+// This is what makes `outbound.connect_timeout` and `outbound.data_timeout` in
+// server.yaml mean anything past the dial. Both were threaded all the way into
+// deliver.Options and then never applied, so the effective timeouts were
+// go-smtp's own defaults — 5 minutes per command, 12 minutes for the DATA
+// submission — no matter what the operator configured.
+//
+// Setting a deadline on the raw conn does NOT work and must not be reintroduced:
+// go-smtp sets its own deadline around every command and *clears* it afterwards
+// (client.go:190-191, `defer c.conn.SetDeadline(time.Time{})`), so an external
+// deadline is wiped by the first command. CommandTimeout/SubmissionTimeout are
+// the supported control.
+//
+// `connect_timeout` covering each command round trip is a slight stretch of the
+// name, but it is the right budget: both describe how long we are willing to
+// wait on this relay for one answer. Splitting them would mean a new config key.
+func applyTimeouts(c *smtp.Client, opts Options) {
+	if opts.ConnectTimeout > 0 {
+		c.CommandTimeout = opts.ConnectTimeout
+	}
+	if opts.DataTimeout > 0 {
+		c.SubmissionTimeout = opts.DataTimeout
+	}
 }
 
 // recordPeer captures the relay's address for the audit event, before anything
@@ -266,6 +488,20 @@ func recordPeer(conn net.Conn, res *Result) {
 	}
 }
 
+// tlsConfigFor builds the STARTTLS configuration for one relay, and what it does
+// depends on the relay's policy.
+//
+// Verification used to be on for both policies, and any failure — an expired
+// certificate, a name mismatch, a private CA, or an active attacker — fell
+// through to a cleartext redial. So the common case, a smarthost or an MX with a
+// self-signed certificate, silently delivered in the clear. use_mx made it
+// broader still, since Expand points ServerName at each exchanger's own name.
+//
+// RFC 7435: opportunistic security is encryption WITHOUT authentication. There
+// is nothing to fall back to that is better than an unauthenticated session, and
+// the alternative this code actually took was plaintext. So opportunistic does
+// not verify, and `required` — the policy an operator sets deliberately, for a
+// relay whose certificate they trust — verifies fully and never falls back.
 func tlsConfigFor(relay relays.Relay, opts Options) *tls.Config {
 	cfg := &tls.Config{ServerName: relay.Exchange}
 	if opts.TLSConfig != nil {
@@ -273,6 +509,18 @@ func tlsConfigFor(relay relays.Relay, opts Options) *tls.Config {
 		if cfg.ServerName == "" {
 			cfg.ServerName = relay.Exchange
 		}
+	}
+
+	if relay.TLSPolicy() == relays.TLSOpportunistic {
+		cfg.InsecureSkipVerify = true
+	}
+
+	// TLS 1.0 and 1.1 are what a peer reaches for only when it has nothing
+	// better. The inbound side (smtpsrv.NewTLSConfig) and internal/central both
+	// pin 1.2 already; this was the last place that would still negotiate 1.0.
+	// A `tls: required` relay stuck on 1.0 will now fail rather than connect.
+	if cfg.MinVersion == 0 {
+		cfg.MinVersion = tls.VersionTLS12
 	}
 	return cfg
 }

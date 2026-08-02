@@ -1,6 +1,6 @@
 # M4 — Local admin UI, wizard, registration
 
-**Package:** `mailgw-go`  ·  **Depends on:** M3 (done)  ·  **Blocks:** M5, M6
+**Status:** **done** (2026-07-29)  ·  **Package:** `mailgw-go`  ·  **Depends on:** M3 (done)  ·  **Blocks:** M5, M6
 
 Read [README.md](./README.md) first — the signing contract and wire formats it
 describes are fixed by M3 and implemented here.
@@ -381,6 +381,38 @@ applied, an admin user created):
    pending row. The old row stays until an operator forgets it.
 7. Skew a clock (`-timestamp` override in a test, or `date -s`) and confirm the
    401 is logged as a clock problem rather than a key problem.
+
+## What was built differently, and why
+
+Four deliberate deviations from the plan above, all found while implementing it.
+
+**Console TLS trust is a wizard field.** Not considered here at all, and
+registration cannot work without it: `webui-fastify` serves the agent API over
+HTTPS only, with a self-signed pair from `certs/` in every shipped stack. The
+wizard therefore carries a "trust a self-signed certificate" checkbox and an
+optional CA-bundle path, stored as `central_insecure_tls` / `central_ca_file`.
+The status page renders a warning whenever verification is disabled.
+
+**The Dockerfile `CMD` was NOT flipped to managed mode** (§4.5). It cannot be
+until M5: `deploy/gateway/docker-compose.yaml` specifies no `command:` and
+`04-gateway.sh` upgrades by pulling `:latest`, so flipping the image default
+would turn every edge node's next upgrade into a wizard that does not relay mail
+— and in M4 a managed gateway cannot serve mail even once approved. Both compose
+files now pin `command:` explicitly, which also makes the eventual flip safe.
+
+**A pre-existing break had to be fixed first.** A fresh named volume is
+`root:root 0755`, the image runs as uid 65532, and `distroless/static` has no
+`/opt/mailgw-go/queue` for Docker to copy ownership from — so `queue.NewSpool`
+got EACCES and the container exited. This was already true before M4 and would
+have hit the new data volume identically. The mount points are now seeded in the
+builder and `COPY --chown`ed into the runtime stage.
+
+**`-config` and `-admin` compose rather than excluding each other.** §4.4's mode
+1 says "no admin UI unless `-admin` was also given"; in practice file mode plus
+`-admin` gives a useful read-only status page, and `Store == nil` is what selects
+it. That keeps the dev compose stack serving SMTP — so `bun test tests/smtp`
+still passes — while the UI is reachable. `-admin ""` disables the listener
+entirely, which is how `deploy/gateway` ships.
 
 ## Follow-ups this milestone creates
 

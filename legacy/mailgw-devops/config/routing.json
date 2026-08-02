@@ -1,0 +1,19 @@
+[
+    {
+        "routename": "To Exchange",
+        "sender": "",
+        "sender_domain": "",
+        "rcpt": "",
+        "rcpt_domain": "example.com",
+        "relay": "Exchange"
+    },
+
+    {
+        "routename": "Default",
+        "sender": "",
+        "sender_domain": "",
+        "rcpt": "",
+        "rcpt_domain": "",
+        "relay": "Outbound"
+    }
+]

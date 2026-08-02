@@ -65,8 +65,43 @@ export const relays = mysqlTable("Relays", {
     host: varchar("host", { length: 255 }),
     port: int("port"),
     auth_user: varchar("auth_user", { length: 255 }),
-    auth_pass: varchar("auth_pass", { length: 255 }),
+    // AES-256-GCM ciphertext with a "v1:" prefix (src/central/secrets.ts).
+    // Rows written before migration 022 are plaintext and read as such.
+    auth_pass: text("auth_pass"),
+    // Name of an environment variable ON THE GATEWAY holding the password.
+    // When set it wins, and the credential never enters the deployed bundle.
+    auth_pass_env: varchar("auth_pass_env", { length: 255 }),
+    // Outbound TLS for this leg: none | opportunistic | required. NULL means
+    // opportunistic, matching mailgw-go's Relay.TLSPolicy() default.
+    tls: varchar("tls", { length: 16 }),
+    allow_insecure_auth: boolean("allow_insecure_auth"),
+    // Treat `host` as a DOMAIN and resolve its MX records at delivery time,
+    // trying them in preference order. This is "smarthost named by domain", not
+    // direct-to-MX: the recipient's own domain is never consulted.
+    use_mx: boolean("use_mx"),
     priority: int("priority"),
+    ...timestamps,
+});
+
+// Inbound SMTP AUTH credentials, assigned to a gateway as a set. See migration
+// 026.
+export const credentialSets = mysqlTable("CredentialSets", {
+    id: int("id").autoincrement().primaryKey(),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: varchar("description", { length: 255 }),
+    ...timestamps,
+});
+
+export const smtpCredentials = mysqlTable("SmtpCredentials", {
+    id: int("id").autoincrement().primaryKey(),
+    set_id: int("set_id").notNull(),
+    username: varchar("username", { length: 255 }).notNull(),
+    // bcrypt, cost 10 — NOT ciphertext, and deliberately nothing to do with
+    // src/central/secrets.ts. The gateway only ever verifies an inbound
+    // credential, so it never needs the plaintext back and no key exists that
+    // a leaked bundle could be decrypted with. Contrast Relays.auth_pass,
+    // which this console has to be able to present to somebody else.
+    hash: varchar("hash", { length: 255 }).notNull(),
     ...timestamps,
 });
 
@@ -144,14 +179,15 @@ export const configProfiles = mysqlTable("ConfigProfiles", {
     ...timestamps,
 });
 
-// Exactly one of profile_id / relay_group_id is set, selected by `kind`.
-// See migration 018.
+// Exactly one of profile_id / relay_group_id / credential_set_id is set,
+// selected by `kind`. See migrations 018 and 026.
 export const gatewayAssignments = mysqlTable("GatewayAssignments", {
     id: int("id").autoincrement().primaryKey(),
     gateway_id: int("gateway_id").notNull(),
     kind: varchar("kind", { length: 32 }).notNull(),
     profile_id: int("profile_id"),
     relay_group_id: int("relay_group_id"),
+    credential_set_id: int("credential_set_id"),
     ...timestamps,
 });
 
@@ -180,6 +216,20 @@ export const configDeployments = mysqlTable("ConfigDeployments", {
     actor: varchar("actor", { length: 255 }),
     note: varchar("note", { length: 255 }),
     createdAt: datetime("createdAt", { mode: "date" })
+        .notNull()
+        .$defaultFn(() => new Date()),
+});
+
+// The latest counter snapshot a gateway reported on its heartbeat — one row
+// per gateway, keyed on the gateway (logservice migration 024).
+//
+// `metrics` holds the object mailgw-go sent, verbatim, because the counter set
+// lives in that binary (internal/obs) and a fleet routinely runs mixed
+// versions. Read the keys you know and ignore the rest.
+export const gatewayMetrics = mysqlTable("GatewayMetrics", {
+    gateway_id: int("gateway_id").notNull().primaryKey(),
+    metrics: text("metrics").notNull(),
+    updated_at: datetime("updated_at", { mode: "date" })
         .notNull()
         .$defaultFn(() => new Date()),
 });

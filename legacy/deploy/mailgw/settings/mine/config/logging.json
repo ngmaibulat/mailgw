@@ -1,0 +1,5 @@
+{
+  "url_delivery": "http://localhost:3000/api/delivery",
+  "url_conn": "http://localhost:3000/api/connection",
+  "url_queue": "http://localhost:3000/api/queue"
+}

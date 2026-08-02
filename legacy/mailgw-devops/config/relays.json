@@ -1,0 +1,32 @@
+{
+    "Exchange": [
+        {
+            "name": "Exch-01",
+            "auth_user": "",
+            "auth_pass": "",
+            "priority": 0,
+            "exchange": "127.0.0.1",
+            "port": "1025"
+        },
+
+        {
+            "name": "Exch-02",
+            "auth_user": "",
+            "auth_pass": "",
+            "priority": 0,
+            "exchange": "127.0.0.1",
+            "port": "1025"
+        }
+    ],
+
+    "Outbound": [
+        {
+            "name": "Default",
+            "auth_user": "",
+            "auth_pass": "",
+            "priority": 0,
+            "exchange": "127.0.0.1",
+            "port": "1025"
+        }
+    ]
+}

@@ -13,6 +13,7 @@ export interface TransactionRow {
     delay_data_post: number | null;
     data_bytes: number | null;
     mime_part_count: number | null;
+    gateway: string | null;
 }
 
 export async function insertTransaction(t: TransactionRow): Promise<number> {
@@ -20,11 +21,12 @@ export async function insertTransaction(t: TransactionRow): Promise<number> {
         INSERT INTO Transaction
             (uuid, dt, action, encoding, sender, rcpt_list,
              rcpt_count_accept, rcpt_count_tempfail, rcpt_count_reject,
-             delay_data_post, data_bytes, mime_part_count, createdAt, updatedAt)
+             delay_data_post, data_bytes, mime_part_count, gateway,
+             createdAt, updatedAt)
         VALUES
             (${t.uuid}, FROM_UNIXTIME(${t.dt} / 1000), ${t.action}, ${t.encoding}, ${t.sender}, ${t.rcpt_list},
              ${t.rcpt_count_accept}, ${t.rcpt_count_tempfail}, ${t.rcpt_count_reject},
-             ${t.delay_data_post}, ${t.data_bytes}, ${t.mime_part_count},
+             ${t.delay_data_post}, ${t.data_bytes}, ${t.mime_part_count}, ${t.gateway},
              NOW(), NOW())
     ` as any;
     return rows.insertId;

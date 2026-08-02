@@ -9,16 +9,67 @@ local_domains: [devbook.local, ngm.dev]
 
 listen:
     - addr: "0.0.0.0:2525"
+      # implicit_tls: true wraps the socket in TLS from the first byte
+      # (submissions, port 465) and needs tls.cert + tls.key below.
+      #
+      # proxy_protocol: true reads a PROXY header (v1 or v2) from every
+      # connection, so the allowlist and the conn.* rules see the real client
+      # instead of the L4 load balancer in front. It is fail-closed: no valid
+      # header, or a peer outside proxy_trusted, and the connection is dropped
+      # without a reply. A PROXY header is trivially forged, so proxy_trusted is
+      # required and must be non-empty — it is the only thing between a forged
+      # header and an open relay, and a listener with this set must NOT be
+      # reachable directly.
+      #
+      # proxy_protocol: true
+      # proxy_trusted: ["10.0.0.0/8"]
+
+# TLS for inbound sessions. Both paths empty disables it, which is the default
+# and what these tests run on. starttls defaults to TRUE, so it is an opt-out —
+# but it is inert without a keypair, so saying nothing here changes nothing.
+#
+# cert and key are paths on the gateway's own filesystem, never material carried
+# in a configuration bundle: the console keeps every version forever and serves
+# it to every gateway on the profile. A managed node with neither generates a
+# self-signed pair into its data directory.
+tls:
+    cert: ""
+    key: ""
+    starttls: true
+    # Offer AUTH on an unencrypted session. Defaults to FALSE, and without it a
+    # client that tries anyway is answered 523 5.7.10 — so a submission password
+    # is never invited onto a cleartext socket by accident. The legitimate case
+    # is TLS terminated in front of this gateway, in which case set
+    # proxy_protocol on the listener too, or the allowlist and the conn.* rules
+    # see the balancer instead of the client.
+    allow_insecure_auth: false
 
 max:
     bytes: 26214400 # connection.ini [max] bytes
     line_length: 512 # connection.ini [max] line_length
     recipients: 100
+    # The hop limit RFC 5321 §6.3 asks for; over it, the message is refused 554
+    # 5.4.6. The count includes the Received header this gateway adds.
     received_headers: 100 # connection.ini [headers] max_received
+    # Over it, the message is refused 552 5.3.4. Counts lines in the header
+    # block only, not the body.
     header_lines: 1000 # connection.ini [headers] max_lines
+    # Concurrent inbound sessions, across every listener above. Over it, a peer
+    # is answered 421 4.7.0 and closed. No Haraka equivalent: go-smtp caps
+    # nothing itself, and each connection costs a descriptor plus a spool temp
+    # file once DATA starts. Worth nothing without inactivity_timeout below —
+    # a cap over sessions that never end is a denial-of-service primitive, not
+    # a defence. Must be positive; raise it rather than writing 0.
+    connections: 1024
 
 smtputf8: true # connection.ini [main] smtputf8
 inactivity_timeout: 300s
+
+# Bounds the WHOLE teardown — draining sessions, the delivery attempt in flight
+# and the audit events behind it — not any one step. The container's
+# stop_grace_period must exceed this or the ordering buys nothing: the runtime
+# SIGKILLs part-way through. Both compose files set 30s.
+shutdown_timeout: 10s
 
 log:
     level: info
@@ -49,8 +100,51 @@ attach:
     enabled: false
     url: http://logservice:3000/filter/md5
     timeout: 3s
-    fail: closed # AttachChecker.js fails OPEN today; that is a scanner bypass
-    include_inline: true # AttachChecker.js:51 skips inline parts; also a bypass
+    fail: closed # AttachChecker.js failed OPEN on any error; that was a bypass
+    include_inline: true # AttachChecker.js:51 skipped inline parts; also a bypass
+    # reject | tempfail | quarantine | discard. npFilterAttach.js:45 answered
+    # DENYSOFT, which makes a sender retry for four days a message that will
+    # never be accepted; set `tempfail` for literal parity.
+    on_block: reject
+
+# Message authentication (M14). Off, like attach above: each check costs DNS per
+# message, and DKIM verification costs a second pass over the spooled body.
+#
+# A rule reading spf.*, dkim.* or dmarc.* turns the matching check on by itself
+# (Ruleset.NeedsSPF and friends), so these flags exist for the case where the
+# Authentication-Results header is wanted without a rule to go with it.
+msgauth:
+    spf:
+        enabled: false
+    dkim:
+        enabled: false
+    dmarc:
+        enabled: false # needs spf or dkim; it is alignment over their results
+    authserv_id: "" # empty means `hostname`
+    max_dkim_signatures: 10
+    dns_timeout: 5s
+    sign:
+        enabled: false
+        # `key` is a path on this host, never material in a bundle — same rule
+        # as tls.cert/tls.key above.
+        keys: []
+        canonicalization: relaxed/relaxed
+        headers: [] # empty is the RFC 6376 5.4.1 set; must include From
+        expiration: 0
+
+# Rate limits (M15) — how often, where `max:` above is how many at once.
+#
+# All off: there is no default rate that does not guess at your traffic. Every
+# refusal is temporary (421 at connect, 450 in a transaction, 454 for AUTH), so
+# a limit set too low costs delay rather than mail. Read live — changing one
+# needs no restart.
+ratelimit:
+    connect_per_ip: {rate: 0, per: 1m, burst: 0}
+    messages_per_sender: {rate: 0, per: 1h}
+    messages_per_user: {rate: 0, per: 1h}
+    rcpts_per_domain: {rate: 0, per: 1m}
+    auth_failures_per_ip: {rate: 0, per: 10m}
+    max_keys: 0 # 0 is the built-in ceiling, not "unlimited"
 
 events:
     timeout: 3s
@@ -58,3 +152,11 @@ events:
     buffer_size: 4096
     senders: 4
     api_key_env: API_KEY
+    # Slow on purpose: this repairs an outage that has already ended, and the
+    # delivery path (Send) has its own retries. 0 disables the background pass.
+    replay_interval: 5m
+    # How long failed-events/rejected/ keeps an event a replay gave up on. Kept
+    # on purpose — they are the evidence of what logservice refused — but
+    # nothing else drains that directory. 0 never deletes. The sweep rides the
+    # replay pass, so replay_interval: 0 disables it too.
+    rejected_retention: 720h

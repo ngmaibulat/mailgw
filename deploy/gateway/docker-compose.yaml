@@ -1,0 +1,85 @@
+# Edge (gateway) node of the modern stack: the mailgw-go SMTP container.
+#
+# This node is ZERO-CONFIGURATION. There is no command, no environment and no
+# config directory: the container boots with nothing, generates its own Ed25519
+# identity, and is provisioned through the local wizard on port 8080 and then by
+# Central Management. Everything it runs on — the rule set, the IP allowlist, the
+# relay table, the logservice endpoints and its API key — arrives in a signed,
+# versioned bundle and is cached in the SQLite store on the data volume.
+#
+# Consequences worth knowing before running this:
+#
+#   * It does NOT serve SMTP until an operator approves it in the console and
+#     deploys a configuration to it. A gateway with no allowlist would deny every
+#     peer anyway, and a listener that can only reject looks healthy to a load
+#     balancer.
+#   * A console outage is a non-event: it boots from its cache and keeps
+#     relaying mail on the last configuration that applied.
+#   * The admin UI on 8080 is always listening, locked by a claim code the
+#     gateway writes to its log on first boot. See the firewall note at the
+#     bottom — on this node it is still required, not optional.
+services:
+    mailgw-go:
+        image: ngmaibulat/mailgw-go:latest
+        container_name: mailgw-go
+        restart: unless-stopped
+        # Must exceed server.shutdown_timeout (default 10s), or Docker SIGKILLs
+        # part-way through the ordered teardown and the ordering buys nothing:
+        # open sessions are cut off, the delivery in flight is redelivered on the
+        # next start, and buffered audit events are lost rather than spilled to
+        # failed-events/. Raise both together if this node carries large messages
+        # to slow relays.
+        stop_grace_period: 30s
+        # Host networking, NOT a published port: an edge node's IP allowlist
+        # needs the real client address. Behind a bridge network every connection
+        # arrives from the docker gateway instead, which both hides the sender
+        # and matches the allowlist's own RFC1918 ranges.
+        network_mode: host
+        # The image's default user is uid 65532, which cannot bind port 25, and
+        # per-container sysctls (ip_unprivileged_port_start) are refused under
+        # host networking. Running as root is how this node owns 25 — the same
+        # trade the Haraka container made.
+        user: "0:0"
+        # No `command:` and no `environment:`. The image's own defaults are
+        # managed mode, and there is deliberately nothing here to drift from what
+        # Central Management says.
+        volumes:
+            # Durable spool. A bind, not a named volume, so the queue survives
+            # `docker compose down -v` and can be inspected from the host —
+            # 02-checkdirs.sh makes sure it exists and is writable by uid 0.
+            - /opt/mailgw-go/queue:/opt/mailgw-go/queue
+            # The SQLite store: this gateway's identity (an Ed25519 private key)
+            # and its cached configuration — the two things that MUST survive a
+            # container replacement, or the node re-registers as a stranger and
+            # stops relaying until an operator approves it again. A host bind
+            # rather than a named volume, correct here because this container
+            # runs as uid 0, so the key is backupable and inspectable from the
+            # host. 02-checkdirs.sh creates it 0700.
+            #
+            # It also holds tls/ — a self-signed keypair the gateway generates
+            # on first boot so inbound STARTTLS works on a node that has no
+            # files of its own. To serve a REAL certificate, put the pair in
+            # /opt/mailgw-go/data/tls/ and name the container-side paths
+            # (/var/lib/mailgw-go/tls/...) in the server profile you deploy. A
+            # private key deliberately cannot travel in a config bundle: the
+            # console keeps every version forever and serves it to every gateway
+            # on that profile. Renewal in place needs no restart — the keypair
+            # is re-read when the files change.
+            - /opt/mailgw-go/data:/var/lib/mailgw-go
+#
+# SECURITY — the admin UI is always listening, and the firewall is still required.
+#
+# It is locked by a claim code the gateway writes to its log on first boot
+# (`docker logs mailgw-go`, or `mailgw-go claim status`), and every state-changing
+# request needs a session and a CSRF token. But under network_mode: host there is
+# no docker port mapping to narrow, and this process runs as root on an
+# internet-facing relay — and what an authenticated caller can do is re-point this
+# gateway at a Central Manager of their choosing and be handed its relay
+# credentials. Narrow who can reach it too.
+#
+# Run 05-firewall.sh before putting this node into service:
+#
+#     MGMT_CIDR=10.0.0.0/24 bash 05-firewall.sh
+#
+# Port 25 is deliberately left alone — this is a mail relay, and the IP allowlist
+# Central Management deploys to it is what gates SMTP.

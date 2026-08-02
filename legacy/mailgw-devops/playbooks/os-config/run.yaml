@@ -1,0 +1,70 @@
+- name: Run baseline configuration
+  hosts: all
+  vars_files:
+      - vars.yaml
+  tasks:
+      - name: Install packages
+        apt:
+            name: docker.io, docker-compose, swaks, tcpdump, vim, htop, cifs-utils, nala, git, python-is-python3, python3-pip, python3-pymysql, curl, mysql-client, ca-certificates, apt-transport-https, software-properties-common
+            state: present
+        become: yes
+        become_user: root
+        become_method: sudo
+
+      - name: bashrc
+        template:
+            src: ../templates/bashrc.sh
+            dest: /root/.bashrc
+            owner: root
+            group: root
+            mode: '0644'
+
+      - name: bashrc-skel
+        template:
+            src: ../templates/bashrc.sh
+            dest: /etc/skel/.bashrc
+            owner: root
+            group: root
+            mode: '0644'
+
+      - name: env file
+        template:
+            src: ../templates/.env
+            dest: /opt/.env
+            owner: root
+            group: root
+            mode: '0644'
+
+      - name: Pull mysql Docker image
+        docker_image:
+            name: mysql
+            source: pull
+
+      - name: Pull DB Migrator Docker image
+        docker_image:
+            name: ngmaibulat/db-migrator
+            source: pull
+
+      - name: Pull MailGW Docker image
+        docker_image:
+            name: ngmaibulat/mailgw
+            source: pull
+
+      - name: Pull LogService Docker image
+        docker_image:
+            name: ngmaibulat/logservice
+            source: pull
+
+      # - name: Run mysql container
+      #   docker_container:
+      #       name: dblocal
+      #       image: mysql
+      #       state: started
+      #       detach: true
+      #       published_ports:
+      #           - '127.0.0.1:3306:3306'
+      #       env:
+      #           MYSQL_ROOT_PASSWORD: '{{ mysql_pw }}'
+      #           MYSQL_DATABASE: '{{ db_name }}'
+      #           MYSQL_USER: '{{ db_user }}'
+      #           MYSQL_PASSWORD: '{{ mysql_pw }}'

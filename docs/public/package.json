@@ -1,0 +1,14 @@
+{
+    "name": "mailgw-docs-public",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "vitepress dev --port 5173",
+        "build": "vitepress build",
+        "preview": "vitepress preview --port 5173"
+    },
+    "devDependencies": {
+        "vitepress": "^1.6.4"
+    }
+}

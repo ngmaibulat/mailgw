@@ -1,0 +1,2 @@
+# TLS pair for the webui goes here as server.key + server.crt.
+# Generated files are gitignored; this file just keeps the dir in git.

@@ -44,11 +44,13 @@ let selectResult: unknown[] = [];
 interface SelectStub extends PromiseLike<unknown[]> {
     from: () => SelectStub;
     where: () => SelectStub;
+    orderBy: () => SelectStub;
     limit: () => Promise<unknown[]>;
 }
 const selectStub: SelectStub = {
     from: () => selectStub,
     where: () => selectStub,
+    orderBy: () => selectStub,
     limit: () => Promise.resolve(selectResult),
     // Intentionally thenable — mirrors drizzle's awaitable query builder so
     // `await db.select().from(...)` resolves without a terminal `.limit()`.
@@ -572,5 +574,99 @@ describe("error handler", () => {
         });
         assert.equal(res.statusCode, 500);
         assert.equal(JSON.parse(res.body).status, "error");
+    });
+});
+
+describe("dashboard fleet card", () => {
+    // The dashboard's delivery feed is a logservice call; these tests only care
+    // about the fleet half, so the feed is stubbed to fail and render empty.
+    function feedUnavailable() {
+        fetchImpl = () => Promise.reject(new Error("logservice is down"));
+    }
+
+    function gatewayRow(over: Record<string, unknown> = {}) {
+        return {
+            id: 1,
+            name: "edge-1",
+            hostname: "edge-1.example",
+            status: "approved",
+            last_seen: new Date(),
+            apply_error: null,
+            restart_required: false,
+            ...over,
+        };
+    }
+
+    async function dashboard() {
+        return app.inject({
+            method: "GET",
+            url: "/",
+            headers: { cookie: authCookie() },
+        });
+    }
+
+    it("reports a healthy fleet without raising an alarm", async () => {
+        feedUnavailable();
+        selectResult = [gatewayRow()];
+
+        const res = await dashboard();
+
+        assert.equal(res.statusCode, 200);
+        assert.match(res.body, /Gateway fleet/);
+        assert.match(
+            res.body,
+            /All gateways are approved, current and reporting/,
+        );
+    });
+
+    // Pending approvals are the one fleet state that cannot resolve without a
+    // person, which is why they are called out rather than merely counted.
+    it("calls out gateways waiting for approval", async () => {
+        feedUnavailable();
+        selectResult = [gatewayRow({ status: "pending" })];
+
+        const res = await dashboard();
+
+        assert.match(res.body, /waiting for approval/);
+        assert.doesNotMatch(res.body, /All gateways are approved/);
+    });
+
+    it("surfaces a stale gateway and the reason a deploy failed", async () => {
+        feedUnavailable();
+        selectResult = [
+            gatewayRow({
+                id: 3,
+                name: "edge-3",
+                // Well past three poll intervals.
+                last_seen: new Date(Date.now() - 10 * 60 * 1000),
+                apply_error: "rule 'block exe': unknown field attachment.nope",
+            }),
+        ];
+
+        const res = await dashboard();
+
+        assert.match(res.body, /has not reported recently/);
+        assert.match(res.body, /could not apply its configuration/);
+        assert.match(res.body, /unknown field attachment.nope/);
+        // Both alerts link at the gateway they are about.
+        assert.match(res.body, /href="\/gateways\/3"/);
+    });
+
+    // The home page is the first URL an operator opens. A broken fleet query
+    // must cost them the card, not the page.
+    it("still renders when the fleet query fails", async () => {
+        feedUnavailable();
+        const realSelect = (db as unknown as { select: unknown }).select;
+        (db as unknown as { select: () => never }).select = () => {
+            throw new Error("database is unreachable");
+        };
+
+        try {
+            const res = await dashboard();
+            assert.equal(res.statusCode, 200);
+            assert.match(res.body, /Fleet status is unavailable/);
+        } finally {
+            (db as unknown as { select: unknown }).select = realSelect;
+        }
     });
 });

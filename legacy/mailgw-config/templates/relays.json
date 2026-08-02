@@ -1,0 +1,32 @@
+{
+  "Exchange": [
+    {
+      "name": "Exch-01",
+      "auth_user": "${SMTP_DST_INTERNAL_USER}",
+      "auth_pass": "${SMTP_DST_INTERNAL_PASS}",
+      "priority": 0,
+      "exchange": "${SMTP_DST_INTERNAL_HOST}",
+      "port": "${SMTP_DST_INTERNAL_PORT}"
+    },
+
+    {
+      "name": "Exch-02",
+      "auth_user": "${SMTP_DST_INTERNAL_USER}",
+      "auth_pass": "${SMTP_DST_INTERNAL_PASS}",
+      "priority": 0,
+      "exchange": "${SMTP_DST_INTERNAL_HOST}",
+      "port": "${SMTP_DST_INTERNAL_PORT}"
+    }
+  ],
+
+  "Outbound": [
+    {
+      "name": "Default",
+      "auth_user": "${SMTP_DST_EXTERNAL_USER}",
+      "auth_pass": "${SMTP_DST_EXTERNAL_PASS}",
+      "priority": 0,
+      "exchange": "${SMTP_DST_EXTERNAL_HOST}",
+      "port": "${SMTP_DST_EXTERNAL_PORT}"
+    }
+  ]
+}

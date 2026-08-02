@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -33,6 +34,12 @@ func TestLoad_RealConfigDirectory(t *testing.T) {
 	}
 	if got := cfg.Server.Inactivity.D(); got != 300*time.Second {
 		t.Errorf("inactivity_timeout: got %v", got)
+	}
+	// Named in the sample so an operator raising stop_grace_period can find the
+	// knob it has to stay ahead of; the value matches the compiled-in default,
+	// so spelling it out changes nothing.
+	if got := cfg.Server.ShutdownTimeout.D(); got != DefaultShutdownTimeout {
+		t.Errorf("shutdown_timeout: got %v, want %v", got, DefaultShutdownTimeout)
 	}
 
 	// The shipped relays.json uses a string port and two Exchange members.
@@ -79,6 +86,14 @@ func TestLoad_AppliesDefaultsWhenServerYamlAbsent(t *testing.T) {
 	if !cfg.Server.SMTPUTF8 {
 		t.Error("smtputf8 should default to true")
 	}
+	// A configuration that says nothing still gets an inbound ceiling. Without
+	// this, adding the key would be a no-op for every existing deployment.
+	if cfg.Server.Max.Connections != 1024 {
+		t.Errorf("default max.connections: got %d, want 1024", cfg.Server.Max.Connections)
+	}
+	if got := cfg.Server.Events.RejectedRetention.D(); got != 720*time.Hour {
+		t.Errorf("default events.rejected_retention: got %v, want 720h", got)
+	}
 }
 
 // A missing or malformed allowlist must stop the process from starting, since
@@ -104,6 +119,49 @@ func TestLoad_FailsWithoutRelays(t *testing.T) {
 	copyFile(t, filepath.Join(testdataDir, "ngmfilter.json"), filepath.Join(dir, FileFilter))
 	if _, err := Load(dir); err == nil {
 		t.Fatal("Load must fail when relays.json is missing")
+	}
+}
+
+// auth.json is optional, exactly like admin.json: a configuration directory
+// that predates inbound AUTH is a valid directory and simply never offers it.
+func TestLoad_AuthJSONIsOptional(t *testing.T) {
+	cfg, err := Load(testdataDir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Auth.Enabled() {
+		t.Error("testdata/config has no auth.json but Enabled() is true")
+	}
+}
+
+func TestLoad_ReadsAuthJSON(t *testing.T) {
+	dir := t.TempDir()
+	copyFile(t, filepath.Join(testdataDir, "relays.json"), filepath.Join(dir, FileRelays))
+	copyFile(t, filepath.Join(testdataDir, "ngmfilter.json"), filepath.Join(dir, FileFilter))
+
+	const hash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+	body := `{"users":[{"user":"app@ngm.dev","hash":"` + hash + `"}]}`
+	if err := os.WriteFile(filepath.Join(dir, FileAuth), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	got, ok := cfg.Auth.Lookup("app@ngm.dev")
+	if !ok || got != hash {
+		t.Errorf("Lookup = %q, %v; want the hash from auth.json", got, ok)
+	}
+
+	// A password where a hash belongs fails the load, in file mode too — the
+	// same check the bundle path runs.
+	if err := os.WriteFile(filepath.Join(dir, FileAuth),
+		[]byte(`{"users":[{"user":"app@ngm.dev","hash":"hunter2"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); err == nil {
+		t.Fatal("Load accepted a plaintext password in auth.json")
 	}
 }
 
@@ -167,6 +225,20 @@ func TestAttachFailClosedByDefault(t *testing.T) {
 	}
 }
 
+func TestAttachBlockActionDefaultsToReject(t *testing.T) {
+	// npFilterAttach.js:45 answered DENYSOFT; we default to a permanent refusal
+	// because the digest is on a blocklist and a retry cannot change that.
+	if got := (AttachConfig{}).BlockAction(); got != AttachBlockReject {
+		t.Errorf("unset on_block = %q, want %q", got, AttachBlockReject)
+	}
+	if got := (AttachConfig{OnBlock: "QUARANTINE"}).BlockAction(); got != AttachBlockQuarantine {
+		t.Errorf("on_block = %q, want %q", got, AttachBlockQuarantine)
+	}
+	if got := defaults().Attach.BlockAction(); got != AttachBlockReject {
+		t.Errorf("defaults().Attach.BlockAction() = %q", got)
+	}
+}
+
 func TestValidate_RejectsBadServerConfig(t *testing.T) {
 	base := func() Server {
 		s := defaults()
@@ -182,11 +254,41 @@ func TestValidate_RejectsBadServerConfig(t *testing.T) {
 		"no backoff":       func(s *Server) { s.Outbound.Backoff = nil },
 		"bad jitter":       func(s *Server) { s.Outbound.Jitter = 1.5 },
 		"no spool dir":     func(s *Server) { s.Outbound.SpoolDir = "" },
-		"bad attach fail":  func(s *Server) { s.Attach.Fail = "sometimes" },
+		"bad attach fail":  func(s *Server) { s.Attach.Fail = "discard" },
+		"bad attach block": func(s *Server) { s.Attach.OnBlock = "explode" },
 		"attach no url":    func(s *Server) { s.Attach.Enabled = true; s.Attach.URL = "" },
 		"bad dsn return":   func(s *Server) { s.DSN.Return = "everything" },
-		"starttls no cert": func(s *Server) { s.TLS.STARTTLS = true },
 		"implicit no cert": func(s *Server) { s.Listen = []Listener{{Addr: ":465", ImplicitTLS: true}} },
+		// Both of these used to be accepted and then silently mean "no bound":
+		// attach.timeout feeds a context deadline read inside the DATA reply, and
+		// inactivity_timeout feeds the SMTP read/write deadlines.
+		"zero attach timeout": func(s *Server) {
+			s.Attach.Enabled = true
+			s.Attach.URL = "http://127.0.0.1:3000/filter/md5"
+			s.Attach.Timeout = 0
+		},
+		"zero inactivity timeout": func(s *Server) { s.Inactivity = 0 },
+		// Same shape again: ParseServer unmarshals over defaults(), so an
+		// explicit 0 overwrites 1024 and would mean "no cap" — the state the key
+		// exists to end.
+		"zero max connections":     func(s *Server) { s.Max.Connections = 0 },
+		"negative max connections": func(s *Server) { s.Max.Connections = -1 },
+		// proxy_trusted is the only thing between a forged PROXY header and an
+		// open relay, so an empty or unparseable list is refused rather than
+		// silently meaning "trust nobody" (which drops every connection) or
+		// "trust anyone".
+		"proxy_protocol without trusted": func(s *Server) {
+			s.Listen = []Listener{{Addr: ":25", ProxyProtocol: true}}
+		},
+		"proxy_protocol empty trusted": func(s *Server) {
+			s.Listen = []Listener{{Addr: ":25", ProxyProtocol: true, ProxyTrusted: []string{}}}
+		},
+		"proxy_trusted unparseable": func(s *Server) {
+			s.Listen = []Listener{{Addr: ":25", ProxyProtocol: true, ProxyTrusted: []string{"not-an-address"}}}
+		},
+		"proxy_trusted without proxy_protocol": func(s *Server) {
+			s.Listen = []Listener{{Addr: ":25", ProxyTrusted: []string{"10.0.0.0/8"}}}
+		},
 	}
 	for name, mutate := range cases {
 		s := base()
@@ -199,6 +301,84 @@ func TestValidate_RejectsBadServerConfig(t *testing.T) {
 	ok := base()
 	if err := ok.validate(); err != nil {
 		t.Errorf("the base config should validate, got %v", err)
+	}
+}
+
+// A valid PROXY-protocol listener validates, and the keys are omitted from the
+// marshalled form when unset — so an existing bundle keeps hashing identically.
+func TestValidate_ProxyProtocolListener(t *testing.T) {
+	s := defaults()
+	s.Hostname = "h"
+	s.Listen = []Listener{{
+		Addr:          ":25",
+		ProxyProtocol: true,
+		ProxyTrusted:  []string{"10.0.0.0/8", "192.0.2.1", "::1"},
+	}}
+
+	if err := s.validate(); err != nil {
+		t.Fatalf("a well-formed proxy listener should validate, got %v", err)
+	}
+
+	raw, err := json.Marshal(Listener{Addr: ":25"})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if strings.Contains(string(raw), "proxy_") {
+		t.Errorf("a listener that says nothing about the PROXY protocol should not "+
+			"emit the keys, got %s", raw)
+	}
+}
+
+// ParsePrefixes is the allowlist's own parser, exported for proxy_trusted — so
+// it must keep the two normalisations that make the allowlist work: a sloppy
+// CIDR is masked, and a v4-mapped v6 prefix becomes plain v4.
+func TestParsePrefixes(t *testing.T) {
+	got, err := ParsePrefixes([]string{"10.1.2.3/8", "192.0.2.1", "::ffff:127.0.0.1/104"})
+	if err != nil {
+		t.Fatalf("ParsePrefixes: %v", err)
+	}
+	want := []string{"10.0.0.0/8", "192.0.2.1/32", "127.0.0.0/8"}
+	for i, w := range want {
+		if got[i].String() != w {
+			t.Errorf("prefix %d = %s, want %s", i, got[i], w)
+		}
+	}
+
+	if _, err := ParsePrefixes([]string{"nope"}); err == nil {
+		t.Error("an unparseable entry must be an error")
+	}
+}
+
+// attach.timeout only has to be positive when the scanner is actually built, so
+// the shipped default — scanning off, and every other key at its default —
+// still validates.
+func TestValidate_ZeroAttachTimeoutIsFineWhileScanningIsOff(t *testing.T) {
+	s := defaults()
+	s.Hostname = "h"
+	s.Attach.Timeout = 0
+
+	if err := s.validate(); err != nil {
+		t.Errorf("a zero attach.timeout with attach disabled should validate, got %v", err)
+	}
+}
+
+// starttls is an opt-OUT and defaults to true, so — unlike implicit_tls — it
+// cannot require a keypair: that would reject every configuration that never
+// mentions TLS at all. Without one it is simply inert.
+func TestValidate_STARTTLSWithoutAKeypairIsNotAnError(t *testing.T) {
+	s := defaults()
+	s.Hostname = "h"
+	if !s.TLS.STARTTLS {
+		t.Fatal("starttls should default to true")
+	}
+	if err := s.validate(); err != nil {
+		t.Errorf("the default config no longer validates: %v", err)
+	}
+	if s.WantsTLS() != true {
+		t.Error("WantsTLS should be true when starttls is on")
+	}
+	if s.ImplicitTLSWanted() {
+		t.Error("no listener asked for implicit TLS")
 	}
 }
 

@@ -1,0 +1,7 @@
+# vars.yml
+do_api_token: "fake-token"
+
+mysql_pw: "P@ssw0rd"
+db_name: "mailgw"
+db_user: "mailgw"
+

@@ -1,0 +1,17 @@
+From: sender@example.com
+To: rcpt@example.com
+Subject: qp
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="B"
+
+--B
+Content-Type: text/plain
+
+body
+--B
+Content-Type: text/csv
+Content-Disposition: attachment; filename="notes.csv"
+Content-Transfer-Encoding: quoted-printable
+
+quoted printable =3D fun
+--B--

@@ -1,18 +1,68 @@
 services:
-    mailgw:
-        image: ngmaibulat/mailgw:latest
-        container_name: dev-mailgw
+    # The gateway. mailgw-go owns port 25; the legacy Haraka service below is
+    # commented out. The container listens on 2525 (it runs as uid 65532 and
+    # cannot bind a privileged port) and compose maps the host's 25 onto it.
+    mailgw-go:
+        image: ngmaibulat/mailgw-go:latest
+        container_name: dev-mailgw-go
         restart: unless-stopped
+        # Must exceed server.shutdown_timeout (default 10s), or the runtime
+        # SIGKILLs part-way through the ordered teardown and the ordering buys
+        # nothing: sessions are cut off, an in-flight delivery is redelivered on
+        # the next start, and buffered audit events are lost rather than spilled.
+        stop_grace_period: 30s
         ports:
-            - "25:25"
+            - "25:2525" # the real SMTP port
+            - "2525:2525" # kept published so `pnpm test:e2e:smtp:go` still works
+            # The local admin UI. This service is pinned to file mode (see the
+            # command below), where the UI is a read-only status page: there is
+            # nothing to provision, so there is no claim code and POST /register
+            # answers 404. A managed node locks the same UI behind a claim code.
+            - "8080:8080"
         environment:
-            # Must match the logservice API_KEY so the plugins authenticate.
             API_KEY: ${API_KEY:-}
+        # File mode, pinned — the image's own default is now managed mode.
+        #
+        # This is deliberate and load-bearing for the test suite: a managed
+        # gateway does not serve SMTP until an operator has approved it in the
+        # console and deployed a configuration, so `pnpm test:e2e:smtp:go`
+        # against a fresh managed stack would find nothing listening. File mode
+        # is also what `check`, `explain` and the Go contract suite run on.
+        #
+        # To exercise the real thing — wizard, approval, deploy, rollback —
+        # delete this line. The container then boots empty, generates an
+        # identity, and waits at http://localhost:8080.
+        command:
+            ["-config", "/opt/mailgw-go/config", "-admin", "0.0.0.0:8080"]
         volumes:
-            - ./mailgw/plugins:/opt/mailgw/plugins
-            - /opt/mailgw/config:/opt/mailgw/config
-            - /opt/mailgw/log:/opt/mailgw/log
-            - /opt/mailgw/queue:/opt/mailgw/queue
+            - ./mailgw-go/config:/opt/mailgw-go/config:ro
+            # Named volumes, not binds: the image runs as uid 65532 and would
+            # otherwise need the host directories chowned to match.
+            - mailgw_go_queue:/opt/mailgw-go/queue
+            # The SQLite store: gateway identity (an Ed25519 private key) and
+            # the cached configuration.
+            - mailgw_go_data:/var/lib/mailgw-go
+        depends_on:
+            logservice:
+                condition: service_started
+
+    # LEGACY: the Haraka gateway, superseded by mailgw-go above. Kept here (not
+    # deleted) so a parity run is one uncomment away — move mailgw-go off "25:2525"
+    # first, since only one service can own the host port.
+    # mailgw:
+    #     image: ngmaibulat/mailgw:latest
+    #     container_name: dev-mailgw
+    #     restart: unless-stopped
+    #     ports:
+    #         - "25:25"
+    #     environment:
+    #         # Must match the logservice API_KEY so the plugins authenticate.
+    #         API_KEY: ${API_KEY:-}
+    #     volumes:
+    #         - ./legacy/mailgw/plugins:/opt/mailgw/plugins
+    #         - /opt/mailgw/config:/opt/mailgw/config
+    #         - /opt/mailgw/log:/opt/mailgw/log
+    #         - /opt/mailgw/queue:/opt/mailgw/queue
 
     mariadb:
         image: mariadb:12
@@ -81,6 +131,26 @@ services:
             LOGSERVICE_URL: http://dev-logservice:3000
             # Sent as X-API-Key; must match logservice's API_KEY.
             LOGSERVICE_API_KEY: ${API_KEY:-}
+            # The logservice URL written INTO gateway config bundles by Central
+            # Management — deliberately separate from LOGSERVICE_URL above, which
+            # is the webui's own container-internal route and is not resolvable
+            # from a gateway on another host. Falls back to LOGSERVICE_URL, which
+            # is correct for a mailgw-go on this same compose network; set it
+            # explicitly to a host-reachable URL once gateways run elsewhere.
+            # GATEWAY_LOGSERVICE_URL: http://<this-host>:3000
+            # ...and the key gateways send with it. A managed node has no
+            # environment of its own, so this travels in the bundle. Falls back
+            # to LOGSERVICE_API_KEY above.
+            GATEWAY_LOGSERVICE_API_KEY: ${API_KEY:-}
+            # Bearer token gateways will require on their own /metrics and
+            # /readyz, written into their bundles. Empty here so the dev stack's
+            # endpoints stay open and `curl localhost:8080/metrics` still works.
+            GATEWAY_METRICS_TOKEN: ${GATEWAY_METRICS_TOKEN:-}
+            # Encrypts relay passwords at rest (AES-256-GCM). Empty here so the
+            # dev stack works out of the box; decryption happens in the console
+            # when a bundle is composed, so no key ever reaches a gateway.
+            #   openssl rand -base64 32
+            CONFIG_SECRET_KEY: ${CONFIG_SECRET_KEY:-}
         volumes:
             # The server serves HTTP/2 over TLS and reads ./certs/server.{key,crt}
             # on boot. Generate them first with the `certs` project:
@@ -117,27 +187,7 @@ services:
             - "8025:8025" # MailHog web interface
             - "1025:1025" # MailHog SMTP server
 
-    # The Go rewrite of the Haraka gateway, running SIDE BY SIDE with `mailgw`
-    # on a separate port until parity is proven. Haraka keeps port 25; this
-    # takes 2525. Both write to the same logservice — their uuid spaces are
-    # disjoint, and mailgw-go stamps `X-NGM-Gateway: go` on what it relays.
-    mailgw-go:
-        image: ngmaibulat/mailgw-go:latest
-        container_name: dev-mailgw-go
-        restart: unless-stopped
-        ports:
-            - "2525:2525"
-        environment:
-            API_KEY: ${API_KEY:-}
-        volumes:
-            - ./mailgw-go/config:/opt/mailgw-go/config:ro
-            # A named volume, not a bind: the image runs as uid 65532 and would
-            # otherwise need the host directory chowned to match.
-            - mailgw_go_queue:/opt/mailgw-go/queue
-        depends_on:
-            logservice:
-                condition: service_started
-
 volumes:
     mariadb_data:
     mailgw_go_queue:
+    mailgw_go_data:

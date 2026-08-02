@@ -16,6 +16,7 @@ import { db, gateways, configVersions } from "../db/index.ts";
 // auth, not query construction.
 const tableRows = new Map<unknown, unknown[]>();
 const inserted: { table: unknown; values: unknown }[] = [];
+const upserted: { table: unknown; values: unknown; set: unknown }[] = [];
 const updated: { values: unknown }[] = [];
 
 interface SelectStub extends PromiseLike<unknown[]> {
@@ -42,16 +43,41 @@ function makeSelectStub(): SelectStub {
 
 (db as unknown as { select: () => SelectStub }).select = () => makeSelectStub();
 
+// values() is awaitable AND chainable: the report handler upserts the metrics
+// snapshot with .onDuplicateKeyUpdate(), while every other caller just awaits.
+interface InsertValues extends PromiseLike<void> {
+    onDuplicateKeyUpdate: (arg: { set: unknown }) => Promise<void>;
+}
+
 (
     db as unknown as {
-        insert: (table: unknown) => { values: (v: unknown) => Promise<void> };
+        insert: (table: unknown) => { values: (v: unknown) => InsertValues };
     }
 ).insert = (table: unknown) => ({
     values: (values: unknown) => {
         inserted.push({ table, values });
-        return Promise.resolve();
+        const chain: InsertValues = {
+            onDuplicateKeyUpdate: ({ set }) => {
+                upserted.push({ table, values, set });
+                return Promise.resolve();
+            },
+            // biome-ignore lint/suspicious/noThenProperty: drizzle query-builder stub
+            then: (onF, onR) => Promise.resolve().then(onF, onR),
+        };
+        return chain;
     },
 });
+
+// db.transaction hands the callback a handle that is a full database. The stub
+// object already carries the patched methods, so passing it straight through
+// records the writes exactly as an untransacted call would.
+(
+    db as unknown as {
+        transaction: (
+            fn: (tx: unknown) => Promise<unknown>,
+        ) => Promise<unknown>;
+    }
+).transaction = (fn) => fn(db);
 
 (
     db as unknown as {
@@ -429,5 +455,91 @@ describe("POST /agent/report", () => {
             payload: body,
         });
         assert.equal(res.statusCode, 400);
+    });
+
+    // The counters were validated and thrown away until M6. Persisting them is
+    // what makes the fleet view able to answer "what is this box doing?".
+    it("stores the metrics snapshot as one row per gateway", async () => {
+        tableRows.set(gateways, [gatewayRow()]);
+        upserted.length = 0;
+
+        const metrics = { msg_accepted: 12, deliver_ok: 30, queue_ready: 2 };
+        const body = JSON.stringify({ applied_version_id: 41, metrics });
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/agent/report",
+            headers: signedHeaders("POST", "/agent/report", body),
+            payload: body,
+        });
+
+        assert.equal(res.statusCode, 200);
+        const row = upserted.at(-1);
+        assert.ok(row, "the metrics snapshot was not written");
+
+        const values = row.values as Record<string, unknown>;
+        assert.equal(values.gateway_id, 1);
+        assert.deepEqual(JSON.parse(String(values.metrics)), metrics);
+
+        // Keyed on gateway_id, so a heartbeat replaces the row rather than
+        // accumulating one per report — see logservice migration 024.
+        const set = row.set as Record<string, unknown>;
+        assert.deepEqual(JSON.parse(String(set.metrics)), metrics);
+        assert.ok(set.updated_at instanceof Date);
+    });
+
+    // A report with no metrics is not a report of zero. Overwriting the last
+    // snapshot with nothing would make an old gateway look like a dead one.
+    it("leaves the previous snapshot alone when a report carries no metrics", async () => {
+        tableRows.set(gateways, [gatewayRow()]);
+        upserted.length = 0;
+
+        const body = JSON.stringify({ applied_version_id: 41 });
+        const res = await app.inject({
+            method: "POST",
+            url: "/agent/report",
+            headers: signedHeaders("POST", "/agent/report", body),
+            payload: body,
+        });
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(upserted.length, 0);
+        // The gateway row itself is still touched, so last_seen advances.
+        assert.equal(
+            (updated.at(-1)?.values as Record<string, unknown>)
+                .applied_version_id,
+            41,
+        );
+    });
+
+    // The snapshot is written, so it is no longer merely echoed data. These
+    // bounds are what stops a misbehaving node putting an unbounded blob in a
+    // row, and NaN/Infinity are not representable in JSON — better a 400 here
+    // than a serialisation failure somewhere downstream.
+    it("rejects unbounded or non-finite metrics", async () => {
+        tableRows.set(gateways, [gatewayRow()]);
+
+        const tooMany: Record<string, number> = {};
+        for (let i = 0; i < 200; i++) tooMany[`k${i}`] = 1;
+
+        for (const metrics of [
+            tooMany,
+            { msg_accepted: -1 },
+            { msg_accepted: 1.5 },
+            { ["k".repeat(65)]: 1 },
+        ]) {
+            const body = JSON.stringify({ metrics });
+            const res = await app.inject({
+                method: "POST",
+                url: "/agent/report",
+                headers: signedHeaders("POST", "/agent/report", body),
+                payload: body,
+            });
+            assert.equal(
+                res.statusCode,
+                400,
+                `expected 400 for ${JSON.stringify(metrics).slice(0, 60)}`,
+            );
+        }
     });
 });

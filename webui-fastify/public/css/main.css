@@ -936,3 +936,90 @@ textarea.form-control {
 .card + .card {
     margin-top: 1rem;
 }
+
+/* --- dashboard fleet card ------------------------------------------------ */
+
+.fleet-body {
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.fleet-counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+}
+.fleet-count {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+.fleet-n {
+    font-family: var(--mono);
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1;
+}
+.fleet-n.ok {
+    color: #7ee787;
+}
+.fleet-label {
+    font-size: 12px;
+    color: var(--ink-dim);
+}
+
+/* One row per thing that wants attention. Each is a link, because every one of
+   them is answered somewhere else — a status line an operator cannot act on
+   from where they are reading it is just noise. */
+.fleet-alert {
+    display: block;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 14px;
+}
+.fleet-alert:hover {
+    border-color: var(--ink-dim);
+}
+.fleet-alert-hint {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 12px;
+    color: var(--ink-dim);
+    font-family: var(--mono);
+    word-break: break-word;
+}
+
+/* Pending approvals are the loudest thing on the page on purpose: it is the
+   only fleet state that cannot resolve without a person. */
+.fleet-alert-pending {
+    background: rgba(210, 153, 34, 0.14);
+    border-color: rgba(210, 153, 34, 0.55);
+}
+.fleet-alert-warn {
+    background: rgba(210, 153, 34, 0.08);
+    border-color: rgba(210, 153, 34, 0.35);
+}
+.fleet-alert-err {
+    background: rgba(248, 81, 73, 0.12);
+    border-color: rgba(248, 81, 73, 0.45);
+}
+
+.fleet-ok {
+    margin: 0;
+    font-size: 13px;
+    color: var(--ink-dim);
+}
+
+/* "Has not reported recently". Distinct from the lifecycle pills: a gateway can
+   be approved and stale at once, and the two facts are read together. */
+.pill-stale {
+    background: rgba(210, 153, 34, 0.14);
+    border-color: rgba(210, 153, 34, 0.4);
+    color: #e3b341;
+}

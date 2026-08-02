@@ -10,12 +10,38 @@ Last reconciled against source: **2026-07-29** (see `todo-report-2026-07-29.md`)
 
 ---
 
+> **M7 (2026-07-30)** added one column here: `Relays.use_mx` (logservice
+> migration `025`), plumbed through `db/schema.ts`, `src/central/bundle.ts`,
+> `src/validation/config.ts` and the relay form. It follows migration `022`'s
+> shape exactly — omitted from the bundle when false, so an unchanged
+> configuration keeps hashing identically and no gateway sees a new version.
+>
+> **Deliberately NOT added: a console button to release quarantined mail.** The
+> gateway side exists (`mailgw-go mailq release`), but config flows one way —
+> console to gateway, as immutable bundles — so a release button needs a
+> console→gateway *command* channel that does not exist. That is a real feature
+> with its own authorisation story, not a button. Tracked here so the gap is
+> visible rather than assumed done.
+
+---
+
 > **Update:** the webui is now also the **Central Management** server for
 > mailgw-go gateways (mailgw-go M3). Items 10 and 11 below are **done** — they
 > were prerequisites for a fleet console — and the config-bridge epic (12–16) is
 > **closed as superseded**. See the bottom of this file.
+>
+> **M6 (2026-07-30)** made the fleet legible from here. `POST /agent/report`
+> now persists the counter snapshot it used to discard (`GatewayMetrics`, one
+> row per gateway, logservice migration 024); `/gateways` shows queue depth,
+> delivered-since-boot and a **stale** pill computed from `last_seen`; and the
+> dashboard grew a fleet card that calls out pending approvals, stale nodes,
+> failed applies and pending restarts. The log grids gained a **Gateway**
+> column, and the delivery grid a hidden **Route rule** column (logservice
+> migration 023) — both filterable, because logservice's field allowlists were
+> updated in the same change. Fleet logic lives in `src/central/fleet.ts` so
+> the dashboard and `/gateways` cannot disagree about what "stale" means.
 
-## At a glance — 17 open (16 `[ ]` + 1 `[~]`), 17 done
+## At a glance — 18 open (17 `[ ]` + 1 `[~]`), 17 done
 
 | # | Open item | Where | Size |
 |---|---|---|---|
@@ -28,6 +54,7 @@ Last reconciled against source: **2026-07-29** (see `todo-report-2026-07-29.md`)
 | 7 | Delete vestigial uuid/bcrypt re-export | `src/adapter.ts` | XS |
 | 8 | `tests/` outside typecheck **and** lint; one test already stale | `tsconfig.json`, `biome.json`, `tests/checkSession.test.ts:20` | S |
 | 9 | No coverage for controllers, `purgeOldLogs`, session expiry, `errhandler`, `db/` | — | M |
+| 17 | ~~No DB transactions on multi-statement mutations~~ (**M9.4**) — **done** | `controllers/CtrlGateway.ts`, `central/bundle.ts` | S |
 | ~~10~~ | ~~Sessions in-memory~~ — **done**: DB-backed `Sessions` table (migration 021), same `getSession`/`deleteSession`/`sweepSessions` surface, swappable store for tests | `src/globals.ts` | M |
 | ~~11~~ | ~~Roles / per-user scoping~~ — **done**: `Users.role` (migration 020) + `requireAdmin` on gateway approval and every config mutation | `src/auth/roles.ts` | M |
 | ~~12–16~~ | ~~Config-bridge epic~~ — **closed as superseded** by Central Management | cross-service | L |
@@ -101,6 +128,7 @@ at the bottom of this file:
 - [x] **DB connect + `process.exit` at import time.** Fixed: `db/index.ts` is a lazy `mysql2` pool (no import-time connect); `src/index.ts` calls `assertDbConnection()` (a ping) at startup and exits only there on failure.
 - [x] **`setErrorHandler`.** Added in `src/app.ts`: handler exceptions render `util/error.pug` (a friendly HTML page, generic message for 5xx so internals aren't leaked, the real message for 4xx) instead of Fastify's bare-JSON 500. API/JSON clients (`Accept: application/json` or `/api/*`) still get `{ status, message }` JSON. The process-level `uncaughtException`/`unhandledRejection` handlers in `src/errhandler.ts` remain for top-level safety.
 - [x] **`trustProxy`.** Config-driven: `src/app.ts` reads `TRUSTED_PROXIES` (comma-separated IPs/CIDRs) and, when set, enables Fastify `trustProxy` with that **explicit list** (never blanket `true`) — `request.ip`/`request.protocol` then come from `X-Forwarded-*`, fixing the audit-log client IP and the `secure` cookie behind TLS termination. Unset by default (the webui terminates TLS itself), which avoids trusting spoofable `X-Forwarded-For`. Documented in `example.env` + `docker-compose.yaml`.
+- [x] **No DB transactions around multi-statement mutations** — *M9.4*, **done 2026-07-29** (landed with mailgw-go M4). `saveAssignments`, `deleteHandle` (`src/controllers/CtrlGateway.ts`) and `deployBundle` / `rollbackTo` (`src/central/bundle.ts`) now run in `db.transaction()`, with `composeBundle(gatewayId, conn)` taking the transaction handle so the compose reads and the writes that follow cannot disagree. The assignment inserts collapsed into one multi-row insert; the profile **kind is now validated against its slot** (a `ruleset` profile can no longer be assigned to `server`); and `+id` is guarded against `NaN` across every gateway route. Tests: `src/central.tx.test.ts` asserts the writes go through the transaction handle rather than the pool — the regression that actually recurs — and `tests/central.tx.db.test.ts` proves MariaDB really rolls back. The latter is the **first DB-backed test in this package**, opt-in via `MAILGW_DB_CHECK=1`, and it also asserts `GatewayAssignments` is InnoDB, since a MyISAM table would make every one of these transactions a silent no-op.
 - [ ] **`uncaughtException` handler does not exit** (`src/errhandler.ts:17-21`). It logs and persists to `Exceptions`, then lets the process keep serving in an undefined state — the one thing an uncaught-exception handler must not do. The `await persist(...)` is also inside an async listener, so on a crash-adjacent path the write may never land. Fix: persist best-effort behind a short timeout, then `process.exit(1)` and let the container restart.
 - [ ] **Dead legacy assets served unauthenticated.** `@fastify/static` mounts `public/` at `/` (`src/app.ts:171`) *outside* the auth gate, and these are all still shipped and publicly reachable despite no pug template referencing them: `public/lib/w2ui-1.5.{css,min.js}` (~549 KB), `public/lib/jquery-3.6.js` (282 KB — loaded by `templates/pug/page.pug:72` but unused, Bootstrap 5.0.2 needs no jQuery), `public/js/log-{connection,delivery,lookups,mails}.js` (the old w2ui grid drivers), and `public/logs/*.html` (standalone w2ui pages). They return no data unauthenticated (their `/api/*` calls 401), but they are ~830 KB of stale attack surface. Delete them and drop the jQuery `<script>` from `page.pug`; re-grep for `$(` / `jQuery` across `public/js` + `templates` first.
 
@@ -140,8 +168,16 @@ What actually shipped instead, and how it maps onto the five stages below:
 | 1. `Routes` table | **Not built.** Routing is a `ConfigProfiles` row of kind `ruleset` holding mailgw-go's `routing.yaml` — the full rule DSL, not four fields and one operator. No `position` column is needed because the DSL has explicit `priority`. (The stage also claimed migration `015`, which was already taken by `015_widen_delivery_fields.sql`; the new tables are `016`–`021`.) |
 | 2. `/config/routing` CRUD | **Done differently** — `/config/profiles` CRUD (`src/controllers/CtrlProfile.ts`). The `notimpl` stub is gone; `/config/routing` now redirects there. |
 | 3. `GET /api/config/routing` on logservice | **Moved to the webui** — `GET /agent/config` (`src/routes/agent.ts`), serving a composed, versioned bundle instead of a live query, gated on Ed25519 signature + operator approval rather than a shared `X-API-Key`. |
-| 4. `npRoute` pull + file fallback | **Dropped.** Haraka is not being changed. mailgw-go M5 is the pull side. |
-| 5. `auth_pass` encryption at rest | **Still open**, and now finally designable — the bundle is a real decrypting consumer. Moved to mailgw-go M5. |
+| 4. `npRoute` pull + file fallback | **Dropped.** Haraka is not being changed. mailgw-go M5 is the pull side, and it landed: a gateway pulls, caches, applies and reports. |
+| 5. `auth_pass` encryption at rest | **Done** (M5). AES-256-GCM, `src/central/secrets.ts`, key from `CONFIG_SECRET_KEY`. The **console decrypts** when it composes a bundle, so no key ever reaches a gateway — the alternative would have made it a fleet-wide shared secret held on internet-facing relays. Stored values carry a `v1:` prefix; anything without it is pre-migration plaintext and is read as such, so an install with no key set behaves exactly as before and rows migrate as they are re-saved. |
+
+**The whole epic is now closed.** M5 also added what a zero-configuration
+gateway cannot get any other way: `logging.api_key` in the bundle, `allow_all`
+passed through rather than stripped (without it an allow-all gateway was
+unreachable from this UI), and `tls` / `allow_insecure_auth` / `auth_pass_env`
+columns on `Relays` (migration `022`). And `GET /agent/ws` — a signed WebSocket
+so a deploy reaches a gateway in milliseconds rather than on its next poll; see
+`src/central/notify.ts` for why it is deliberately not a message broker.
 
 The rest of this section is kept for the shape-mismatch notes, which
 `src/central/bundle.ts` now implements in one place.

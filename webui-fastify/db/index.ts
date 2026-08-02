@@ -15,6 +15,17 @@ const pool = mysql.createPool({
 
 export const db = drizzle(pool, { schema, mode: "default" });
 
+// The transaction handle drizzle hands to a db.transaction() callback. It is a
+// full MySqlDatabase, so every query builder works identically on it; spelling
+// it structurally avoids importing MySqlTransaction with its four type
+// arguments.
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+// Either a pooled connection or a transaction. A helper that takes this can be
+// called from inside or outside a transaction, which is what lets composeBundle
+// be reused by deployBundle without a second code path.
+export type DB = typeof db | Tx;
+
 // Re-export the tables so callers get both `db` and the table refs from one
 // import: `import { db, relays } from "../../db/index.ts"`.
 export * from "./schema.ts";

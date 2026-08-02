@@ -1,0 +1,52 @@
+{{define "content"}}
+<h2>Connect this gateway to Central Management</h2>
+
+<p class="lead">This gateway has no configuration. Point it at a Central
+Management console and an operator can approve it there.</p>
+
+{{/* A fresh submission error supersedes the stored one, which would otherwise
+     be the same text rendered twice. */}}
+{{if .FormError}}
+<p class="error" role="alert">{{.FormError}}</p>
+{{else if .State.LastError}}
+<p class="error" role="alert">Last attempt failed: {{.State.LastError}}</p>
+{{end}}
+
+<form method="post" action="/register">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label for="central_url">Central Management URL</label>
+    <input type="url" id="central_url" name="central_url" required
+           placeholder="https://console.example.net:4000"
+           value="{{.FormURL}}">
+
+    <fieldset>
+        <legend>Certificate trust</legend>
+
+        <label class="check">
+            <input type="checkbox" name="insecure_tls" value="1"
+                   {{if .FormInsecure}}checked{{end}}>
+            Trust a self-signed certificate (disables verification)
+        </label>
+        <p class="hint">The shipped console serves a self-signed certificate,
+        so this is usually needed for a development stack. Prefer a CA bundle
+        in production.</p>
+
+        <label for="ca_file">CA bundle (optional)</label>
+        <input type="text" id="ca_file" name="ca_file"
+               placeholder="/etc/mailgw-go/console-ca.pem"
+               value="{{.FormCAFile}}">
+        <p class="hint">A PEM file to verify the console against. Leave blank
+        to use the system trust store.</p>
+    </fieldset>
+
+    <button type="submit">Register</button>
+</form>
+
+<h3>This gateway's fingerprint</h3>
+<p class="hint">An operator approves this exact string in the console. It
+exists before registration, so it can be pre-approved.</p>
+<p class="fingerprint">{{.State.Fingerprint}}</p>
+
+<p class="warn">SMTP is <strong>not</strong> listening: this gateway has no
+configuration to serve mail with.</p>
+{{end}}

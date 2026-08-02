@@ -1,0 +1,49 @@
+Received: by gw1.ngm.dev (mailgw-go) id ABCDEF01-2345-6789-ABCD-EF0123456789.1.1; Thu, 30 Jul 2026 09:20:30 +0000
+X-NGM-Gateway: go
+Date: Thu, 30 Jul 2026 09:20:30 +0000
+From: Mail Delivery System <postmaster@gw1.ngm.dev>
+To: <sender@ngm.dev>
+Subject: Delivery Status Notification (Failure)
+Message-ID: <dsn-0001@gw1.ngm.dev>
+References: <ABCDEF01-2345-6789-ABCD-EF0123456789.1.1@gw1.ngm.dev>
+Auto-Submitted: auto-replied
+MIME-Version: 1.0
+Content-Type: multipart/report; report-type=delivery-status;
+	boundary="=_mailgw_dsn_boundary_ac2f19d0_="
+
+This is a MIME-encapsulated message.
+
+--=_mailgw_dsn_boundary_ac2f19d0_=
+Content-Type: text/plain; charset=utf-8
+
+This is the mail system at gw1.ngm.dev.
+
+Your message could not be delivered to one or more recipients.
+No further attempts will be made.
+
+  <nobody@partner.com>
+    550 5.1.1 <nobody@partner.com>: Recipient address rejected
+
+--=_mailgw_dsn_boundary_ac2f19d0_=
+Content-Type: message/delivery-status
+
+Reporting-MTA: dns; gw1.ngm.dev
+Original-Envelope-Id: batch+3D2026Q3+2Brun1
+X-NGM-Original-Envelope: ABCDEF01-2345-6789-ABCD-EF0123456789.1.1
+Arrival-Date: Thu, 30 Jul 2026 09:15:00 +0000
+
+Original-Recipient: rfc822; sales+2Bq3@partner.com
+Final-Recipient: rfc822; nobody@partner.com
+Action: failed
+Status: 5.1.1
+Remote-MTA: dns; mx1.partner.com
+Diagnostic-Code: smtp; 550 5.1.1 <nobody@partner.com>: Recipient address rejected
+Last-Attempt-Date: Thu, 30 Jul 2026 09:20:30 +0000
+
+--=_mailgw_dsn_boundary_ac2f19d0_=
+Content-Type: text/rfc822-headers
+
+Subject: quarterly report
+From: sender@ngm.dev
+
+--=_mailgw_dsn_boundary_ac2f19d0_=--

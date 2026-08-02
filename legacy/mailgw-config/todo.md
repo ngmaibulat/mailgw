@@ -1,0 +1,1 @@
+-   deprecate mailgw npm package

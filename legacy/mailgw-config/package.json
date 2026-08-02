@@ -1,0 +1,31 @@
+{
+    "name": "@aibulat/mailgw-config",
+    "version": "0.0.1",
+    "description": "Generate configs for ngmaibulat/mailgw docker",
+    "main": "dist/index.js",
+    "type": "module",
+    "scripts": {
+        "test": "node --test",
+        "build": "tsc",
+        "build:watch": "tsc -w",
+        "dev": "rm -fr config; rm -fr queue; rm -fr log; node dist/index.js",
+        "start": "node dist/index.js",
+        "minor": "git add . ; git commit -a -m minor; git push"
+    },
+    "author": "Aibulat",
+    "license": "MIT",
+    "dependencies": {
+        "@aibulat/isfile": "^0.0.3",
+        "@colors/colors": "^1.5.0",
+        "@types/nodemailer": "^6.4.7",
+        "address-rfc2821": "^2.0.1",
+        "chalk": "^5.2.0",
+        "cli-table3": "^0.6.3",
+        "dotenv": "^16.0.3",
+        "envsub": "^4.1.0",
+        "nodemailer": "^6.9.1"
+    },
+    "devDependencies": {
+        "@types/node": "^18.11.18"
+    }
+}

@@ -115,4 +115,35 @@ describe("schemaDelivery", () => {
         expect(result.success).toBe(true);
         expect((result.data as any).injected).toBeUndefined();
     });
+
+    // Migration 023. These identify which gateway relayed a message and which
+    // routing rule sent it there.
+    it("accepts gateway and route_rule", () => {
+        const result = schemaDelivery.safeParse({
+            ...validPayload,
+            gateway: "11111111-2222-3333-4444-555555555555",
+            route_rule: "partner subdomains over the TLS relay",
+        });
+        expect(result.success).toBe(true);
+        expect(result.data?.gateway).toBe("11111111-2222-3333-4444-555555555555");
+        expect(result.data?.route_rule).toBe("partner subdomains over the TLS relay");
+    });
+
+    // They must stay optional. A gateway older than migration 023 sends
+    // neither, and because delivery events are posted asynchronously a 400
+    // here is invisible to the sender — the row would just vanish.
+    it("accepts a payload with neither, leaving both undefined", () => {
+        const result = schemaDelivery.safeParse(validPayload);
+        expect(result.success).toBe(true);
+        expect(result.data?.gateway).toBeUndefined();
+        expect(result.data?.route_rule).toBeUndefined();
+    });
+
+    // The column is VARCHAR(64); mailgw-go truncates and warns before sending,
+    // so anything longer arriving here is a bug worth a 400 rather than a
+    // silent database-side truncation.
+    it("rejects a gateway label longer than the column", () => {
+        const result = schemaDelivery.safeParse({ ...validPayload, gateway: "x".repeat(65) });
+        expect(result.success).toBe(false);
+    });
 });

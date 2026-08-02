@@ -68,6 +68,15 @@ export const schemaDelivery = z.object({
     port: portSchema,
     response: z.string(),
     delay: z.number(),
+
+    // Which gateway relayed this, and which routing rule sent it there.
+    //
+    // Optional, unlike everything above: this is the one strictly validated
+    // endpoint, so a required field would 400 every delivery event from a
+    // gateway older than migration 023 — and because the POST is asynchronous,
+    // that rejection is invisible to the sender and the row is simply lost.
+    gateway: z.string().max(64).optional(),
+    route_rule: z.string().max(255).optional(),
 });
 
 export type Delivery = z.infer<typeof schemaDelivery>;

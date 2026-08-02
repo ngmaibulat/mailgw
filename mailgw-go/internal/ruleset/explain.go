@@ -58,37 +58,47 @@ func (rs *Ruleset) Explain(env *Env, at Stage) *Explanation {
 	// Policy runs stage by stage, so a rule fires as early as its fields
 	// allow. Stop at the first terminal action, as the live path does.
 	for st := StageConnect; st <= at; st++ {
-		for i := range rs.Policy {
-			r := &rs.Policy[i]
-			if r.Stage != st {
-				continue
-			}
-			t := RuleTrace{List: "policy", Name: r.Name, Priority: r.Priority,
-				Stage: r.Stage, Predicate: r.Describe(), Actions: r.Then}
-			if ex.Policy.Action != nil {
-				t.Status = StatusSkipped
-				ex.Traces = append(ex.Traces, t)
-				continue
-			}
-			if !r.Match(env) {
-				t.Status = StatusNoMatch
-				ex.Traces = append(ex.Traces, t)
-				continue
-			}
-			t.Status = StatusMatched
-			ex.Traces = append(ex.Traces, t)
-			for _, a := range r.Then {
-				switch a.Kind {
-				case ActTag:
-					env.SetTag(a.Key, a.Value)
-				case ActAddHeader:
-					ex.Policy.Headers = append(ex.Policy.Headers, Header{Name: a.Name, Value: a.Value})
-				default:
-					act := a
-					ex.Policy.Rule, ex.Policy.Action, ex.PolicyAt = r.Name, &act, st
+		// Two passes per stage, message-scoped first, because that is the order
+		// the live session runs them in: Data() evaluates the message-scoped
+		// rules for the whole message (smtpsrv/session.go) before split()
+		// evaluates the recipient-scoped ones per recipient, and evalPolicy
+		// filters each pass on RcptScoped. A single priority-ordered walk lets a
+		// higher-priority recipient-scoped rule report a verdict the gateway
+		// would never reach — which makes explain describe something that cannot
+		// happen.
+		for _, perRcpt := range []bool{false, true} {
+			for i := range rs.Policy {
+				r := &rs.Policy[i]
+				if r.Stage != st || r.RcptScoped != perRcpt {
+					continue
 				}
+				t := RuleTrace{List: "policy", Name: r.Name, Priority: r.Priority,
+					Stage: r.Stage, Predicate: r.Describe(), Actions: r.Then}
 				if ex.Policy.Action != nil {
-					break
+					t.Status = StatusSkipped
+					ex.Traces = append(ex.Traces, t)
+					continue
+				}
+				if !r.Match(env) {
+					t.Status = StatusNoMatch
+					ex.Traces = append(ex.Traces, t)
+					continue
+				}
+				t.Status = StatusMatched
+				ex.Traces = append(ex.Traces, t)
+				for _, a := range r.Then {
+					switch a.Kind {
+					case ActTag:
+						env.SetTag(a.Key, a.Value)
+					case ActAddHeader:
+						ex.Policy.Headers = append(ex.Policy.Headers, Header{Name: a.Name, Value: a.Value})
+					default:
+						act := a
+						ex.Policy.Rule, ex.Policy.Action, ex.PolicyAt = r.Name, &act, st
+					}
+					if ex.Policy.Action != nil {
+						break
+					}
 				}
 			}
 		}

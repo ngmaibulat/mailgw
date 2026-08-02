@@ -1,0 +1,12 @@
+Authentication-Results: gw.ngm.dev; spf=pass smtp.mailfrom=evil.example;
+	dkim=pass header.d=ngm.dev; dmarc=pass header.from=ngm.dev
+Authentication-Results: upstream.partner.com; spf=pass smtp.mailfrom=partner.com
+X-Keep-Me: yes
+Authentication-Results: GW.NGM.DEV; dkim=pass header.d=bank.example
+From: Mallory <mallory@evil.example>
+To: Bob <bob@example.net>
+Subject: your account
+Date: Thu, 30 Jul 2026 09:15:00 +0000
+
+Nothing to see here.
+Authentication-Results: gw.ngm.dev; this line is in the body and stays

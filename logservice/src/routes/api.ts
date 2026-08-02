@@ -58,6 +58,7 @@ function toConnectionRow(body: any): ConnectionRow {
         rcpt_count_accept:   body.rcpt_count_accept   ?? 0,
         rcpt_count_tempfail: body.rcpt_count_tempfail ?? 0,
         rcpt_count_reject:   body.rcpt_count_reject   ?? 0,
+        gateway:             body.gateway      ?? null,
     };
 }
 
@@ -75,6 +76,7 @@ function toTransactionRow(body: any): TransactionRow {
         delay_data_post:     body.delay_data_post ?? null,
         data_bytes:          body.data_bytes   ?? null,
         mime_part_count:     body.mime_part_count ?? null,
+        gateway:             body.gateway      ?? null,
     };
 }
 

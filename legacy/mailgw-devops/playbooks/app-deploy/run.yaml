@@ -1,0 +1,114 @@
+- name: Deploy App Containers
+  hosts: all
+  vars_files:
+      - vars.yaml
+  tasks:
+      - name: Pull mysql Docker image
+        docker_image:
+            name: mysql
+            source: pull
+
+      - name: Pull DB Migrator Docker image
+        docker_image:
+            name: ngmaibulat/db-migrator
+            source: pull
+
+      - name: Pull MailGW Docker image
+        docker_image:
+            name: ngmaibulat/mailgw
+            source: pull
+
+      - name: Pull LogService Docker image
+        docker_image:
+            name: ngmaibulat/logservice
+            source: pull
+
+      - name: Create a network
+        community.docker.docker_network:
+            name: mailgw
+            driver: bridge
+            state: present
+            ipam_config:
+                - subnet: 10.0.0.0/24
+
+      - name: Create a volume
+        community.docker.docker_volume:
+            volume_name: data
+            state: present
+
+      - name: Run mysql container
+        docker_container:
+            name: db
+            image: mysql
+            state: started
+            detach: true
+            restart_policy: unless-stopped
+            published_ports:
+                - '127.0.0.1:3306:3306'
+            env:
+                MYSQL_ROOT_PASSWORD: '{{ mysql_pw }}'
+                MYSQL_DATABASE: '{{ db_name }}'
+                MYSQL_USER: '{{ db_user }}'
+                MYSQL_PASSWORD: '{{ mysql_pw }}'
+            networks:
+                - name: mailgw
+            volumes:
+                - data:/var/lib/mysql
+
+      - name: Pause for 1 minute
+        pause:
+            minutes: 1
+
+      - name: Wait for port 3306 to become open on the host
+        wait_for:
+            host: 127.0.0.1
+            port: 3306
+            state: started
+            delay: 10
+            sleep: 10
+            timeout: 300
+
+      - name: Run db-migrator container
+        docker_container:
+            name: db-migrator
+            image: 'ngmaibulat/db-migrator'
+            state: started
+            network_mode: host
+            env_file: /opt/.env
+            interactive: no
+            tty: no
+            auto_remove: yes
+
+      - name: Pause for 1 minute
+        pause:
+            minutes: 1
+
+      - name: Get list of tables from a specific database
+        mysql_query:
+            login_user: root
+            login_password: '{{ mysql_pw }}'
+            login_host: '127.0.0.1'
+            login_port: 3306
+            query: "SELECT table_name FROM information_schema.tables WHERE table_schema = '{{ db_name  }}'"
+        register: table_list
+
+      - name: Output list of tables
+        debug:
+            var: table_list.query_result
+
+      - name: Run logservice container
+        docker_container:
+            name: logservice
+            image: ngmaibulat/logservice
+            state: started
+            detach: true
+            restart_policy: unless-stopped
+            env_file: /opt/.env
+            published_ports:
+                - 3000:3000
+            networks:
+                - name: mailgw
+
+      - name: Print message on control host
+        debug:
+            msg: 'ssh root@{{ inventory_hostname }}'

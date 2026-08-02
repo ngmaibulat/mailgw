@@ -1,6 +1,6 @@
 # M6 — Fleet observability
 
-**Packages:** `mailgw-go`, `logservice`, `webui-fastify`  ·  **Depends on:** M5
+**Status:** **done** (2026-07-30)  ·  **Packages:** `mailgw-go`, `logservice`, `webui-fastify`  ·  **Depends on:** M5
 
 Read [README.md](./README.md) for the `/agent/report` contract.
 
@@ -251,3 +251,91 @@ End to end:
   auth M4's follow-up adds to the admin UI should cover `/metrics`, with the
   caveat that a Prometheus scraper needs a credential it can present
   non-interactively (a bearer token, not a session cookie).
+
+---
+
+## What was built differently
+
+The shape is as planned — `internal/obs`, instrumentation, `/metrics` +
+`/readyz`, the heartbeat folded into the pull loop, the `gateway` column, the
+fleet card. These are the places the plan above is now wrong, and why.
+
+**The migrations are `023` and `024`, not `022`.** `022` was taken by
+`022_relay_transport_and_secrets.sql` during M5.
+
+**`route_rule` landed in the same migration**, per the follow-up note. It is on
+`Delivery` **only**: routing is evaluated per recipient, and one message can
+have two recipients sent to the same relay group by two different rules, so a
+column on `Transaction` — one row per message — would be either ambiguous or
+lossy. It is carried per recipient through `queue.Recipient.RouteRule`, set in
+`session.split` from `decision.Rule`, and read back by address in
+`Runner.postDelivery`. It is deliberately not indexed: it is a drill-down field,
+read after a gateway or time filter has already narrowed the set.
+
+**`DeliverDeferred` is counted in `deferEnvelope`, not `Runner.record`.**
+§6.2 put it in `record`, which cannot work: `record` `continue`s on deferred
+outcomes and is only reached when `Result.Err == nil`, so it never sees the
+"every relay refused to talk to us" deferral at all. `deferEnvelope` has three
+call sites, each ending the attempt immediately, which gives exactly one
+deferral per attempt — the guarantee the plan's own test demanded. The two
+context-cancellation paths call `spool.Reschedule` directly and must keep doing
+so: requeueing on shutdown is not a delivery deferral.
+
+**`DeliverAttempts` is at the top of `attempt`**, before the relay lookup. The
+unknown-group and cannot-open-body paths defer without reaching
+`env.Attempts++`, so counting later would let `deferred/attempts` exceed 1.
+
+**`applyTerminal` was the wrong home for the message counters.** A `refuse()`
+helper beside `smtpError` is now the single place `msg_rejected` and
+`msg_tempfailed` move, covering all three sites that turn a policy action into a
+transaction's final answer. `applyTerminal` calls it. `smtpError` is untouched
+because `rcptTerminal` uses it for the *recipient* unit.
+
+**Four counters the plan did not list**: `RcptTempfailed` and `RcptDiscarded`
+(the session already tracked both, so their absence would have been
+conspicuous), and `EnvelopesQuarantined` split from `EnvelopesQueued` so the
+counter agrees with `mailgw_queue_quarantine`. Nineteen keys in total, with a
+golden test.
+
+**`msg_accepted` is a superset, not a bucket.** A message every rule discarded
+is still answered 250, so `msg_discarded` and `msg_quarantined` are subsets of
+it. This is in the HELP strings and pinned by a test, because a console that
+assumes `accepted + rejected + discarded = total` will be wrong.
+
+**Gauges are omitted rather than zeroed when unknown.** `Gauges.QueueOK` is
+false before a managed gateway's first apply; a fabricated `0` is the lie that
+makes a dashboard read "drained" when it means "unreadable".
+
+**`Spool.LenAll` returns a `Counts` struct**, with `Len()` kept as a two-value
+delegate — six call sites use the old form and four same-typed positional
+returns is where a caller transposes two of them unnoticed.
+
+## Two defects fixed in passing
+
+Both sat directly under code this milestone touched.
+
+1. **A `stage: mail` `discard` or `quarantine` was silently ignored and the
+   message relayed.** `internal/ruleset/eval.go:177` only rejects those actions
+   for `stage < StageMail`, so a `stage: mail` rule compiled; `applyTerminal`
+   had no case for it and fell through to `return nil`. It now records the drop
+   on the session and `Data` honours it. Confirmed against the real server —
+   `TestMailStageDiscardIsHonoured` fails without the fix, queueing the envelope
+   it was told to drop.
+2. **`agent_pull_test.go` read the report body with a single unchecked
+   `Read`.** Nineteen metrics keys pushed the payload past the size where that
+   happened to work; it is `io.ReadAll` now.
+
+## Follow-ups this created
+
+- **`/metrics` is unauthenticated** on the admin listener, like the rest of it.
+  The exposition carries traffic volumes, queue depth and — via
+  `mailgw_build_info` — the running version, so port 8080 stays
+  management-network-only. Whatever auth the admin-UI follow-up adds must cover
+  `/metrics` with a credential a scraper can present non-interactively: a bearer
+  token, not a session cookie.
+- **The metrics snapshot is latest-only.** A time series belongs in logservice
+  with its own retention and a purge job alongside `purgeOldLogs`, and
+  Prometheus is already scraping the same counters from the gateways if real
+  history is wanted.
+- **Queue depths come from the heartbeat**, so a stale gateway shows a stale
+  queue depth. The staleness pill next to it is what says so.

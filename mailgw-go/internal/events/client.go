@@ -13,6 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/ngmaibulat/mailgw/mailgw-go/internal/obs"
 )
 
 // Stats counts what the pipeline did, for logging and /metrics.
@@ -44,6 +46,10 @@ type Options struct {
 	// Backoff returns the delay before retry n (1-based). Nil uses 1s/3s/9s.
 	Backoff func(attempt int) time.Duration
 	Logger  *slog.Logger
+	// Metrics may be nil. It carries the counters an operator watches to know
+	// whether the audit trail is keeping up — Stats is per-client and reachable
+	// only from inside this package.
+	Metrics *obs.Metrics
 	// now and sleep exist so tests can run without real delays.
 	now   func() time.Time
 	sleep func(context.Context, time.Duration)
@@ -67,6 +73,16 @@ type Client struct {
 
 	closeOnce sync.Once
 	closed    atomic.Bool
+	// spillSeq disambiguates two spills that land in the same nanosecond.
+	spillSeq atomic.Int64
+	// shutdown is the context Close was given, published to the sender pool.
+	// A pointer because atomic.Value refuses to store differing concrete types
+	// and a context.Context is an interface.
+	shutdown atomic.Pointer[context.Context]
+	// done is closed by Close, so a backoff already sleeping wakes up. The
+	// context alone is not enough: a sender that entered the sleep before Close
+	// published its context is sleeping on Background.
+	done chan struct{}
 
 	Stats Stats
 }
@@ -105,22 +121,28 @@ func New(opts Options) *Client {
 	if opts.now == nil {
 		opts.now = time.Now
 	}
-	if opts.sleep == nil {
-		opts.sleep = func(ctx context.Context, d time.Duration) {
-			t := time.NewTimer(d)
-			defer t.Stop()
-			select {
-			case <-ctx.Done():
-			case <-t.C:
-			}
-		}
-	}
 
 	c := &Client{
 		opts: opts,
 		http: &http.Client{Timeout: opts.Timeout},
 		ch:   make(chan Envelope, opts.BufferSize),
 		log:  opts.Logger,
+		done: make(chan struct{}),
+	}
+
+	// Defaulted after construction, not before, so it can select on c.done. A
+	// backoff that had already started when Close was called would otherwise run
+	// its full nine seconds before anything looked at the deadline again.
+	if c.opts.sleep == nil {
+		c.opts.sleep = func(ctx context.Context, d time.Duration) {
+			t := time.NewTimer(d)
+			defer t.Stop()
+			select {
+			case <-ctx.Done():
+			case <-c.done:
+			case <-t.C:
+			}
+		}
 	}
 
 	c.wg.Add(opts.Senders)
@@ -133,7 +155,20 @@ func New(opts Options) *Client {
 // Send enqueues an event. It never blocks and never returns an error: a failure
 // to audit must not become a failure to deliver mail.
 func (c *Client) Send(env Envelope) {
-	if c == nil || c.closed.Load() || env.URL == "" {
+	if c == nil || env.URL == "" {
+		return
+	}
+	if c.closed.Load() {
+		// Counted, not silently discarded. gateway.shutdown closes this pipeline
+		// last, but it logs the case where the grace period expires with sessions
+		// still open — and those sessions go on calling Send. The event is as
+		// unrecoverable as a buffer-full drop, so it belongs in the counter whose
+		// whole point is that those are the ones with no file on disk.
+		c.Stats.Dropped.Add(1)
+		if c.opts.Metrics != nil {
+			c.opts.Metrics.EventsDropped.Add(1)
+		}
+		c.log.Warn("event arrived after the pipeline closed, dropping", "kind", env.Kind)
 		return
 	}
 	c.Stats.Queued.Add(1)
@@ -141,31 +176,99 @@ func (c *Client) Send(env Envelope) {
 	case c.ch <- env:
 	default:
 		c.Stats.Dropped.Add(1)
+		// Stats is per-client and reachable only from inside this package, so
+		// until this counter existed the one UNRECOVERABLE form of audit loss
+		// was the only one invisible to /metrics and the console heartbeat —
+		// EventsSpilled, EventsReplayed and EventsReplayFailed were all exposed,
+		// and every one of those still has the row on disk.
+		if c.opts.Metrics != nil {
+			c.opts.Metrics.EventsDropped.Add(1)
+		}
 		c.log.Warn("event buffer full, dropping", "kind", env.Kind, "buffer", cap(c.ch))
 	}
 }
 
-// Close stops accepting events and waits for the in-flight ones to finish.
-func (c *Client) Close() {
+// Close stops accepting events and drains the buffered ones, bounded by ctx.
+//
+// The context is what makes shutdown bounded rather than "however long the audit
+// trail takes". Each event costs up to Retries+1 HTTP attempts with backoff
+// between them, so a full buffer against an unreachable logservice would
+// otherwise hold the process open for minutes. When ctx expires, whatever is
+// left spills to failed-events/ — which is exactly what that directory is for,
+// and a far better outcome than being SIGKILLed with the events still in memory.
+func (c *Client) Close(ctx context.Context) {
 	if c == nil {
 		return
 	}
 	c.closeOnce.Do(func() {
 		c.closed.Store(true)
-		close(c.ch)
+		// The context first, so a sender woken by done immediately afterwards
+		// finds the deadline rather than Background.
+		c.shutdown.Store(&ctx)
+		close(c.done)
 	})
 	c.wg.Wait()
+
+	// c.ch is deliberately NOT closed. Send checks c.closed and then sends, and
+	// those two steps cannot be made atomic against a close from here — a
+	// goroutine that passed the check a moment earlier would send on a closed
+	// channel and panic the process, during shutdown, on the audit path. Senders
+	// stop on c.done instead, and whatever raced in behind them is drained here.
+	for {
+		select {
+		case env := <-c.ch:
+			c.drop(env, "the pipeline closed while this event was in the buffer")
+		default:
+			return
+		}
+	}
 }
 
+// drop accounts for an event that will never be sent and has no file on disk.
+func (c *Client) drop(env Envelope, why string) {
+	c.Stats.Dropped.Add(1)
+	if c.opts.Metrics != nil {
+		c.opts.Metrics.EventsDropped.Add(1)
+	}
+	c.log.Warn("dropping an audit event", "kind", env.Kind, "reason", why)
+}
+
+// drainCtx is the context the sender pool delivers under: the one Close was
+// given, or Background before Close is called.
+func (c *Client) drainCtx() context.Context {
+	if p := c.shutdown.Load(); p != nil {
+		return *p
+	}
+	return context.Background()
+}
+
+// run delivers events until Close, then drains what is buffered.
+//
+// Selecting on done rather than ranging over a closed channel is what lets Send
+// stay a plain non-blocking send with no lock: nothing ever closes c.ch, so no
+// send on it can panic. The drain terminates because the buffer is bounded and
+// deliver is bounded by the shutdown context.
 func (c *Client) run() {
 	defer c.wg.Done()
-	for env := range c.ch {
-		c.deliver(context.Background(), env)
+	for {
+		select {
+		case env := <-c.ch:
+			c.deliver(env)
+		case <-c.done:
+			for {
+				select {
+				case env := <-c.ch:
+					c.deliver(env)
+				default:
+					return
+				}
+			}
+		}
 	}
 }
 
 // deliver posts one event, retrying transient failures.
-func (c *Client) deliver(ctx context.Context, env Envelope) {
+func (c *Client) deliver(env Envelope) {
 	body, err := json.Marshal(env.Body)
 	if err != nil {
 		// Unmarshalable payloads are a programming error; spilling them would
@@ -176,6 +279,22 @@ func (c *Client) deliver(ctx context.Context, env Envelope) {
 
 	var lastErr error
 	for attempt := 0; attempt <= c.opts.Retries; attempt++ {
+		// Re-read per attempt rather than captured once for the whole event.
+		// A sender that had already picked an event up when Close was called
+		// would otherwise hold context.Background() for its entire retry
+		// schedule — five backoffs and six round trips, ~37s on the shipped
+		// defaults — while shutdown waited on it. Re-reading bounds that window
+		// to the single attempt already in flight.
+		ctx := c.drainCtx()
+
+		// Checked before every attempt, not only around the sleep. Cancelling the
+		// backoff alone still leaves Retries+1 HTTP round trips per event, which
+		// on a full buffer is the difference between a prompt shutdown and being
+		// SIGKILLed part-way through one.
+		if err := ctx.Err(); err != nil {
+			c.spill(env, body, "shutdown: "+err.Error())
+			return
+		}
 		if attempt > 0 {
 			c.Stats.Retried.Add(1)
 			c.opts.sleep(ctx, c.opts.Backoff(attempt))
@@ -241,7 +360,7 @@ func (c *Client) spill(env Envelope, body []byte, reason string) {
 		return
 	}
 
-	rec := spillRecord{
+	rec := SpillRecord{
 		Kind:   string(env.Kind),
 		URL:    env.URL,
 		Reason: reason,
@@ -254,17 +373,66 @@ func (c *Client) spill(env Envelope, body []byte, reason string) {
 		return
 	}
 
-	name := fmt.Sprintf("%d.%s.json", c.opts.now().UnixNano(), env.Kind)
-	path := filepath.Join(c.opts.SpillDir, name)
-	if err := os.WriteFile(path, enc, 0o640); err != nil {
+	path := filepath.Join(c.opts.SpillDir, c.spillName(env.Kind))
+	if err := writeAtomic(c.opts.SpillDir, path, enc); err != nil {
 		c.Stats.SpillFail.Add(1)
 		c.log.Error("cannot spill event", "path", path, "err", err)
 		return
 	}
 	c.Stats.Spilled.Add(1)
+	if c.opts.Metrics != nil {
+		c.opts.Metrics.EventsSpilled.Add(1)
+	}
 }
 
-type spillRecord struct {
+// spillName builds a filename that sorts by spill time and cannot collide.
+//
+// The nanosecond field is zero-padded to a fixed 19 digits, so a lexical sort of
+// the directory is chronological — the same trick the spool's 12-digit due
+// prefix plays, and what lets the replayer resend oldest-first without opening
+// anything. The sequence suffix is because four sender goroutines can spill
+// inside the same nanosecond on a coarse clock, and the second write would
+// otherwise silently overwrite the first.
+func (c *Client) spillName(kind Kind) string {
+	return fmt.Sprintf("%019d.%s.%04d.json",
+		c.opts.now().UnixNano(), kind, c.spillSeq.Add(1)%10000)
+}
+
+// writeAtomic commits through a rename, so a replayer scanning this directory
+// while the gateway is still spilling into it can never read half a record.
+// os.WriteFile cannot promise that.
+func writeAtomic(dir, path string, data []byte) error {
+	tmp, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() {
+		if err != nil {
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	if _, err = tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	if err = os.Chmod(tmpName, 0o640); err != nil {
+		return err
+	}
+	err = os.Rename(tmpName, path)
+	return err
+}
+
+// SpillRecord is one undeliverable audit event, as it sits on disk.
+//
+// Exported so the replayer can be written against a documented shape rather than
+// re-deriving it — and so a change to it is visibly a change to an on-disk
+// format, not an internal struct edit.
+type SpillRecord struct {
 	Kind   string          `json:"kind"`
 	URL    string          `json:"url"`
 	Reason string          `json:"reason"`

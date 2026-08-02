@@ -53,6 +53,11 @@ type Connection struct {
 	RcptCountAccept   int `json:"rcpt_count_accept"`
 	RcptCountTempfail int `json:"rcpt_count_tempfail"`
 	RcptCountReject   int `json:"rcpt_count_reject"`
+
+	// Gateway names the box that wrote this row. omitempty so a build that
+	// cannot resolve a label produces the same JSON it always did, and so
+	// existing golden tests keep their field counts.
+	Gateway string `json:"gateway,omitempty"`
 }
 
 // Queue is the body of POST /api/queue, which logservice stores as a
@@ -75,6 +80,8 @@ type Queue struct {
 	DelayDataPost float64 `json:"delay_data_post"`
 	DataBytes     int64   `json:"data_bytes"`
 	MimePartCount int     `json:"mime_part_count"`
+
+	Gateway string `json:"gateway,omitempty"`
 }
 
 // Delivery is the body of POST /api/delivery — the only strictly validated
@@ -105,6 +112,16 @@ type Delivery struct {
 	Port         string  `json:"port"` // string, not number
 	Response     string  `json:"response"`
 	Delay        float64 `json:"delay"` // seconds
+
+	Gateway string `json:"gateway,omitempty"`
+	// RouteRule names the rule that chose this recipient's relay group, so the
+	// log tables can answer "why did this go there?".
+	//
+	// It is per RECIPIENT rather than per transaction: routing is evaluated per
+	// recipient, and two recipients of one message can be sent to the same
+	// group by different rules. A single value on the Transaction row would be
+	// either ambiguous or lossy, so it lives only here.
+	RouteRule string `json:"route_rule,omitempty"`
 }
 
 // Envelope pairs a payload with its destination endpoint.

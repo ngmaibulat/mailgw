@@ -1,0 +1,168 @@
+/* One small stylesheet, no framework: this page is four routes and has to work
+   on a box that may have no internet access at all. */
+
+:root {
+    --fg: #1c2024;
+    --muted: #5b6570;
+    --bg: #f6f7f9;
+    --panel: #fff;
+    --line: #d8dde3;
+    --accent: #1f5fa9;
+    --warn-bg: #fff6e0;
+    --warn-line: #e0a800;
+    --error-bg: #fdecec;
+    --error-line: #c0392b;
+    --ok-bg: #e9f7ee;
+    --ok-line: #2c8c4a;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --fg: #e6e9ed;
+        --muted: #9aa4b0;
+        --bg: #14171a;
+        --panel: #1c2024;
+        --line: #333a42;
+        --accent: #6aa9e9;
+        --warn-bg: #3a3320;
+        --warn-line: #d0a020;
+        --error-bg: #3a2422;
+        --error-line: #e06c5e;
+        --ok-bg: #1f3327;
+        --ok-line: #4caf70;
+    }
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    padding: 0 1rem 3rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+header, main, footer { max-width: 46rem; margin: 0 auto; }
+
+header {
+    display: flex;
+    align-items: baseline;
+    gap: .75rem;
+    padding: 1.5rem 0 1rem;
+    border-bottom: 1px solid var(--line);
+}
+
+h1 { font-size: 1.35rem; margin: 0; }
+h2 { font-size: 1.15rem; margin: 1.75rem 0 .5rem; }
+h3 { font-size: 1rem; margin: 1.75rem 0 .35rem; }
+
+.version { margin: 0; color: var(--muted); font-size: .85rem; }
+
+/* Pushed to the far end of the header flex row, so it sits opposite the title
+   rather than trailing the version string. */
+.signout { margin: 0 0 0 auto; }
+.signout button {
+    font-weight: 500;
+    font-size: .85rem;
+    padding: .3rem .7rem;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--line);
+}
+.signout button:hover { filter: none; border-color: var(--muted); }
+.lead { color: var(--muted); }
+.hint { color: var(--muted); font-size: .875rem; margin: .3rem 0 1rem; }
+
+main { padding-top: .5rem; }
+
+p.ok, p.warn, p.error {
+    padding: .7rem .9rem;
+    border-left: 4px solid;
+    border-radius: 3px;
+    margin: 1rem 0;
+}
+p.ok { background: var(--ok-bg); border-color: var(--ok-line); }
+p.warn { background: var(--warn-bg); border-color: var(--warn-line); }
+p.error { background: var(--error-bg); border-color: var(--error-line); }
+
+form {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 1.1rem;
+    margin: 1rem 0;
+}
+
+label { display: block; font-weight: 600; margin-bottom: .3rem; }
+label.check { font-weight: 400; display: flex; gap: .5rem; align-items: flex-start; }
+label.check input { margin-top: .3rem; }
+
+input[type="url"], input[type="text"] {
+    width: 100%;
+    padding: .5rem .6rem;
+    font: inherit;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+}
+
+fieldset {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    margin: 1.2rem 0;
+    padding: .8rem 1rem;
+}
+legend { font-weight: 600; padding: 0 .35rem; }
+
+button {
+    font: inherit;
+    font-weight: 600;
+    color: #fff;
+    background: var(--accent);
+    border: 0;
+    border-radius: 4px;
+    padding: .55rem 1.1rem;
+    cursor: pointer;
+}
+button:hover { filter: brightness(1.08); }
+
+dl {
+    display: grid;
+    grid-template-columns: minmax(9rem, max-content) 1fr;
+    gap: .4rem 1rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 1rem;
+}
+dt { font-weight: 600; color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }
+
+.mono, code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
+
+/* The fingerprint is compared by eye against the console, so it gets room. */
+.fingerprint {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 1.05rem;
+    letter-spacing: .04em;
+    overflow-wrap: anywhere;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: .6rem .7rem;
+}
+
+footer {
+    margin-top: 2.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: .85rem;
+}
+
+@media (max-width: 34rem) {
+    dl { grid-template-columns: 1fr; gap: .1rem; }
+    dt { margin-top: .6rem; }
+}

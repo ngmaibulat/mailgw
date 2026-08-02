@@ -16,6 +16,9 @@ export interface ConnectionRow {
     rcpt_count_accept: number;
     rcpt_count_tempfail: number;
     rcpt_count_reject: number;
+    // Which gateway wrote this row. Null for rows written before migration 023
+    // and for any sender that does not set it.
+    gateway: string | null;
 }
 
 export async function insertConnection(c: ConnectionRow): Promise<void> {
@@ -24,12 +27,12 @@ export async function insertConnection(c: ConnectionRow): Promise<void> {
             (uuid, dt, encoding, hello_name, remoteAddr, remotePort,
              remote_host, remote_info, remote_is_local, remote_is_private,
              using_tls, tran_count, rcpt_count_accept, rcpt_count_tempfail,
-             rcpt_count_reject, createdAt, updatedAt)
+             rcpt_count_reject, gateway, createdAt, updatedAt)
         VALUES
             (${c.uuid}, FROM_UNIXTIME(${c.dt} / 1000), ${c.encoding}, ${c.hello_name}, ${c.remoteAddr},
              ${c.remotePort}, ${c.remote_host}, ${c.remote_info}, ${c.remote_is_local},
              ${c.remote_is_private}, ${c.using_tls}, ${c.tran_count},
              ${c.rcpt_count_accept}, ${c.rcpt_count_tempfail}, ${c.rcpt_count_reject},
-             NOW(), NOW())
+             ${c.gateway}, NOW(), NOW())
     `;
 }

@@ -99,6 +99,13 @@ type MailEnv struct {
 	// IsDSN marks a message this gateway generated as a bounce. Inbound mail
 	// with a null sender also reads as a DSN, per RFC 3464.
 	IsDSN bool
+
+	// SPFResult and SPFDomain are the message-authentication facts available at
+	// MAIL. Both are empty when no SPF check ran, which is distinct from the
+	// check having run and returned "none" — a rule asking `spf.result eq
+	// "none"` must not match a gateway that never looked.
+	SPFResult string
+	SPFDomain string
 }
 
 // RcptEnv is the recipient currently being evaluated. Routing rules are
@@ -129,6 +136,17 @@ type MsgEnv struct {
 	Attachments   []Attachment
 	RcptCount     int
 	RcptDomains   []string
+
+	// Message-authentication facts that need the body or the From header. Empty
+	// when the corresponding check did not run — see MailEnv.SPFResult.
+	//
+	// DKIMDomains carries only the domains of signatures that VERIFIED. A d=
+	// from a broken signature is a claim anybody can attach, and a rule matching
+	// on one would be matching on the forger's choice of victim.
+	DKIMResult  string
+	DKIMDomains []string
+	DMARCResult string
+	DMARCPolicy string
 }
 
 // Env is the fact base a rule matches against. Sub-structs are nil until their
@@ -263,6 +281,15 @@ func (e *Env) Lookup(name string) Value {
 			return missing
 		}
 		return strVal(e.Helo.AuthMechanism)
+	case "auth.authenticated":
+		if e.Helo == nil {
+			return missing
+		}
+		// Derived rather than stored, so it cannot disagree with auth.user. It
+		// exists because `auth.authenticated is false` reads as policy where
+		// `not auth.user exists` reads as a puzzle, and the registry is where
+		// field names are decided.
+		return boolVal(e.Helo.AuthUser != "")
 
 	case "mail.from":
 		if e.Mail == nil {
@@ -309,6 +336,20 @@ func (e *Env) Lookup(name string) Value {
 			return missing
 		}
 		return boolVal(e.Mail.RequireTLS)
+
+	// A check that did not run reads as MISSING, not as an empty string, so a
+	// rule comparing it fails to match rather than matching "". `exists` is how
+	// an operator asks whether the answer is available at all.
+	case "spf.result":
+		if e.Mail == nil || e.Mail.SPFResult == "" {
+			return missing
+		}
+		return strVal(e.Mail.SPFResult)
+	case "spf.domain":
+		if e.Mail == nil || e.Mail.SPFResult == "" {
+			return missing
+		}
+		return strVal(e.Mail.SPFDomain)
 
 	case "rcpt.to":
 		if e.Rcpt == nil {
@@ -371,6 +412,27 @@ func (e *Env) Lookup(name string) Value {
 			return missing
 		}
 		return strList(e.Msg.RcptDomains)
+
+	case "dkim.result":
+		if e.Msg == nil || e.Msg.DKIMResult == "" {
+			return missing
+		}
+		return strVal(e.Msg.DKIMResult)
+	case "dkim.domains":
+		if e.Msg == nil || e.Msg.DKIMResult == "" {
+			return missing
+		}
+		return strList(e.Msg.DKIMDomains)
+	case "dmarc.result":
+		if e.Msg == nil || e.Msg.DMARCResult == "" {
+			return missing
+		}
+		return strVal(e.Msg.DMARCResult)
+	case "dmarc.policy":
+		if e.Msg == nil || e.Msg.DMARCResult == "" {
+			return missing
+		}
+		return strVal(e.Msg.DMARCPolicy)
 
 	case "attachment.filename":
 		return e.attachStrings(func(a Attachment) string { return a.Filename })

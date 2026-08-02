@@ -14,6 +14,7 @@ import fastifyCookie from "@fastify/cookie";
 import fastifyView from "@fastify/view";
 import fastifyHelmet from "@fastify/helmet";
 import fastifyRateLimit from "@fastify/rate-limit";
+import fastifyWebsocket from "@fastify/websocket";
 import * as pug from "pug";
 
 import { checkSession } from "./middleware/checkSession.ts";
@@ -121,6 +122,15 @@ export async function build(opts: BuildOptions = {}): Promise<FastifyInstance> {
     // `setErrorHandler` below: form posts are redirected back to the login page
     // with `?msg=` (styled alert), JSON/API clients get the 429 status.
     await app.register(fastifyRateLimit, { global: false });
+
+    // WebSocket support, for GET /agent/ws only — how a gateway learns about a
+    // deploy in milliseconds instead of on its next poll.
+    //
+    // Note the transport: `ws` speaks the HTTP/1.1 Upgrade handshake, not
+    // RFC 8441 extended CONNECT over HTTP/2. This server runs h2 with
+    // `allowHTTP1: true`, so gateways reach it over HTTP/1.1 for this one route
+    // while everything else stays on h2.
+    await app.register(fastifyWebsocket);
 
     // Render handler exceptions as a friendly page instead of falling through to
     // Fastify's default bare-JSON 500. API/JSON clients still get JSON; 5xx

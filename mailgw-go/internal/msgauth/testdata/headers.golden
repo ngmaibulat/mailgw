@@ -1,0 +1,2 @@
+Authentication-Results: gw.ngm.dev; spf=pass smtp.helo=mx1.ngm.dev smtp.mailfrom=alice@ngm.dev; dkim=pass header.d=ngm.dev; dkim=pass header.d=partner.example; dmarc=fail reason="SPF passed but is not aligned with the From domain" header.from=ngm.dev
+Received-SPF: pass (gw.ngm.dev: domain of ngm.dev designates 203.0.113.7 as permitted sender) client-ip=203.0.113.7; helo=mx1.ngm.dev; envelope-from=alice@ngm.dev;
