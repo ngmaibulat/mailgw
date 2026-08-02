@@ -321,6 +321,9 @@ cost is that `run()` is a nested select rather than a `range`.
 
 ## Deliberately not done here
 
+Both of the first two are now **[M17](./M17-outbound-bounds-policy.md)**, which
+exists precisely because they are questions rather than numbers.
+
 - **A global cap on pooled connections.** Per-key is `MaxPerRelay`; the key space
   follows DNS when `use_mx` is on, so the ceiling is
   `MaxPerRelay × distinct exchangers seen within IdleTimeout`. With
@@ -330,4 +333,7 @@ cost is that `run()` is a nested select rather than a `range`.
 - **Negative caching for MX failures.** A DNS outage still costs one lookup per
   envelope per attempt. Adding one means deciding how long a failure is
   believed, which is the same class of question.
-- **Per-IP and per-sender rate limiting.** Still M15.
+- ~~**Per-IP and per-sender rate limiting.** Still M15.~~ **Done** in
+  **[M15](./M15-rate-limiting.md)**, which shipped five dimensions rather than
+  the two named here — per IP, per sender, per authenticated user, per recipient
+  domain and per failed AUTH.

@@ -34,6 +34,7 @@ Every file carries its **status on line 3**, in the same shape:
 | [M14](./M14-message-authentication.md) | Message authentication: SPF, DKIM, DMARC | `mailgw-go/internal/{msgauth,smtpsrv,queue,ruleset,config,obs}`, `cmd/mailgw-go` | **done** |
 | [M15](./M15-rate-limiting.md) | Rate limiting | `mailgw-go/internal/{ratelimit,smtpsrv,config,obs}`, `cmd/mailgw-go` | **done** |
 | [M16](./M16-m11-reaudit-fixes.md) | Fixes from the M11 re-audit | `mailgw-go/internal/{smtpsrv,deliver,queue,events,config,obs}`, `cmd/mailgw-go` | **done** |
+| [M17](./M17-outbound-bounds-policy.md) | Outbound bounds that need a policy first | `mailgw-go/internal/{deliver,config,obs}` | planned |
 
 **Order worked:** M9 → M4 → M5 → M6 → M7 → M8 → M10. **M1–M10 are all done.**
 M9.4 landed with M4 and M9.5 with M7, as the notes here suggested they should.
@@ -69,8 +70,10 @@ to panic the process. **The lesson worth keeping: M11's tests all construct thei
 subject directly, and three of its seven items only take effect through
 `cmd/mailgw-go`'s wiring, which had no test at all.** M16 adds one.
 
-**Order worked from here:** **M11 → M16 → M12 → M13 → M14 → M15**. With M15 in,
-**every milestone in this directory is done.**
+**Order worked from here:** **M11 → M16 → M12 → M13 → M14 → M15**; planned:
+**M17**. With M15 in, **every milestone in this directory is done except M17** —
+which is not a feature but the two questions M16 deferred, both of which need a
+policy decided before a number can be picked.
 M11 was taken first because it is self-contained and touches only the gateway,
 and M16 followed immediately because it is that same code. M12 is the security
 item `mailgw-go/TODO.md` ranked first and it unblocks two things held behind it.

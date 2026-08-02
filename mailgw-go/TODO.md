@@ -38,16 +38,20 @@ and M9.5 into M7. It is numbered M9 so nothing above it moves: milestone
 | [M14 — message authentication: SPF, DKIM, DMARC](../plans/M14-message-authentication.md) | **done** |
 | [M15 — rate limiting](../plans/M15-rate-limiting.md) | **done** |
 | [M16 — fixes from the M11 re-audit](../plans/M16-m11-reaudit-fixes.md) | **done** |
+| [M17 — outbound bounds that need a policy first](../plans/M17-outbound-bounds-policy.md) | planned |
 
 Order worked: **M9 → M4 → M5 → M6 → M7 → M8 — M1–M9 are all done.** M9.4 landed
 with M4 and M9.5 with M7.
 
 **M10–M15 come from the audit of 2026-08-01**, which read the shipped code paths
-rather than this backlog. Order worked so far: **M10 → M11 → M16 → M12 → M13**;
-planned from here: **M14 → M15**. M12 was the first item in this file, promoted out
-of it; M13–M15 are the Deferred list, promoted out of it. Everything below this
-table is what is left of the running backlog; a new milestone takes the next free
-number, which is **M17**.
+rather than this backlog. Order worked: **M10 → M11 → M16 → M12 → M13 → M14 →
+M15**, and with M15 in, **every milestone in `plans/` is done except M17**. M12
+was the first item in this file, promoted out of it; M13–M15 are the Deferred
+list, promoted out of it. **M17 is the two questions M16 deferred** — a global
+cap on pooled connections and negative caching for MX failures — both of which
+need a policy decided before a number can be picked. Everything below this table
+is what is left of the running backlog; a new milestone takes the next free
+number, which is **M18**.
 
 **M10 fixed six defects in paths that carry live mail.** An oversize message,
 an over-long line and an over-wide header block are now permanent refusals
@@ -228,6 +232,27 @@ nothing Haraka does is missing here.**
       timeout means — but a slow scanner still adds its latency to every message
       before the client is answered. A per-digest cache would help a fleet
       sending the same attachment repeatedly.
+
+## Follow-ups M16 deferred — now [M17](../plans/M17-outbound-bounds-policy.md)
+
+Recorded here as well as in M16's own "deliberately not done", because a
+deferral visible only inside the milestone that made it is a deferral nobody
+reads again. Both are **questions before they are numbers**, which is why
+neither was folded into M11's resource-bounds pass.
+
+- [ ] **No global cap on pooled connections.** `MaxPerRelay` bounds one key, and
+      with `use_mx` the key set follows DNS — so the real ceiling is
+      `MaxPerRelay × distinct exchangers seen within connection_idle_timeout`.
+      The reaper genuinely bounds that now (M16 made
+      `connection_idle_timeout: 0` an error), so this is a sharp edge rather
+      than a leak. A second, global limit needs a policy for **what to evict
+      when it is reached**, and that is the part nobody has decided.
+      Only reachable with `outbound.reuse_connections` on, which ships off.
+- [ ] **No negative caching for MX failures.** `Resolver.Hosts` caches successes
+      only, so while DNS is down every envelope, on every attempt, pays a fresh
+      lookup and its timeout. Adding one means deciding **how long a failure is
+      believed** — too long and a domain stays unreachable after its DNS is
+      fixed, too short and it buys nothing.
 
 ## Follow-ups M15 created
 
