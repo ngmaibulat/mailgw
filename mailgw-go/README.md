@@ -389,6 +389,40 @@ SMTP_PORT=2525 bun test tests/smtp                    # from the repo root
 MAILGW_DB_CHECK=1 SMTP_PORT=2525 bun test tests/smtp  # also checks the DB rows
 ```
 
+`internal/node/control_test.go` is the one that goes through the **wiring**:
+`node.New` builds the real spool, runner, SMTP server and listener chain, so a
+defect that exists only in bring-up has somewhere to be caught. That was
+impossible until M19 moved the composition root out of `package main`.
+
+### The engineering build
+
+`cmd/mailgw-go-test` is this gateway plus an **unauthenticated** HTTP control
+API (`internal/testctl`) that injects a configuration bundle, enrolls the node
+with a console, inspects the queue and reports the addresses SMTP actually bound.
+
+```bash
+go run ./cmd/mailgw-go-test -testctl 127.0.0.1:9090 -data /tmp/mailgw-test
+curl -XPOST localhost:9090/testctl/config/profiles -d @profiles.json
+curl localhost:9090/testctl/status          # serving?, and the BOUND listen addrs
+```
+
+It exists because a gateway takes its whole configuration from Central
+Management, which is right for a deployment and expensive for a test: every
+change costs a sign-in, a profile edit, a deploy and a wait. Worse, `pnpm
+provision` could not bootstrap a clean volume at all, because registering
+requires walking the wizard behind M12's claim code and nothing automated it.
+
+Injection is **not** a second configuration source. It writes a cache row and
+calls the same `applyCached` that boot, the poll loop, the WebSocket and SIGHUP
+call, with the bundle bytes verbatim — so a test drives the same wire format a
+console deploy does. It just answers synchronously, with the compiler's own
+error as the 400 body.
+
+**It must never be deployed.** `cmd/mailgw-go` does not link `internal/testctl`
+and CI asserts it; `-testctl` has no default address; the image is
+`ngmaibulat/mailgw-go-test`, never `:latest`, and `pnpm docker:push` does not
+build it. Build it with `pnpm build:mailgw-go:test`.
+
 ## Observability
 
 Three endpoints on the admin listener (`-admin`, default `0.0.0.0:8080`):

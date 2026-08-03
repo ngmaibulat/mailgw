@@ -40,7 +40,7 @@ and M9.5 into M7. It is numbered M9 so nothing above it moves: milestone
 | [M16 — fixes from the M11 re-audit](../plans/M16-m11-reaudit-fixes.md) | **done** |
 | [M17 — outbound bounds that need a policy first](../plans/M17-outbound-bounds-policy.md) | planned |
 | [M18 — zero configuration, enforced: removing the second source](../plans/M18-zero-config-audit.md) | **done** |
-| [M19 — a test-only build with an unauthenticated control API](../plans/M19-test-only-control-api.md) | planned |
+| [M19 — a test-only build with an unauthenticated control API](../plans/M19-test-only-control-api.md) | **done** |
 
 Order worked: **M9 → M4 → M5 → M6 → M7 → M8 — M1–M9 are all done.** M9.4 landed
 with M4 and M9.5 with M7.

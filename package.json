@@ -27,6 +27,8 @@
     "test:e2e:api": "bun test tests/api",
     "test:e2e:smtp": "pnpm run provision && bun test tests/smtp",
     "test:e2e:smtp:go": "SMTP_PORT=2525 pnpm run provision && SMTP_PORT=2525 bun test tests/smtp",
+    "build:mailgw-go:test": "bash mailgw-go/container-build-test.sh",
+    "stack:test": "docker compose -f docker-compose.yaml -f docker-compose.test.yaml up -d && pnpm run provision",
     "build:mailgw-go": "bash mailgw-go/container-push.sh",
     "build:logservice": "bash logservice/container-push.sh",
     "build:webui": "bash webui-fastify/container-push.sh",

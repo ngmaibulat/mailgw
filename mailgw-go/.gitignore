@@ -1,0 +1,4 @@
+# Compiled binaries. `go build ./cmd/...` writes them into the module root, so
+# they are one absent-minded commit away from the tree.
+/mailgw-go
+/mailgw-go-test

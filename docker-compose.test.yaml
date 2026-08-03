@@ -1,0 +1,45 @@
+# The dev stack with the ENGINEERING gateway image.
+#
+# WHAT THIS IS FOR
+#
+# docker-compose.yaml runs the shipped image and is provisioned through the
+# console, exactly as production is. That path stays the default and stays
+# exercised — it is the only one a real deployment uses, so replacing it here
+# would leave it with no automated coverage at all.
+#
+# This overlay swaps in ngmaibulat/mailgw-go-test, which adds an unauthenticated
+# control API on 9090. It buys two things:
+#
+#   - `pnpm provision` works from a CLEAN VOLUME. Against the shipped image a
+#     gateway only registers after somebody walks its wizard behind M12's claim
+#     code, so `docker compose down -v && pnpm provision` waits two minutes and
+#     throws. tests/provision.ts probes 9090 and enrolls through it instead.
+#   - a test can configure the gateway directly and synchronously, instead of
+#     driving console forms and waiting on a deploy.
+#
+# HOW TO USE IT
+#
+#   ./mailgw-go/container-build-test.sh              # build the image first
+#   docker compose -f docker-compose.yaml -f docker-compose.test.yaml up -d
+#   pnpm provision                                   # now works from scratch
+#
+# The image is NOT pushed and is NOT tagged :latest, so this file names an
+# explicit version and will fail loudly if you have not built it.
+#
+# WARNING: the control API has no authentication and what it does is re-point a
+# gateway. Do not expose 9090 beyond the host you are testing on.
+
+services:
+    mailgw-go:
+        # Pinned to a version rather than :latest, deliberately: the engineering
+        # image is never tagged :latest so that no compose file can pull it by
+        # accident, and that protection only works if nothing here asks for one.
+        #
+        # The default tracks mailgw-go/VERSION. Override it after a bump:
+        #   MAILGW_GO_TEST_VERSION=$(cat mailgw-go/VERSION) docker compose ...
+        image: ngmaibulat/mailgw-go-test:v${MAILGW_GO_TEST_VERSION:-0.1.2}
+        ports:
+            # Only on loopback. The shipped compose file publishes SMTP and the
+            # admin UI on all interfaces; an unauthenticated configuration API
+            # does not get the same treatment.
+            - "127.0.0.1:9090:9090"

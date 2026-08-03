@@ -16,6 +16,13 @@ RUN CGO_ENABLED=0 go build -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" \
     -o /out/mailgw-go ./cmd/mailgw-go
 
+# The ENGINEERING binary, built only by the `test` stage below. It is a separate
+# main package, not a build flag: the shipped binary above does not link
+# internal/testctl and CI asserts it with `go list -deps`.
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags "-s -w -X main.version=${VERSION}-testctl -X main.commit=${COMMIT}" \
+    -o /out/mailgw-go-test ./cmd/mailgw-go-test
+
 # Mount points for the queue and data volumes, staged here so the runtime stage
 # can COPY them with the right owner. Docker only copies ownership onto a fresh
 # named volume when the path already exists in the image, and distroless/static
@@ -26,6 +33,44 @@ RUN CGO_ENABLED=0 go build -trimpath \
 RUN mkdir -p /seed/queue /seed/data \
     && chmod 0750 /seed/queue \
     && chmod 0700 /seed/data
+
+# ---------------------------------------------------------------------------
+# The ENGINEERING image. NEVER deployed, and never built by `pnpm docker:push`.
+#
+# It carries an unauthenticated HTTP control API for configuring a gateway from
+# a test — see internal/testctl/doc.go for why that is acceptable here and
+# nowhere else. Build it with mailgw-go/container-build-test.sh, which tags it
+# ngmaibulat/mailgw-go-test and deliberately never tags :latest, so no compose
+# file can pull it by accident.
+#
+# It is a separate STAGE rather than a separate Dockerfile so that the runtime
+# layout stays defined in one place: a test node whose spool or data directory
+# differed from a real one would be testing the wrong thing.
+#
+# It sits BEFORE the shipped stage on purpose. A multi-stage build with no
+# --target produces the LAST stage, so putting this one last would make a bare
+# `docker build .` hand somebody the unauthenticated image — precisely the
+# accident the separate binary exists to prevent. Reaching it requires
+# --target test, which container-build-test.sh passes and nothing else does.
+# ---------------------------------------------------------------------------
+FROM gcr.io/distroless/static-debian12:nonroot AS test
+
+COPY --from=build /out/mailgw-go-test /usr/local/bin/mailgw-go-test
+
+COPY --from=build --chown=65532:65532 /seed/queue /opt/mailgw-go/queue
+COPY --from=build --chown=65532:65532 /seed/data /var/lib/mailgw-go
+
+USER nonroot:nonroot
+
+# 9090 is the test control API, on top of the SMTP and admin ports above.
+EXPOSE 2525 8080 9090
+
+ENTRYPOINT ["/usr/local/bin/mailgw-go-test"]
+
+# Unlike the shipped image this one DOES need arguments: -testctl has no
+# default, deliberately, so that this binary cannot be dropped in for the
+# shipped one and silently open an unauthenticated configuration API.
+CMD ["-testctl", "0.0.0.0:9090"]
 
 # distroless/static ships CA certificates, which the outbound TLS client needs.
 FROM gcr.io/distroless/static-debian12:nonroot

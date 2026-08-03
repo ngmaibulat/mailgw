@@ -42,6 +42,35 @@ skip it.
 > This used to be unnecessary: the dev compose file pinned the gateway to file
 > mode with a mounted config directory, so it relayed on `up`. That mode is gone.
 
+### On a clean volume you need the engineering image
+
+`pnpm provision` waits for the gateway to **register itself**, and against the
+shipped image that only happens once somebody submits a Central Management URL
+in its wizard on `:8080` — which since M12 is behind a session behind a claim
+code printed to the container log. Nothing automates that step, so on a fresh
+`mailgw_go_data` volume the wait times out after 120s.
+
+You will not usually notice, because the volume is named: once the wizard has
+been walked by hand, the identity and the URL survive every `docker compose
+down` that omits `-v`. A fresh clone, a CI runner and `down -v` all hit it.
+
+The engineering build closes it. `POST /testctl/enroll` calls the same
+registration the wizard calls, and `provision.ts` probes for it:
+
+```bash
+pnpm build:mailgw-go:test    # build ngmaibulat/mailgw-go-test
+pnpm stack:test              # up with the overlay, then provision
+```
+
+Nothing else about provisioning changes — the console still lands the gateway
+pending, and the fingerprint approval, the assignment and the deploy are the
+same. Against the shipped image the probe simply fails and the script waits as
+before, so a hand-provisioned stack still works.
+
+**The control API is unauthenticated.** It is bound to loopback in
+`docker-compose.test.yaml`, never published, never tagged `:latest` and never
+built by `pnpm docker:push`. See `mailgw-go/internal/testctl/doc.go`.
+
 ## Running
 
 From the **repo root** (so Bun auto-loads the root `.env` for `PORT`/`DB_*`):
@@ -96,6 +125,8 @@ The API e2e suite reads connection settings from the repo-root `.env`
 | var | default | meaning |
 |---|---|---|
 | `CONSOLE_URL` | `https://localhost:4000` | the console to drive |
+| `TESTCTL_URL` | `http://127.0.0.1:9090` | the engineering build's control API; probed, optional |
+| `GATEWAY_CENTRAL_URL` | `https://webui:4000` | the console **as the gateway sees it**, for enroll |
 | `CONSOLE_EMAIL` / `CONSOLE_PASSWORD` | `admin@lab.example` / `labpassword1` | the first admin it creates and signs in as |
 | `SMTP_PORT` | `2525` | the port it waits for the gateway to answer on |
 | `RELAY_HOST` / `RELAY_PORT` | `mailhog` / `1025` | where deployed mail is relayed |

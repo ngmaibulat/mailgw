@@ -27,9 +27,20 @@ Bun test proves the real binary on a real socket still behaves the same.
 ## Go conventions
 
 **Build the subject through the wiring where the wiring is the subject.** A test
-that constructs a `Backend` by literal does not exercise
-`cmd/mailgw-go`'s bring-up — and that gap has hidden real defects. If a change
-only takes effect through `cmd/mailgw-go`, the test belongs there.
+that constructs a `Backend` by literal does not exercise the gateway's bring-up
+— and that gap has hidden real defects, M11's connection cap being the one that
+cost a milestone. If a change only takes effect through the composition root,
+the test belongs in `internal/node`.
+
+Since M19 that is possible: the composition root moved out of `package main`
+into **`internal/node`**, so a test can call `node.New(...)` and get the real
+spool, events client, delivery runner, SMTP server and the full listener chain
+(`proxyproto → Meter → tls → Guard → Throttle → Limit`). `New` binds no socket,
+so a test that only wants to apply a configuration does not need the admin UI
+listening. `internal/node/control_test.go` is the worked example: it applies a
+bundle asking for `127.0.0.1:0`, reads the bound port back out of `Status()` and
+completes an SMTP transaction against it — which also removes the need for
+`freeAddr()`'s reserve-and-release race in new tests.
 
 **`startServerTuned(t, rules, tune)`** is the seam in `internal/smtpsrv`: it
 builds a real config, a real spool, a real server on a real port, and hands you a
@@ -37,6 +48,14 @@ hook to change the configuration and the backend before it starts.
 
 **The SMTP client in the tests is hand-rolled**, deliberately independent of
 go-smtp, so the tests exercise the wire protocol rather than the library.
+
+**The engineering build is for the Bun suites, not for Go tests.** Go tests use
+`node.New` directly and have no reason to speak HTTP to themselves.
+`cmd/mailgw-go-test` exists so `tests/` can configure a gateway without driving
+console forms — and so `pnpm provision` works on a clean volume at all, since
+nothing else automates the wizard step. Build it with
+`pnpm build:mailgw-go:test` and run the stack with `pnpm stack:test`. It is
+never shipped; see [the standing decision](/architecture/decisions).
 
 **Counters are asserted through `Snapshot()`**, by key, so a rename breaks the
 test that pins the console contract.

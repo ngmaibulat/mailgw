@@ -36,6 +36,7 @@ Every file carries its **status on line 3**, in the same shape:
 | [M16](./M16-m11-reaudit-fixes.md) | Fixes from the M11 re-audit | `mailgw-go/internal/{smtpsrv,deliver,queue,events,config,obs}`, `cmd/mailgw-go` | **done** |
 | [M17](./M17-outbound-bounds-policy.md) | Outbound bounds that need a policy first | `mailgw-go/internal/{deliver,config,obs}` | planned |
 | [M18](./M18-zero-config-audit.md) | Zero configuration, enforced: removing the second source | `mailgw-go`, `tests`, `deploy`, `docs`, `webui-fastify` | **done** |
+| [M19](./M19-test-only-control-api.md) | A test-only build with an unauthenticated control API | `mailgw-go/internal/{node,testctl}`, `cmd/mailgw-go-test`, `tests`, `deploy` | **done** |
 
 **Order worked:** M9 → M4 → M5 → M6 → M7 → M8 → M10. **M1–M10 are all done.**
 M9.4 landed with M4 and M9.5 with M7, as the notes here suggested they should.

@@ -41,6 +41,24 @@ const SMTP_PORT = Number(process.env.SMTP_PORT ?? "2525");
 const RELAY_HOST = process.env.RELAY_HOST ?? "mailhog";
 const RELAY_PORT = process.env.RELAY_PORT ?? "1025";
 
+/**
+ * The test build's control API, if one is running.
+ *
+ * Optional and probed rather than required: against the shipped image there is
+ * no such endpoint and this script behaves exactly as it always has. Against
+ * cmd/mailgw-go-test it closes the one gap that made a clean-volume run
+ * impossible — see enrollGateway below.
+ */
+const TESTCTL = process.env.TESTCTL_URL ?? "http://127.0.0.1:9090";
+
+/**
+ * The console URL as the GATEWAY sees it, which is not the one this script
+ * uses: the gateway dials it from inside the compose network, where "localhost"
+ * is its own container.
+ */
+const GATEWAY_CENTRAL_URL =
+    process.env.GATEWAY_CENTRAL_URL ?? "https://webui:4000";
+
 // The console serves a self-signed pair in the dev stack.
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
@@ -213,6 +231,63 @@ async function ensureProfile(
 }
 
 /**
+ * Point the gateway at the console, if it is a build that lets us.
+ *
+ * WHY THIS EXISTS
+ *
+ * A gateway registers itself only after somebody submits a Central Management
+ * URL in its wizard, and since M12 that form is behind a session, which is
+ * behind a claim code printed to the container log. Nothing automated it. So on
+ * a FRESH data volume `docker compose down -v && pnpm provision` waited two
+ * minutes for a registration that was never going to happen and threw.
+ *
+ * It went unnoticed because mailgw_go_data is a named volume: once somebody had
+ * walked the wizard by hand, the identity and the URL survived every `down`
+ * that omitted -v. A new clone, a CI runner and `down -v` all hit it.
+ *
+ * The test build exposes POST /testctl/enroll, which calls the same
+ * agent.Register the wizard calls. Nothing else about provisioning changes: the
+ * console still lands the row pending, and the fingerprint approval, the
+ * assignment and the deploy below are all unchanged.
+ *
+ * Against the shipped image this probe just fails and we carry on waiting, so a
+ * stack provisioned by hand still works.
+ */
+async function enrollGateway(): Promise<boolean> {
+    let status: Response;
+    try {
+        status = await fetch(`${TESTCTL}/testctl/status`, {
+            signal: AbortSignal.timeout(2000),
+        });
+    } catch {
+        return false; // Not a test build, or not up yet.
+    }
+    if (!status.ok) return false;
+
+    const before = (await status.json()) as { gateway_uid?: string };
+    if (before.gateway_uid) {
+        console.log("gateway is already enrolled");
+        return true;
+    }
+
+    const resp = await fetch(`${TESTCTL}/testctl/enroll`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+            central_url: GATEWAY_CENTRAL_URL,
+            // The console serves a self-signed pair in the dev stack.
+            insecure_tls: true,
+        }),
+    });
+    if (!resp.ok) {
+        throw new Error(`enroll failed: ${resp.status} ${await resp.text()}`);
+    }
+    const after = (await resp.json()) as { fingerprint?: string };
+    console.log(`enrolled via the test control API (${after.fingerprint})`);
+    return true;
+}
+
+/**
  * The gateway registers itself, so this waits rather than creating anything.
  * Registration is open by design; what an operator approves is the fingerprint.
  */
@@ -249,6 +324,15 @@ async function main(): Promise<void> {
     );
     const server = await ensureProfile(PROFILE_SERVER, "server", SERVER);
     console.log(`profiles: ruleset=${ruleset} allowlist=${allowlist} server=${server}`);
+
+    if (!(await enrollGateway())) {
+        console.log(
+            "no test control API at " +
+                TESTCTL +
+                "; waiting for the gateway to be pointed at the console by hand " +
+                "(open its wizard on :8080 — the claim code is in its log)",
+        );
+    }
 
     const gatewayId = await approveGateway();
     console.log(`gateway ${gatewayId} approved`);

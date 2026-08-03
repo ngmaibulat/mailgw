@@ -13,7 +13,10 @@ gofmt -l .                      # must print nothing
 
 | Package | What it owns |
 |---|---|
-| `cmd/mailgw-go` | CLI, process bring-up, apply/reload, the `gateway` struct |
+| `cmd/mailgw-go` | the shipped binary: CLI dispatch and the diagnostic subcommands |
+| `cmd/mailgw-go-test` | the ENGINEERING binary: the above plus `internal/testctl`. Never shipped |
+| `internal/node` | the composition root: process bring-up, apply/reload, the `gateway` and `agent` structs |
+| `internal/testctl` | the unauthenticated test control API. Linked only by `cmd/mailgw-go-test` |
 | `internal/smtpsrv` | SMTP session, listener chain, inbound AUTH, attachment glue |
 | `internal/ruleset` | the rule DSL: parse, compile, evaluate, explain |
 | `internal/queue` | spool, delivery runner, bounce generation |
@@ -59,12 +62,19 @@ testable in isolation and starts being a second place the mail path can break.
 imports `config` on the session hot path, and pulling the rule compiler into
 everything that reads a configuration is a layering regression.
 
-That is why bundle assembly lives in `cmd/mailgw-go/bundle.go` rather than in
+That is why bundle assembly lives in `internal/node/bundle.go` rather than in
 `internal/config`: it needs `ruleset.Compile`, so it sits above both.
+
+**`internal/node` must not import `internal/testctl`,** and neither may
+`cmd/mailgw-go`. The test control API has no authentication and what it does is
+re-point a gateway; the containment is that only `cmd/mailgw-go-test` links it,
+and CI asserts it with `go list -deps ./cmd/mailgw-go`. The import the other way
+is fine and expected — `testctl` takes a `Control` interface that `*node.Node`
+satisfies exactly. See [the standing decision](/architecture/decisions).
 
 ## The `gateway` struct
 
-`cmd/mailgw-go/gateway.go` owns everything that exists exactly once per process:
+`internal/node/gateway.go` owns everything that exists exactly once per process:
 the spool, the event pipeline, the delivery runner, the SMTP server, its
 listeners, and the atomic pointers a session reads.
 
@@ -91,6 +101,12 @@ so the SMTP contract runs under `go test` without Docker. The Bun suite then run
 **unmodified** against the binary, which is what keeps the two honest.
 
 `internal/deliver` tests use real go-smtp instances as fake relays.
+
+`internal/node/control_test.go` is the one that goes through the **wiring**:
+`node.New` builds the real spool, runner, server and listener chain, so a defect
+that only exists in the bring-up — M11's connection cap being the case that cost
+a milestone — has somewhere to be caught. `New` binds no socket, so these tests
+are cheap.
 
 See [Testing](/dev/testing).
 

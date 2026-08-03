@@ -61,7 +61,7 @@ All four disappeared with the second source rather than being fixed.
 
 **What replaced the things file mode was carrying.** CI validates a bundle in a
 Go test (`internal/config.TestBundleConfig_FixtureIsAccepted`,
-`cmd/mailgw-go.TestLoadBundle_FixtureCompiles`) instead of running `check` over
+`internal/node.TestLoadBundle_FixtureCompiles`) instead of running `check` over
 a sample tree. The dev compose stack boots unprovisioned like a real node, and
 `tests/provision.ts` drives the console to configure it before the SMTP e2e
 suite runs.
@@ -75,6 +75,54 @@ bundle](#a-private-key-never-travels-in-a-bundle).
 
 Verify with `pnpm test:mailgw-go`, and by grepping: `os.Getenv` must not appear
 in non-test code, which CI enforces.
+
+## The test build is a different binary, not a flag
+
+M19 added `cmd/mailgw-go-test`: the gateway plus `internal/testctl`, an
+**unauthenticated** HTTP API that injects a configuration bundle, enrolls the
+node with a console, inspects the queue and reports the addresses SMTP actually
+bound.
+
+This does **not** reverse the decision above, and the distinction is the whole
+design. That decision is about what a *deployable* build accepts. `cmd/mailgw-go`
+is unchanged, does not link `internal/testctl`, and CI asserts it with `go list
+-deps`. There is no flag, no environment variable and no build tag that turns
+the API on in the shipped binary, because the containment is the binary boundary
+rather than a credential — a token would only imply the API is something you
+might reasonably expose.
+
+The reasons it was needed, both consequences of M18 rather than complaints about
+it:
+
+- **The e2e suite could not bootstrap from a clean state.** A gateway registers
+  only after somebody submits a console URL in its wizard, and since M12 that
+  form is behind a session behind a claim code in the container log. Nothing
+  automated it, so `docker compose down -v && pnpm provision` waited 120s and
+  threw. It went unnoticed because `mailgw_go_data` is a named volume: once
+  someone had walked the wizard by hand, the identity survived every `down`
+  without `-v`.
+- **The bring-up wiring had no test that drove it.** Everything lived in
+  `package main` and could not be imported, so every test built its subject
+  directly — the exact gap that let M11's connection cap break an `implicit_tls`
+  listener while passing the whole suite.
+
+The second is why the refactor was worth doing on its own: `internal/node` is
+now importable, and `internal/node/control_test.go` runs the real bring-up
+including the full listener chain.
+
+**What must stay true.** `pnpm docker:push` never builds the engineering image;
+it is published under a different repository name and never as `:latest`;
+`-testctl` has no default address; the shipped stage is the **last** stage in the
+Dockerfile so a bare `docker build` cannot produce the test image; and
+`docker-compose.yaml` keeps the shipped image, so the console provisioning path
+— the only one production uses — keeps its coverage.
+
+**Config injection is not a second configuration source.** It writes a cache row
+and calls the same `applyCached` that boot, the poll loop, the WebSocket and
+SIGHUP call, with the bundle bytes verbatim. A test therefore drives the same
+wire format a console deploy does. Anything that re-marshalled or normalised the
+body would put the suite on a document no console would produce, which is the
+mistake M18 recorded when it rejected seeding MariaDB directly.
 
 ## Reload is all-or-nothing
 

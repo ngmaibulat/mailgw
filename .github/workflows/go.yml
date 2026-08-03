@@ -43,6 +43,12 @@ jobs:
             - name: Build
               run: go build ./...
 
+            # The test build is compiled in CI too. It is never shipped, but a
+            # broken one is discovered by a developer mid-suite, at the point
+            # where the gateway looks broken rather than the harness.
+            - name: Build the engineering binary
+              run: go build ./cmd/mailgw-go-test
+
             # There is deliberately no configuration-validation step here any
             # more. It used to run `check -config` over two sample directories,
             # which stopped being meaningful when Central Management became the
@@ -52,9 +58,25 @@ jobs:
             # The equivalent assertion now lives in the test run above, against
             # the shape a gateway is actually given — a bundle:
             #   internal/config  TestBundleConfig_FixtureIsAccepted
-            #   cmd/mailgw-go    TestLoadBundle_FixtureCompiles
+            #   internal/node    TestLoadBundle_FixtureCompiles
             # If you are looking for "does the shipped config still load?",
             # that is where it went.
+
+            # The test control API is unauthenticated and what it does is
+            # re-point a gateway. Containment is the binary boundary — see
+            # internal/testctl/doc.go — so the boundary is asserted rather than
+            # trusted. `go list -deps` resolves the whole transitive graph, so
+            # this catches an import added anywhere beneath cmd/mailgw-go, not
+            # just one added to it directly.
+            - name: Assert the shipped binary does not link the test control API
+              run: |
+                  if go list -deps ./cmd/mailgw-go | grep -n 'internal/testctl'; then
+                      echo "cmd/mailgw-go links internal/testctl."
+                      echo "That API has no authentication and re-points a gateway; it must exist"
+                      echo "only in cmd/mailgw-go-test. See internal/testctl/doc.go."
+                      exit 1
+                  fi
+
             - name: Assert no configuration can come from this host
               run: |
                   if grep -rn 'os\.Getenv\|os\.LookupEnv\|os\.Environ' --include='*.go' . | grep -v '_test\.go'; then
