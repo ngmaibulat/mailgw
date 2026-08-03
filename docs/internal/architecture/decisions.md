@@ -5,7 +5,7 @@ change one of these, the argument against you is here.
 
 ## Dependencies
 
-**The Go module has seven direct dependencies.** Each one was argued for
+**The Go module has nine direct dependencies.** Each one was argued for
 individually, and the bar is high because this binary runs as root on
 internet-facing hosts.
 
@@ -13,11 +13,30 @@ internet-facing hosts.
 |---|---|
 | `emersion/go-smtp` | the SMTP server |
 | `emersion/go-sasl` | SASL, both directions |
+| `emersion/go-msgauth` | DKIM, DMARC and `Authentication-Results` (M14) |
+| `blitiri.com.ar/go/spf` | SPF (M14) |
 | `google/uuid` | identity |
 | `sigs.k8s.io/yaml` | `server.yaml`, `routing.yaml` |
 | `modernc.org/sqlite` | the managed-mode config cache |
 | `coder/websocket` | the deploy notification channel |
 | `golang.org/x/crypto` | bcrypt, for inbound AUTH |
+
+The authoritative list is what `go.mod` requires directly:
+
+```bash
+cd mailgw-go && go list -m -f '{{if not .Indirect}}{{.Path}}{{end}}' all
+```
+
+This table said seven for a while after M14 added the last two, which is the
+failure mode this page is most prone to: a number in prose that no build step
+checks.
+
+**The two M14 added were weighed against hand-rolling both.**
+`emersion/go-msgauth` is the same author as `go-smtp` and its three packages
+import only stdlib plus `x/crypto/ed25519`, so it pulls in no new indirect
+build. `blitiri.com.ar/go/spf` the plan expected to write by hand; it was taken
+because its `DNSResolver` is `*net.Resolver`-shaped, so a single map-backed stub
+serves SPF, DKIM and DMARC and no test in the module touches the network.
 
 Things deliberately **not** taken:
 
