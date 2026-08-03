@@ -273,3 +273,64 @@ func TestNew_RefusesWithoutAnAdminAddress(t *testing.T) {
 		t.Errorf("exit code = %d, want 2 for a usage error", got)
 	}
 }
+
+// TestControl_FailedApplyDoesNotBecomeTheDesiredVersion.
+//
+// A rejected bundle must not leave desired_version_id pointing at itself, or the
+// next restart comes up on a configuration that cannot apply and falls back —
+// which looks, from a test's point of view, like the reset did not take.
+//
+// This is where injection deliberately differs from the pull loop: there,
+// desired_version_id is the console's intent and is authoritative even when the
+// bundle fails, because an operator has to be able to see what they asked for.
+func TestControl_FailedApplyDoesNotBecomeTheDesiredVersion(t *testing.T) {
+	n := nodeForTest(t)
+
+	good := bundleListeningOn(t, "127.0.0.1:0")
+	applied, err := n.ApplyBundle(context.Background(), good)
+	if err != nil {
+		t.Fatalf("the good bundle should apply: %v", err)
+	}
+
+	var b config.Bundle
+	if err := json.Unmarshal(good, &b); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	bad := "version: 1\nroutes:\n  - name: n\n    match: {always: true}\n" +
+		"    then: [{action: relay, relay: Ghost}]\n"
+	b.Routing = &bad
+	raw, err := json.Marshal(b)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if _, err := n.ApplyBundle(context.Background(), raw); err == nil {
+		t.Fatal("a bundle naming an undefined relay group was accepted")
+	}
+
+	desired, err := n.store.DesiredVersionID()
+	if err != nil {
+		t.Fatalf("DesiredVersionID: %v", err)
+	}
+	if desired != applied.VersionID {
+		t.Errorf("desired version = %d after a failed apply, want the last good one %d",
+			desired, applied.VersionID)
+	}
+
+	// And that is what a restart would boot.
+	if boot := bootConfig(n.store, discardLogger()); boot == nil || boot.VersionID != applied.VersionID {
+		t.Errorf("a restart would boot %+v, want version %d", boot, applied.VersionID)
+	}
+}
+
+// TestControl_AppliedCarriesAnEmptyRestartList, not null: a JSON null there
+// makes every caller special-case it.
+func TestControl_AppliedCarriesAnEmptyRestartList(t *testing.T) {
+	n := nodeForTest(t)
+	applied, err := n.ApplyBundle(context.Background(), bundleListeningOn(t, "127.0.0.1:0"))
+	if err != nil {
+		t.Fatalf("ApplyBundle: %v", err)
+	}
+	if applied.RestartRequired == nil {
+		t.Error("restart_required is nil; it must marshal as [] rather than null")
+	}
+}

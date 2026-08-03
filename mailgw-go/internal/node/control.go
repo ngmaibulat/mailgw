@@ -19,10 +19,11 @@ import (
 // This file is the surface internal/testctl drives, and nothing else uses it.
 //
 // It lives here rather than in testctl because everything below it is
-// unexported: the gateway, the agent and the store handle. testctl takes an
-// interface and never imports this package, which is what keeps the test API
-// out of the shipped binary — cmd/mailgw-go links node but not testctl, and CI
-// asserts it.
+// unexported: the gateway, the agent and the store handle.
+//
+// It costs the shipped binary nothing. These are methods on a type cmd/mailgw-go
+// already links, and the containment that matters runs the other way —
+// cmd/mailgw-go must not import internal/testctl, which is what CI checks.
 //
 // Every method is a thin adapter over a path the production code already takes.
 // ApplyBundle in particular does NOT reimplement applying: it writes a cache row
@@ -117,15 +118,25 @@ func (n *Node) ApplyBundle(ctx context.Context, raw []byte) (Applied, error) {
 	if err := n.store.SaveConfig(cached); err != nil {
 		return Applied{}, fmt.Errorf("cache the injected bundle: %w", err)
 	}
-	// So that a restart boots what was injected rather than an older console
-	// version that happens to still be cached.
+	restart, err := n.agent.applyCached(ctx, cached)
+	if err != nil {
+		return Applied{}, err
+	}
+
+	// Recorded only after it applied, which is where this deliberately differs
+	// from the pull loop. There, desired_version_id is the CONSOLE's intent and
+	// is authoritative even for a bundle that fails — an operator has to be able
+	// to see what they asked for. Here the caller is the test, it already has
+	// the error in its hand, and leaving the pointer on a bundle that will never
+	// apply would make the next restart come up on a failure and fall back.
 	if err := n.store.SetDesiredVersionID(cached.VersionID); err != nil {
 		return Applied{}, fmt.Errorf("record the desired version: %w", err)
 	}
 
-	restart, err := n.agent.applyCached(ctx, cached)
-	if err != nil {
-		return Applied{}, err
+	if restart == nil {
+		// An empty array rather than null: every caller in every language would
+		// otherwise have to special-case it.
+		restart = []string{}
 	}
 	return Applied{
 		VersionID:       cached.VersionID,
