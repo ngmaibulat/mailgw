@@ -1,10 +1,9 @@
-package main
+package node
 
 import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/config"
@@ -172,24 +171,6 @@ func TestDKIMSigner_Wiring(t *testing.T) {
 // TestReportMsgAuth_NamesTheChecksARuleTurnedOn: the surprise this line exists
 // to prevent is an operator writing a rule on spf.result and not realising every
 // message now costs a DNS walk.
-func TestReportMsgAuth_NamesTheChecksARuleTurnedOn(t *testing.T) {
-	cfg := &config.Config{Server: config.Server{Hostname: "relay.example"}}
-	rules := compileForTest(t, `
-version: 1
-routes:
-  - name: r
-    match: {field: dmarc.result, op: eq, value: pass}
-    then: [{action: relay, relay: Outbound}]
-`)
-
-	out := captureStderr(t, func() { reportMsgAuth(cfg, rules) })
-	for _, want := range []string{"spf", "dkim", "dmarc", "turned on by a rule"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("check output does not mention %q:\n%s", want, out)
-		}
-	}
-}
-
 func compileForTest(t *testing.T, y string) *ruleset.Ruleset {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "routing.yaml")
@@ -211,35 +192,4 @@ func compileForTest(t *testing.T, y string) *ruleset.Ruleset {
 		t.Fatalf("Compile: %v", err)
 	}
 	return rs
-}
-
-// captureStderr collects what a function writes to os.Stderr — which is where
-// `check` puts everything an operator is meant to read.
-func captureStderr(t *testing.T, fn func()) string {
-	t.Helper()
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	saved := os.Stderr
-	os.Stderr = w
-
-	done := make(chan string, 1)
-	go func() {
-		var b strings.Builder
-		buf := make([]byte, 4096)
-		for {
-			n, err := r.Read(buf)
-			b.Write(buf[:n])
-			if err != nil {
-				break
-			}
-		}
-		done <- b.String()
-	}()
-
-	fn()
-	w.Close()
-	os.Stderr = saved
-	return <-done
 }

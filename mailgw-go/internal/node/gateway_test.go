@@ -1,4 +1,4 @@
-package main
+package node
 
 import (
 	"bytes"
@@ -14,7 +14,7 @@ import (
 )
 
 // mutate returns the testdata bundle with one edit applied, loaded.
-func mutate(t *testing.T, opts config.BundleOptions, edit func(*config.Bundle)) *loaded {
+func mutate(t *testing.T, opts config.BundleOptions, edit func(*config.Bundle)) *Loaded {
 	t.Helper()
 
 	var b config.Bundle

@@ -1,4 +1,4 @@
-package main
+package node
 
 import (
 	"context"
@@ -32,7 +32,7 @@ import (
 // event pipeline, the delivery runner, the SMTP server and its listeners, and
 // the two atomic pointers a session reads.
 //
-// It is brought up from a *loaded exactly once, and every apply after that
+// It is brought up from a *Loaded exactly once, and every apply after that
 // swaps the allowlist and the compiled rules and nothing else. The runner holds
 // its relay table for the life of the process, and the listeners, the TLS
 // keypair and the spool are bound at start; what changed but cannot be applied
@@ -374,7 +374,7 @@ func (g *gateway) setAdminToken(cfg *config.Config) {
 //
 // A failure at any step leaves both atomic pointers untouched. Half-applying a
 // configuration change would be worse than not applying it.
-func (g *gateway) apply(ctx context.Context, l *loaded) ([]string, error) {
+func (g *gateway) apply(ctx context.Context, l *Loaded) ([]string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -407,7 +407,7 @@ func (g *gateway) apply(ctx context.Context, l *loaded) ([]string, error) {
 	// The rules were validated against the relay table that arrived with them,
 	// but the delivery runner still holds the one it started with. Recompile
 	// against the live table so a rule can never name a group the runner cannot
-	// dial. This is why loaded keeps its *ruleset.File after compiling.
+	// dial. This is why Loaded keeps its *ruleset.File after compiling.
 	if err := validateAgainstLiveRelays(l, g.live); err != nil {
 		return restart, err
 	}
@@ -424,11 +424,11 @@ func (g *gateway) apply(ctx context.Context, l *loaded) ([]string, error) {
 // rules, the only two things that can change under a running process.
 //
 // Callers hold g.mu.
-func (g *gateway) swap(l *loaded) {
+func (g *gateway) swap(l *Loaded) {
 	g.allowlist.Store(l.cfg.Allowlist)
 	g.rules.Store(l.rules)
 	g.log.Info("configuration applied",
-		"source", rulesSource(l),
+		"source", l.RulesSource(),
 		"allowlist_entries", l.cfg.Allowlist.Len(),
 		"policy_rules", len(l.rules.Policy),
 		"route_rules", len(l.rules.Routes))
@@ -438,7 +438,7 @@ func (g *gateway) swap(l *loaded) {
 // delivery runner and the SMTP server, and starts listening.
 //
 // Callers hold g.mu.
-func (g *gateway) bringUp(ctx context.Context, l *loaded) error {
+func (g *gateway) bringUp(ctx context.Context, l *Loaded) error {
 	cfg := l.cfg
 
 	// Resolved once, here, and never per event: os.Hostname is a syscall, and a
@@ -469,7 +469,7 @@ func (g *gateway) bringUp(ctx context.Context, l *loaded) error {
 		Retries:    cfg.Server.Events.Retries,
 		BufferSize: cfg.Server.Events.BufferSize,
 		Senders:    cfg.Server.Events.Senders,
-		APIKey:     logserviceAPIKey(cfg),
+		APIKey:     LogserviceAPIKey(cfg),
 		SpillDir:   spool.FailedEventsDir(),
 		Logger:     g.log,
 		Metrics:    g.metrics,
@@ -513,7 +513,7 @@ func (g *gateway) bringUp(ctx context.Context, l *loaded) error {
 		return err
 	}
 	if signer != nil {
-		g.log.Info("DKIM signing enabled", "domains", signingDomains(cfg))
+		g.log.Info("DKIM signing enabled", "domains", SigningDomains(cfg))
 	}
 
 	g.runner = queue.NewRunner(spool, queue.RunnerConfig{
@@ -634,7 +634,7 @@ func (g *gateway) startReplayer(ctx context.Context, spool *queue.Spool, cfg *co
 		// The CURRENT endpoint, not the one recorded when the event failed: a
 		// managed gateway's logservice URL arrives in a bundle and can change,
 		// and replaying at a stale address forever helps nobody.
-		URLFor:    logserviceURLFor(cfg),
+		URLFor:    LogserviceURLFor(cfg),
 		Log:       g.log,
 		Retention: retention,
 		Metrics:   g.metrics,
@@ -649,8 +649,8 @@ func (g *gateway) startReplayer(ctx context.Context, spool *queue.Spool, cfg *co
 	}()
 }
 
-// logserviceURLFor maps an event kind back to the endpoint it belongs to.
-func logserviceURLFor(cfg *config.Config) func(events.Kind) string {
+// LogserviceURLFor maps an event kind back to the endpoint it belongs to.
+func LogserviceURLFor(cfg *config.Config) func(events.Kind) string {
 	return func(k events.Kind) string {
 		switch k {
 		case events.KindConnection:
@@ -667,7 +667,7 @@ func logserviceURLFor(cfg *config.Config) func(events.Kind) string {
 // warn emits the startup warnings that make a working-but-wrong configuration
 // visible: an open relay, credentials in the clear, and rules that can never
 // match because this build does not populate the field they read.
-func (g *gateway) warn(l *loaded) {
+func (g *gateway) warn(l *Loaded) {
 	if l.cfg.Allowlist.AllowAll() {
 		g.log.Warn("allow_all is set — accepting mail from any peer")
 	}
@@ -701,7 +701,7 @@ func (g *gateway) warn(l *loaded) {
 		g.log.Warn("no dsn.relay_group; a bounce that no route rule claims cannot be sent")
 	}
 	for _, f := range l.rules.FieldsUsed() {
-		if why, dead := unpopulated[f]; dead {
+		if why, dead := Unpopulated[f]; dead {
 			g.log.Warn("a rule matches on a field this build never populates; it cannot match",
 				"field", f, "reason", why)
 		}
@@ -834,7 +834,7 @@ func (g *gateway) watchSignals(ctx context.Context, reload func(context.Context)
 	}
 }
 
-// logserviceAPIKey resolves the credential events are posted with.
+// LogserviceAPIKey resolves the credential events are posted with.
 //
 // This gateway has no environment to read — that is the point of it — so
 // Central Management delivers the key in the bundle, and there is nowhere else
@@ -842,7 +842,7 @@ func (g *gateway) watchSignals(ctx context.Context, reload func(context.Context)
 // resolved to the empty string on every node this binary can run on, which meant
 // a logservice that required a key rejected every audit event and the mail path
 // never noticed.
-func logserviceAPIKey(cfg *config.Config) string {
+func LogserviceAPIKey(cfg *config.Config) string {
 	return cfg.Logging.APIKey
 }
 
@@ -900,7 +900,7 @@ func attachScanner(cfg *config.Config) smtpsrv.AttachScanner {
 	return &attach.Scanner{
 		URL:     a.URL,
 		Timeout: a.Timeout.D(),
-		APIKey:  logserviceAPIKey(cfg),
+		APIKey:  LogserviceAPIKey(cfg),
 	}
 }
 
@@ -941,7 +941,7 @@ func dkimSigner(cfg *config.Config) (*queue.Signer, error) {
 	for _, k := range s.Keys {
 		keys = append(keys, msgauth.Key{Domain: k.Domain, Selector: k.Selector, Path: k.Key})
 	}
-	loaded, err := msgauth.NewKeys(keys)
+	Loaded, err := msgauth.NewKeys(keys)
 	if err != nil {
 		return nil, err
 	}
@@ -949,10 +949,10 @@ func dkimSigner(cfg *config.Config) (*queue.Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return queue.NewSigner(loaded, hdrCan, bodyCan, s.Headers, s.Expiration.D()), nil
+	return queue.NewSigner(Loaded, hdrCan, bodyCan, s.Headers, s.Expiration.D()), nil
 }
 
-func signingDomains(cfg *config.Config) []string {
+func SigningDomains(cfg *config.Config) []string {
 	out := make([]string, 0, len(cfg.Server.MsgAuth.Sign.Keys))
 	for _, k := range cfg.Server.MsgAuth.Sign.Keys {
 		out = append(out, k.Domain+" (s="+k.Selector+")")
@@ -973,8 +973,7 @@ func signingDomains(cfg *config.Config) []string {
 // URLs off it at session time. Anything on that list would otherwise be
 // reported as applied while silently having no effect.
 //
-// Dir is not compared: it is empty on the central path and a real path in file
-// mode, and it is not behaviour. Allowlist is not compared: it hot-swaps.
+// Allowlist is not compared: it hot-swaps.
 //
 // Admin is not compared either, and that is a third category rather than an
 // oversight: the metrics token is read from an atomic on every request, so a

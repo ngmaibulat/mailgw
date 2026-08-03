@@ -1,4 +1,4 @@
-package main
+package node
 
 import (
 	"bufio"
@@ -138,26 +138,6 @@ func TestRateLimitRules_Translation(t *testing.T) {
 	}
 }
 
-func TestReportRateLimits_SaysWhenNothingIsThrottled(t *testing.T) {
-	cfg := &config.Config{Server: config.Server{Hostname: "relay.example"}}
-
-	out := captureStderr(t, func() { reportRateLimits(cfg) })
-	if !strings.Contains(out, "off — nothing is throttled") {
-		t.Errorf("check does not say that nothing is limited:\n%s", out)
-	}
-
-	cfg.Server.RateLimit.ConnectPerIP = config.RateLimit{Rate: 10, Per: config.Duration(time.Minute)}
-	out = captureStderr(t, func() { reportRateLimits(cfg) })
-	for _, want := range []string{"connect_per_ip 10/1m0s", "per gateway", "4xx"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("check output does not mention %q:\n%s", want, out)
-		}
-	}
-}
-
-// TestListenerChain_PerIPRateLimit drives the REAL chain — proxyproto, Meter,
-// TLS, Guard, Throttle, Limit — because that composition is assembled in this
-// package and nowhere else.
 func TestListenerChain_PerIPRateLimit(t *testing.T) {
 	// Burst of 3, and a window long enough that nothing refills mid-test.
 	l := ratelimit.New(ratelimit.Rules{

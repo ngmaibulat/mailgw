@@ -1,4 +1,4 @@
-package main
+package node
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/store"
 )
 
-// loadBundle produces the same *loaded that a file-mode load produces, from a
+// loadBundle produces the same *Loaded that a file-mode load produces, from a
 // configuration bundle's bytes.
 //
 // It is the twin of load(dir), and the two must stay interchangeable — that is
@@ -19,7 +19,7 @@ import (
 // ruleset.Compile, and internal/config must not import internal/ruleset:
 // internal/smtpsrv imports config on the session hot path, and pulling the rule
 // compiler into everything that reads a configuration is a layering regression.
-func loadBundle(raw []byte, opts config.BundleOptions, source string) (*loaded, error) {
+func loadBundle(raw []byte, opts config.BundleOptions, source string) (*Loaded, error) {
 	b, err := config.ParseBundle(raw)
 	if err != nil {
 		return nil, err
@@ -28,7 +28,7 @@ func loadBundle(raw []byte, opts config.BundleOptions, source string) (*loaded, 
 	if err != nil {
 		return nil, err
 	}
-	l := &loaded{cfg: cfg, source: source}
+	l := &Loaded{cfg: cfg, source: source}
 
 	text, ok := b.RoutingText()
 	if !ok {
@@ -49,9 +49,9 @@ func loadBundle(raw []byte, opts config.BundleOptions, source string) (*loaded, 
 	return l, nil
 }
 
-// bundleSource names a cached version for log lines and `check` output, where a
+// BundleSource names a cached version for log lines and `check` output, where a
 // file mode gateway would print a path.
-func bundleSource(c *store.CachedConfig) string {
+func BundleSource(c *store.CachedConfig) string {
 	if c == nil {
 		return "bundle (none)"
 	}

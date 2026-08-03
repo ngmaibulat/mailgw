@@ -1,4 +1,4 @@
-package main
+package node
 
 import (
 	"context"
@@ -23,12 +23,12 @@ import (
 type fakeApplier struct {
 	mu      sync.Mutex
 	calls   int
-	last    *loaded
+	last    *Loaded
 	restart []string
 	err     error
 }
 
-func (f *fakeApplier) apply(_ context.Context, l *loaded) ([]string, error) {
+func (f *fakeApplier) apply(_ context.Context, l *Loaded) ([]string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
@@ -39,7 +39,7 @@ func (f *fakeApplier) apply(_ context.Context, l *loaded) ([]string, error) {
 	return f.restart, nil
 }
 
-func (f *fakeApplier) snapshot() (int, *loaded) {
+func (f *fakeApplier) snapshot() (int, *Loaded) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.calls, f.last

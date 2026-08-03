@@ -1,4 +1,4 @@
-package main
+package node
 
 import (
 	"context"
@@ -37,7 +37,7 @@ const maxApplyError = 4000
 // applier is what a pulled configuration is applied to. *gateway implements it;
 // the pull-loop tests supply a fake so they never open a socket.
 type applier interface {
-	apply(ctx context.Context, l *loaded) (restart []string, err error)
+	apply(ctx context.Context, l *Loaded) (restart []string, err error)
 }
 
 // agent owns this gateway's relationship with Central Management: registering,
@@ -458,7 +458,7 @@ func (a *agent) pull(ctx context.Context, c *central.Client, st *central.StatusR
 func (a *agent) applyCached(ctx context.Context, c *store.CachedConfig) ([]string, error) {
 	var restart []string
 
-	l, err := loadBundle(c.Bundle, a.bundleOpts, bundleSource(c))
+	l, err := loadBundle(c.Bundle, a.bundleOpts, BundleSource(c))
 	if err == nil {
 		restart, err = a.gw.apply(ctx, l)
 	}

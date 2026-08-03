@@ -40,6 +40,7 @@ and M9.5 into M7. It is numbered M9 so nothing above it moves: milestone
 | [M16 — fixes from the M11 re-audit](../plans/M16-m11-reaudit-fixes.md) | **done** |
 | [M17 — outbound bounds that need a policy first](../plans/M17-outbound-bounds-policy.md) | planned |
 | [M18 — zero configuration, enforced: removing the second source](../plans/M18-zero-config-audit.md) | **done** |
+| [M19 — a test-only build with an unauthenticated control API](../plans/M19-test-only-control-api.md) | planned |
 
 Order worked: **M9 → M4 → M5 → M6 → M7 → M8 — M1–M9 are all done.** M9.4 landed
 with M4 and M9.5 with M7.
@@ -52,7 +53,21 @@ promoted out of it. **M17 is the two questions M16 deferred** — a global cap o
 pooled connections and negative caching for MX failures — both of which need a
 policy decided before a number can be picked. Everything below this table is
 what is left of the running backlog; a new milestone takes the next free number,
-which is **M19**.
+which is **M20**.
+
+**M19 pays the bill M18 left on the test suite.** Removing the second
+configuration source was right, and it left the e2e suite unable to bootstrap
+from a clean state: `pnpm provision` waits for the gateway to register itself,
+but registration only happens after an operator walks the wizard behind M12's
+claim code, and nothing automates that — so `docker compose down -v && pnpm
+start` spins for 120 s and throws. M19 adds a **second binary**,
+`cmd/mailgw-go-test`, serving an unauthenticated `/testctl` API that injects a
+bundle straight into `applyCached` and answers synchronously. It is never
+shipped, never built by `pnpm docker:push`, and CI asserts `cmd/mailgw-go` does
+not link it — so the standing decision is untouched: no *deployable* build takes
+configuration from its host. Getting there hoists the composition root out of
+`package main` into `internal/node`, which is what finally makes the listener
+chain testable — the gap that hid M11's connection-cap defect until M16.
 
 **M18 removed the second configuration source.** An audit against "zero CLI
 args, zero env reliance" returned eleven findings, four of which were the same

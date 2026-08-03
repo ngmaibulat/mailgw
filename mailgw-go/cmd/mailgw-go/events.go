@@ -11,10 +11,11 @@ import (
 
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/config"
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/events"
+	"github.com/ngmaibulat/mailgw/mailgw-go/internal/node"
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/queue"
 )
 
-const eventsUsage = `usage: mailgw-go events [subcommand] [-config <dir> | -data <dir>] [flags]
+const eventsUsage = `usage: mailgw-go events [subcommand] [-data <dir>] [flags]
 
 Inspect and replay audit events that logservice would not accept.
 
@@ -88,13 +89,13 @@ func runEvents(args []string) int {
 
 // loadForEvents resolves the configuration the running gateway would use, so
 // both the spool location and the logservice endpoints come from one place.
-func loadForEvents(o opts) (*config.Config, error) {
-	l, _, release, err := loadFor(o)
+func loadForEvents(o node.Options) (*config.Config, error) {
+	l, _, release, err := node.LoadFor(o)
 	if err != nil {
 		return nil, err
 	}
 	defer release()
-	return l.cfg, nil
+	return l.Config(), nil
 }
 
 type eventRow struct {
@@ -206,14 +207,14 @@ func eventsReplay(cfg *config.Config, dir string) int {
 	c := events.New(events.Options{
 		Timeout: cfg.Server.Events.Timeout.D(),
 		Senders: 1,
-		APIKey:  logserviceAPIKey(cfg),
+		APIKey:  node.LogserviceAPIKey(cfg),
 	})
 	defer c.Close(context.Background())
 
 	r := &events.Replayer{
 		Dir:    dir,
 		Client: c,
-		URLFor: logserviceURLFor(cfg),
+		URLFor: node.LogserviceURLFor(cfg),
 	}
 
 	res, err := r.RunOnce(context.Background())

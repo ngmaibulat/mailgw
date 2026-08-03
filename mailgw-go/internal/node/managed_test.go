@@ -1,4 +1,4 @@
-package main
+package node
 
 import (
 	"context"
@@ -78,7 +78,7 @@ func TestManaged_SMTPStartsAfterFirstDeploy(t *testing.T) {
 	if boot == nil || boot.VersionID != 1 {
 		t.Fatalf("boot would come up on %+v, want the deployed v1", boot)
 	}
-	if _, err := loadBundle(boot.Bundle, a.bundleOpts, bundleSource(boot)); err != nil {
+	if _, err := loadBundle(boot.Bundle, a.bundleOpts, BundleSource(boot)); err != nil {
 		t.Fatalf("the cached bundle should load with the console unreachable: %v", err)
 	}
 }

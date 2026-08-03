@@ -45,7 +45,7 @@ func runClaim(args []string) int {
 
 	o := mustParse("claim "+sub, args, nil)
 
-	st, err := store.Open(o.dataDir)
+	st, err := store.Open(o.DataDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "claim: %v\n", err)
 		return 1
@@ -71,7 +71,7 @@ func runClaim(args []string) int {
 	if state.Code == "" {
 		fmt.Fprintf(os.Stderr,
 			"claim status: %s: no claim code yet — this gateway has not started in\n"+
-				"  managed mode. It generates one on its first boot.\n", o.dataDir)
+				"  managed mode. It generates one on its first boot.\n", o.DataDir)
 		return 1
 	}
 

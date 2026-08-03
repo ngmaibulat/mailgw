@@ -6,18 +6,16 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
 
-	"github.com/ngmaibulat/mailgw/mailgw-go/internal/config"
+	"github.com/ngmaibulat/mailgw/mailgw-go/internal/node"
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/queue"
-	"github.com/ngmaibulat/mailgw/mailgw-go/internal/store"
 )
 
-const mailqUsage = `usage: mailgw-go mailq [subcommand] [-config <dir> | -data <dir>] [flags]
+const mailqUsage = `usage: mailgw-go mailq [subcommand] [-data <dir>] [flags]
 
 Inspect and manage the outbound queue.
 
@@ -42,7 +40,7 @@ rewrites it — so those are refused rather than pretended.
 Released mail is picked up without a restart: outbound.poll_interval is a
 ceiling, so the scheduler rescans regardless of whether anything nudged it.
 
-The spool is found from -config, or from the cached bundle under -data. As with
+The spool is found from the cached bundle under -data. As with
 ` + "`config show`" + `, -data is opened read-write.
 `
 
@@ -63,7 +61,7 @@ func runMailq(args []string) int {
 	})
 
 	// The flag set's own remainder, not a hand-rolled scan for arguments that do
-	// not start with a dash — that would take the VALUE of `-config <dir>` for an
+	// not start with a dash — that would take the VALUE of `-data <dir>` for an
 	// envelope uuid. As everywhere else in this binary, flags come before
 	// positional arguments.
 	uuids := fs.Args()
@@ -77,7 +75,7 @@ func runMailq(args []string) int {
 		return 2
 	}
 
-	spoolDir, err := resolveSpoolDir(o)
+	spoolDir, err := node.SpoolDir(o)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mailq: %v\n", err)
 		return 1
@@ -100,32 +98,6 @@ func runMailq(args []string) int {
 	default: // "hold"; the set was validated above
 		return mailqAct(sp, "hold", uuids, sp.Hold)
 	}
-}
-
-// resolveSpoolDir finds the queue the same way the running gateway would.
-//
-// The answer comes from the cached bundle rather than from <data>/queue,
-// because an operator who set outbound.spool_dir in a server profile would
-// otherwise be shown an empty queue and conclude their mail had vanished.
-func resolveSpoolDir(o opts) (string, error) {
-	st, err := store.Open(o.dataDir)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = st.Close() }()
-
-	fallback := filepath.Join(o.dataDir, "queue")
-	cached := bootConfig(st, newLogger(config.LogConfig{}))
-	if cached == nil {
-		// Nothing deployed yet. The gateway would use the same default, and an
-		// empty queue there is the truthful answer.
-		return fallback, nil
-	}
-	l, err := loadBundle(cached.Bundle, config.BundleOptions{SpoolDir: fallback}, bundleSource(cached))
-	if err != nil {
-		return "", err
-	}
-	return l.cfg.Server.Outbound.SpoolDir, nil
 }
 
 func mailqList(sp *queue.Spool, only string, asJSON bool) int {

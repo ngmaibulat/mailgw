@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/config"
-	"github.com/ngmaibulat/mailgw/mailgw-go/internal/store"
+	"github.com/ngmaibulat/mailgw/mailgw-go/internal/node"
 )
 
 const configUsage = `usage: mailgw-go config show [-data <dir>]
@@ -37,20 +37,14 @@ func runConfig(args []string) int {
 
 	o := mustParse("config show", args, nil)
 
-	st, err := store.Open(o.dataDir)
+	cached, release, err := node.CachedBundle(o)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config show: %v\n", err)
 		return 1
 	}
-	defer func() { _ = st.Close() }()
+	defer release()
 
-	cached := bootConfig(st, newLogger(config.LogConfig{}))
-	if cached == nil {
-		fmt.Fprintf(os.Stderr, "config show: %s: no configuration has been cached yet\n", o.dataDir)
-		return 1
-	}
-
-	fmt.Fprintf(os.Stderr, "# %s\n", bundleSource(cached))
+	fmt.Fprintf(os.Stderr, "# %s\n", node.BundleSource(cached))
 	fmt.Fprintf(os.Stderr, "# digest:  %s\n", cached.SHA256)
 	fmt.Fprintf(os.Stderr, "# fetched: %s\n", cached.FetchedAt.Format(time.RFC3339))
 	if cached.AppliedAt != nil {
