@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/config"
@@ -332,5 +335,46 @@ func TestGatewayApply_FailedApplyKeepsTheAdminToken(t *testing.T) {
 
 	if got := g.AdminToken(); got != "good-token" {
 		t.Errorf("AdminToken() = %q, want the last-good token", got)
+	}
+}
+
+// The open-relay warning must fire on the deploy that INTRODUCES allow_all, not
+// only if the gateway happened to boot with it.
+//
+// g.warn used to be called from bringUp, which runs only on the first apply. A
+// gateway changes its configuration exclusively by later applies, so the
+// warnings that matter most — allow_all, relay credentials, a DSN relay group
+// that does not exist — could never fire on the deploy that caused them.
+// Deploying allow_all: true logged "configuration applied" and nothing else.
+//
+// Move g.warn back into bringUp and this fails.
+func TestGatewayApply_WarnsOnEveryApplyNotJustTheFirst(t *testing.T) {
+	spoolDir := filepath.Join(t.TempDir(), "queue")
+	opts := config.BundleOptions{SpoolDir: spoolDir}
+
+	var buf bytes.Buffer
+	g := newGateway(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	defer g.shutdown()
+
+	// First apply: an ordinary allowlist, nothing to warn about.
+	if _, err := g.apply(ctx, mutate(t, opts, withServer(baseServer))); err != nil {
+		t.Fatalf("first apply: %v", err)
+	}
+	if strings.Contains(buf.String(), "allow_all") {
+		t.Fatalf("nothing should have warned yet:\n%s", buf.String())
+	}
+
+	// Second apply: this is the one an operator would be told about.
+	buf.Reset()
+	if _, err := g.apply(ctx, mutate(t, opts, func(b *config.Bundle) {
+		withServer(baseServer)(b)
+		b.Allowlist = []byte(`{"allowed": [], "allow_all": true}`)
+	})); err != nil {
+		t.Fatalf("second apply: %v", err)
+	}
+	if !strings.Contains(buf.String(), "allow_all") {
+		t.Errorf("deploying allow_all must warn; got:\n%s", buf.String())
 	}
 }

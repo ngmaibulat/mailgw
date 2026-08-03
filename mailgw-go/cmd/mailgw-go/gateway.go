@@ -378,6 +378,13 @@ func (g *gateway) apply(ctx context.Context, l *loaded) ([]string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	// On EVERY apply, not just the first. This used to live in bringUp, which
+	// runs only when g.live == nil — and a gateway changes its configuration
+	// exclusively by later applies, so the warnings that matter most could
+	// never fire on the deploy that introduced them. Deploying allow_all: true
+	// logged "configuration applied" and nothing else.
+	g.warn(l)
+
 	if g.live == nil {
 		// Before bringUp, unlike the admin token: bringUp binds the listeners,
 		// and a credential set published after that leaves a window in which a
@@ -433,7 +440,6 @@ func (g *gateway) swap(l *loaded) {
 // Callers hold g.mu.
 func (g *gateway) bringUp(ctx context.Context, l *loaded) error {
 	cfg := l.cfg
-	g.warn(l)
 
 	// Resolved once, here, and never per event: os.Hostname is a syscall, and a
 	// name that changed under a running process would put one box behind two
@@ -828,33 +834,16 @@ func (g *gateway) watchSignals(ctx context.Context, reload func(context.Context)
 	}
 }
 
-// reloadDir is SIGHUP in file mode.
-func (g *gateway) reloadDir(ctx context.Context, dir string) error {
-	next, err := load(dir)
-	if err != nil {
-		return err
-	}
-	restart, err := g.apply(ctx, next)
-	if err != nil {
-		return err
-	}
-	if len(restart) > 0 {
-		g.log.Warn("some changes need a restart to take effect", "changed", restart)
-	}
-	return nil
-}
-
 // logserviceAPIKey resolves the credential events are posted with.
 //
-// A managed gateway has no environment to read — that is the point of it — so
-// Central Management delivers the key in the bundle. An explicit value beats a
-// name to look up, so the bundle wins when both are present; file-mode
-// deployments that set only events.api_key_env are untouched.
+// This gateway has no environment to read — that is the point of it — so
+// Central Management delivers the key in the bundle, and there is nowhere else
+// for it to come from. There used to be an events.api_key_env fallback here; it
+// resolved to the empty string on every node this binary can run on, which meant
+// a logservice that required a key rejected every audit event and the mail path
+// never noticed.
 func logserviceAPIKey(cfg *config.Config) string {
-	if cfg.Logging.APIKey != "" {
-		return cfg.Logging.APIKey
-	}
-	return events.APIKeyFromEnv(cfg.Server.Events.APIKeyEnv)
+	return cfg.Logging.APIKey
 }
 
 // serverTLS resolves the certificate the SMTP listener serves, or nil when this

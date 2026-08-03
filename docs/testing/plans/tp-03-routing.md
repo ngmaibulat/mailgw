@@ -8,7 +8,7 @@ split correctly.
 
 ## Preconditions
 
-- File mode.
+- A provisioned stack (see [environment](../environment)).
 - Two relay groups defined, both reachable — MailHog twice on different ports is
   the easiest arrangement.
 - [TP-01](/plans/tp-01-smoke) passed.
@@ -53,7 +53,7 @@ default_action: {action: tempfail, code: 451, message: "4.3.0 No route found"}
 ### 1. check reports the inferred stages
 
 ```bash
-go run ./cmd/mailgw-go check -config /tmp/tp-config
+go run ./cmd/mailgw-go check
 ```
 
 **Expected.** Exit `0`, and the rule listing shows:
@@ -71,7 +71,7 @@ condition is a mail-stage field. **The latest field wins.**
 ### 2. explain agrees, without sending anything
 
 ```bash
-go run ./cmd/mailgw-go explain -config /tmp/tp-config \
+go run ./cmd/mailgw-go explain \
     --rcpt user@a.test --from someone@example.com
 ```
 
@@ -164,7 +164,7 @@ Add a rule with a **lower** priority number matching the same recipient as
 `to-group-a`, but routing to `GroupB`. Restart or `SIGHUP`.
 
 ```bash
-go run ./cmd/mailgw-go explain -config /tmp/tp-config --rcpt user@a.test --from x@y.test
+go run ./cmd/mailgw-go explain --rcpt user@a.test --from x@y.test
 ```
 
 **Expected.** The new rule wins, because rules sort by priority **ascending** and
@@ -175,7 +175,7 @@ first match wins. Lower number = considered first.
 Change `rcpt.domain` to `rcpt.doman` in any rule, then:
 
 ```bash
-go run ./cmd/mailgw-go check -config /tmp/tp-config
+go run ./cmd/mailgw-go check
 ```
 
 **Expected.** Non-zero exit, naming the unknown field, **with a suggestion** for

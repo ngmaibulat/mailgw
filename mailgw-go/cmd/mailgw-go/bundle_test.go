@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -15,40 +12,69 @@ import (
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/ruleset"
 )
 
-const testdataDir = "../../testdata/config"
+// The fixture bundle every test in this package deploys.
+//
+// It used to be composed by reading testdata/config off disk, so that a test
+// could assert a bundle and a directory produced the same running
+// configuration. There is no directory any more — Central Management is the
+// only configuration source — so the fixture is the wire format itself.
+const (
+	fixtureServer = `
+hostname: devbook.local
+local_domains: [devbook.local, ngm.dev]
+listen:
+    - addr: "0.0.0.0:2525"
+max:
+    bytes: 26214400
+    recipients: 100
+`
 
-// bundleFromTestdata composes the bundle Central Management would deploy for
-// the configuration directory the rest of the suite runs on.
+	fixtureRouting = `
+version: 1
+routes:
+    - name: To Exchange
+      match: {field: rcpt.domain, op: eq, value: ngm.dev}
+      then: [{action: relay, relay: Exchange}]
+    - name: Default
+      match: {always: true}
+      then: [{action: relay, relay: Outbound}]
+`
+
+	fixtureAllowlist = `{"allowed": ["127.0.0.1", "::1", "172.18.0.1"]}`
+
+	fixtureRelays = `{
+  "Exchange": [
+    {"name":"Exch-01","auth_user":"someuser","auth_pass":"somepass","priority":0,
+     "exchange":"sandbox.smtp.mailtrap.io","port":"2525"}
+  ],
+  "Outbound": [
+    {"name":"Default","auth_user":"someuser","auth_pass":"somepass","priority":0,
+     "exchange":"sandbox.smtp.mailtrap.io","port":"2525"}
+  ]
+}`
+)
+
 func bundleFromTestdata(t *testing.T) []byte {
 	t.Helper()
 
-	read := func(name string) []byte {
-		raw, err := os.ReadFile(filepath.Join(testdataDir, name))
-		if err != nil {
-			t.Fatalf("read %s: %v", name, err)
-		}
-		return raw
-	}
-
-	server := string(read(config.FileServer))
-	routing := string(read(config.FileRouting))
+	server, routing := fixtureServer, fixtureRouting
 
 	var byGroup map[string][]relays.Relay
-	if err := json.Unmarshal(read(config.FileRelays), &byGroup); err != nil {
-		t.Fatalf("parse %s: %v", config.FileRelays, err)
-	}
-	var logging config.Logging
-	if err := json.Unmarshal(read(config.FileLogging), &logging); err != nil {
-		t.Fatalf("parse %s: %v", config.FileLogging, err)
+	if err := json.Unmarshal([]byte(fixtureRelays), &byGroup); err != nil {
+		t.Fatalf("parse the relay fixture: %v", err)
 	}
 
 	raw, err := json.Marshal(config.Bundle{
 		Format:    config.BundleFormat,
 		Server:    &server,
 		Routing:   &routing,
-		Allowlist: read(config.FileFilter),
+		Allowlist: []byte(fixtureAllowlist),
 		Relays:    byGroup,
-		Logging:   logging,
+		Logging: config.Logging{
+			URLConn:     "http://logservice:3000/api/connection",
+			URLQueue:    "http://logservice:3000/api/queue",
+			URLDelivery: "http://logservice:3000/api/delivery",
+		},
 	})
 	if err != nil {
 		t.Fatalf("marshal bundle: %v", err)
@@ -56,74 +82,21 @@ func bundleFromTestdata(t *testing.T) []byte {
 	return raw
 }
 
-// TestLoadBundle_EqualsFileMode is the claim this milestone actually makes: a
-// bundle pulled from the console and a directory on disk produce the same
-// running configuration. If this fails, "check predicts a successful start" is
-// no longer true for a managed gateway.
-//
-// The compiled *Ruleset is compared rule by rule rather than with DeepEqual:
-// CompiledRule holds matcher closures, and two closures are never equal even
-// when they came from identical source.
-func TestLoadBundle_EqualsFileMode(t *testing.T) {
-	fromDir, err := load(testdataDir)
-	if err != nil {
-		t.Fatalf("load(dir): %v", err)
-	}
-	fromBundle, err := loadBundle(bundleFromTestdata(t), config.BundleOptions{}, "bundle v1 (version_id 1)")
+// The fixture must survive the real loader: this is the cmd-level half of what
+// the CI `check -config` step used to assert about a sample directory.
+func TestLoadBundle_FixtureCompiles(t *testing.T) {
+	l, err := loadBundle(bundleFromTestdata(t), config.BundleOptions{}, "bundle v1 (version_id 1)")
 	if err != nil {
 		t.Fatalf("loadBundle: %v", err)
 	}
-
-	if !reflect.DeepEqual(fromBundle.cfg.Server, fromDir.cfg.Server) {
-		t.Errorf("server config differs:\n  bundle %+v\n  dir    %+v", fromBundle.cfg.Server, fromDir.cfg.Server)
+	if l.cfg.Server.Hostname != "devbook.local" {
+		t.Errorf("hostname = %q", l.cfg.Server.Hostname)
 	}
-	if fromBundle.cfg.Logging != fromDir.cfg.Logging {
-		t.Errorf("logging differs: bundle %+v, dir %+v", fromBundle.cfg.Logging, fromDir.cfg.Logging)
+	if len(l.rules.Routes) != 2 {
+		t.Fatalf("got %d route rules, want 2", len(l.rules.Routes))
 	}
-	if !fromBundle.cfg.Relays.Equal(fromDir.cfg.Relays) {
-		t.Error("relay tables differ")
-	}
-	if fromBundle.cfg.Allowlist.String() != fromDir.cfg.Allowlist.String() {
-		t.Errorf("allowlists differ: bundle %s, dir %s", fromBundle.cfg.Allowlist, fromDir.cfg.Allowlist)
-	}
-
-	// The rule file is pure data, so this one is safe to compare wholesale.
-	if !reflect.DeepEqual(fromBundle.file, fromDir.file) {
-		t.Error("parsed rule files differ")
-	}
-
-	if fromBundle.rules.Default != fromDir.rules.Default {
-		t.Errorf("default action differs: bundle %v, dir %v", fromBundle.rules.Default, fromDir.rules.Default)
-	}
-	if !reflect.DeepEqual(fromBundle.rules.Groups(), fromDir.rules.Groups()) {
-		t.Errorf("relay groups referenced differ: bundle %v, dir %v",
-			fromBundle.rules.Groups(), fromDir.rules.Groups())
-	}
-	if !reflect.DeepEqual(fromBundle.rules.FieldsUsed(), fromDir.rules.FieldsUsed()) {
-		t.Error("fields used differ")
-	}
-	compareRules(t, "policy", fromBundle.rules.Policy, fromDir.rules.Policy)
-	compareRules(t, "routes", fromBundle.rules.Routes, fromDir.rules.Routes)
-}
-
-func compareRules(t *testing.T, what string, got, want []ruleset.CompiledRule) {
-	t.Helper()
-	if len(got) != len(want) {
-		t.Fatalf("%s: %d rules from the bundle, %d from the directory", what, len(got), len(want))
-	}
-	for i := range want {
-		g, w := got[i], want[i]
-		if g.Name != w.Name || g.Priority != w.Priority || g.Stage != w.Stage ||
-			g.Index != w.Index || g.RcptScoped != w.RcptScoped {
-			t.Errorf("%s[%d]: %+v != %+v", what, i, g, w)
-		}
-		if !reflect.DeepEqual(g.Then, w.Then) {
-			t.Errorf("%s[%d] %q: actions differ", what, i, w.Name)
-		}
-		if g.Describe() != w.Describe() {
-			t.Errorf("%s[%d] %q: predicates differ:\n  bundle %s\n  dir    %s",
-				what, i, w.Name, g.Describe(), w.Describe())
-		}
+	if got := l.rules.Groups(); len(got) != 2 {
+		t.Errorf("relay groups referenced = %v, want two", got)
 	}
 }
 

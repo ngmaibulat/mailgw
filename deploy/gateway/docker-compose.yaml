@@ -47,7 +47,17 @@ services:
             # Durable spool. A bind, not a named volume, so the queue survives
             # `docker compose down -v` and can be inspected from the host —
             # 02-checkdirs.sh makes sure it exists and is writable by uid 0.
-            - /opt/mailgw-go/queue:/opt/mailgw-go/queue
+            #
+            # The container-side path is /var/lib/mailgw-go/queue, NOT
+            # /opt/mailgw-go/queue. A gateway takes its configuration from
+            # Central Management, and a bundle whose server profile does not
+            # choose a spool directory gets <data>/queue — which the process can
+            # always write, unlike the compiled-in default. This mount was
+            # /opt/mailgw-go/queue on both sides until that was noticed, so it
+            # sat empty while the real spool lived inside the 0700 identity
+            # directory below: `ls /opt/mailgw-go/queue` on a backed-up node
+            # showed nothing and looked like a drained queue.
+            - /opt/mailgw-go/queue:/var/lib/mailgw-go/queue
             # The SQLite store: this gateway's identity (an Ed25519 private key)
             # and its cached configuration — the two things that MUST survive a
             # container replacement, or the node re-registers as a stranger and

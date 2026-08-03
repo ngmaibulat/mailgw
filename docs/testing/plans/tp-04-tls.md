@@ -8,7 +8,7 @@ picked up without a restart.
 
 ## Preconditions
 
-- File mode.
+- A provisioned stack (see [environment](../environment)).
 - A certificate and key the gateway can read. A self-signed pair is fine:
 
 ```bash

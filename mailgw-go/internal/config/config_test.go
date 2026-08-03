@@ -3,80 +3,43 @@ package config
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
 
-// testdata/config holds copies of the real mailgw/config/*.json files plus the
-// server.yaml that replaces connection.ini and friends.
-const testdataDir = "../../testdata/config"
-
-func TestLoad_RealConfigDirectory(t *testing.T) {
-	cfg, err := Load(testdataDir)
+// bundleWith returns the fixture bundle with fn applied, marshalled.
+//
+// These used to be TestLoad_* cases over a configuration directory. The
+// directory loader is gone — Central Management is the only source — so the
+// assertions that still mean something were moved onto the bundle path and the
+// ones already covered by bundle_test.go were dropped rather than duplicated.
+func bundleConfig(t *testing.T, fn func(*Bundle)) *Config {
+	t.Helper()
+	b := testdataBundle(t)
+	if fn != nil {
+		fn(&b)
+	}
+	parsed, err := ParseBundle(marshal(t, b))
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("ParseBundle: %v", err)
 	}
-
-	if cfg.Server.Hostname != "devbook.local" {
-		t.Errorf("hostname: got %q", cfg.Server.Hostname)
+	cfg, err := parsed.Config(BundleOptions{})
+	if err != nil {
+		t.Fatalf("Bundle.Config: %v", err)
 	}
-	// Values carried over from connection.ini.
-	if cfg.Server.Max.Bytes != 26214400 {
-		t.Errorf("max.bytes: got %d", cfg.Server.Max.Bytes)
-	}
-	if cfg.Server.Max.LineLength != 512 {
-		t.Errorf("max.line_length: got %d", cfg.Server.Max.LineLength)
-	}
-	if !cfg.Server.SMTPUTF8 {
-		t.Error("smtputf8 should be true")
-	}
-	if got := cfg.Server.Inactivity.D(); got != 300*time.Second {
-		t.Errorf("inactivity_timeout: got %v", got)
-	}
-	// Named in the sample so an operator raising stop_grace_period can find the
-	// knob it has to stay ahead of; the value matches the compiled-in default,
-	// so spelling it out changes nothing.
-	if got := cfg.Server.ShutdownTimeout.D(); got != DefaultShutdownTimeout {
-		t.Errorf("shutdown_timeout: got %v, want %v", got, DefaultShutdownTimeout)
-	}
-
-	// The shipped relays.json uses a string port and two Exchange members.
-	g, ok := cfg.Relays.Lookup("Exchange")
-	if !ok {
-		t.Fatal("Exchange relay group should load from the real relays.json")
-	}
-	if len(g.Members) != 2 {
-		t.Errorf("Exchange members: got %d, want 2", len(g.Members))
-	}
-	if got := g.Members[0].Port.String(); got != "2525" {
-		t.Errorf("port: got %q, want \"2525\"", got)
-	}
-
-	// The shipped ngmfilter.json allows loopback plus the docker bridge.
-	if !cfg.Allowlist.AllowedHostPort("127.0.0.1:1234") {
-		t.Error("127.0.0.1 should be allowed by the real ngmfilter.json")
-	}
-	if cfg.Allowlist.AllowedHostPort("8.8.8.8:25") {
-		t.Error("8.8.8.8 should not be allowed")
-	}
-
-	// logging.json is read unchanged.
-	if cfg.Logging.URLDelivery == "" || cfg.Logging.URLConn == "" || cfg.Logging.URLQueue == "" {
-		t.Errorf("logging.json not fully loaded: %+v", cfg.Logging)
-	}
+	return cfg
 }
 
-func TestLoad_AppliesDefaultsWhenServerYamlAbsent(t *testing.T) {
-	dir := t.TempDir()
-	copyFile(t, filepath.Join(testdataDir, "relays.json"), filepath.Join(dir, FileRelays))
-	copyFile(t, filepath.Join(testdataDir, "ngmfilter.json"), filepath.Join(dir, FileFilter))
+// A bundle whose server profile says nothing still gets a working gateway.
+//
+// The connection cap and the rejected-event retention are the two worth
+// pinning: both were added long after the first configurations were written, so
+// if they did not default, adding the key would have been a no-op for every
+// deployment that already existed.
+func TestBundleConfig_AppliesDefaults(t *testing.T) {
+	cfg := bundleConfig(t, func(b *Bundle) { b.Server = nil })
 
-	cfg, err := Load(dir)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
 	if cfg.Server.Max.Bytes != 26214400 {
 		t.Errorf("default max.bytes: got %d", cfg.Server.Max.Bytes)
 	}
@@ -86,82 +49,36 @@ func TestLoad_AppliesDefaultsWhenServerYamlAbsent(t *testing.T) {
 	if !cfg.Server.SMTPUTF8 {
 		t.Error("smtputf8 should default to true")
 	}
-	// A configuration that says nothing still gets an inbound ceiling. Without
-	// this, adding the key would be a no-op for every existing deployment.
 	if cfg.Server.Max.Connections != 1024 {
 		t.Errorf("default max.connections: got %d, want 1024", cfg.Server.Max.Connections)
 	}
 	if got := cfg.Server.Events.RejectedRetention.D(); got != 720*time.Hour {
 		t.Errorf("default events.rejected_retention: got %v, want 720h", got)
 	}
-}
-
-// A missing or malformed allowlist must stop the process from starting, since
-// it is the only thing preventing an open relay.
-func TestLoad_FailsWhenAllowlistIsUnusable(t *testing.T) {
-	dir := t.TempDir()
-	copyFile(t, filepath.Join(testdataDir, "relays.json"), filepath.Join(dir, FileRelays))
-
-	if _, err := Load(dir); err == nil {
-		t.Fatal("Load must fail when ngmfilter.json is missing")
-	}
-
-	if err := os.WriteFile(filepath.Join(dir, FileFilter), []byte(`{"allowed":"127.0.0.1"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Load(dir); err == nil {
-		t.Fatal("Load must fail when 'allowed' is not an array")
+	if got := cfg.Server.ShutdownTimeout.D(); got != DefaultShutdownTimeout {
+		t.Errorf("shutdown_timeout: got %v, want %v", got, DefaultShutdownTimeout)
 	}
 }
 
-func TestLoad_FailsWithoutRelays(t *testing.T) {
-	dir := t.TempDir()
-	copyFile(t, filepath.Join(testdataDir, "ngmfilter.json"), filepath.Join(dir, FileFilter))
-	if _, err := Load(dir); err == nil {
-		t.Fatal("Load must fail when relays.json is missing")
-	}
-}
+// A relay port arrives as a JSON string in the shipped shape, and must survive.
+func TestBundleConfig_RelayPortAndGroupsSurvive(t *testing.T) {
+	cfg := bundleConfig(t, nil)
 
-// auth.json is optional, exactly like admin.json: a configuration directory
-// that predates inbound AUTH is a valid directory and simply never offers it.
-func TestLoad_AuthJSONIsOptional(t *testing.T) {
-	cfg, err := Load(testdataDir)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	g, ok := cfg.Relays.Lookup("Exchange")
+	if !ok {
+		t.Fatal("the Exchange relay group should be present")
 	}
-	if cfg.Auth.Enabled() {
-		t.Error("testdata/config has no auth.json but Enabled() is true")
+	if got := g.Members[0].Port.String(); got != "2525" {
+		t.Errorf("port: got %q, want \"2525\"", got)
 	}
-}
-
-func TestLoad_ReadsAuthJSON(t *testing.T) {
-	dir := t.TempDir()
-	copyFile(t, filepath.Join(testdataDir, "relays.json"), filepath.Join(dir, FileRelays))
-	copyFile(t, filepath.Join(testdataDir, "ngmfilter.json"), filepath.Join(dir, FileFilter))
-
-	const hash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
-	body := `{"users":[{"user":"app@ngm.dev","hash":"` + hash + `"}]}`
-	if err := os.WriteFile(filepath.Join(dir, FileAuth), []byte(body), 0o600); err != nil {
-		t.Fatal(err)
+	if !cfg.Allowlist.AllowedHostPort("127.0.0.1:1234") {
+		t.Error("127.0.0.1 should be allowed")
 	}
-
-	cfg, err := Load(dir)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	if cfg.Allowlist.AllowedHostPort("8.8.8.8:25") {
+		t.Error("8.8.8.8 should not be allowed")
 	}
-	got, ok := cfg.Auth.Lookup("app@ngm.dev")
-	if !ok || got != hash {
-		t.Errorf("Lookup = %q, %v; want the hash from auth.json", got, ok)
-	}
-
-	// A password where a hash belongs fails the load, in file mode too — the
-	// same check the bundle path runs.
-	if err := os.WriteFile(filepath.Join(dir, FileAuth),
-		[]byte(`{"users":[{"user":"app@ngm.dev","hash":"hunter2"}]}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Load(dir); err == nil {
-		t.Fatal("Load accepted a plaintext password in auth.json")
+	if cfg.Logging.URLDelivery == "" || cfg.Logging.URLConn == "" || cfg.Logging.URLQueue == "" {
+		t.Errorf("logging endpoints not carried: %+v", cfg.Logging)
 	}
 }
 

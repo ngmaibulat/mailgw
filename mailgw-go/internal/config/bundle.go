@@ -110,9 +110,9 @@ func (b *Bundle) Config(opts BundleOptions) (*Config, error) {
 	}
 
 	// A nil server profile is a working configuration for everything except the
-	// relay table — the same thing an absent server.yaml means to Load.
+	// relay table: the compiled-in defaults stand.
 	if b.Server != nil && strings.TrimSpace(*b.Server) != "" {
-		srv, err := ParseServer([]byte(*b.Server), FileServer, true)
+		srv, err := ParseServer([]byte(*b.Server), FileServer)
 		if err != nil {
 			return nil, fmt.Errorf("server profile: %w", err)
 		}

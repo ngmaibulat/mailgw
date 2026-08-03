@@ -39,19 +39,30 @@ and M9.5 into M7. It is numbered M9 so nothing above it moves: milestone
 | [M15 — rate limiting](../plans/M15-rate-limiting.md) | **done** |
 | [M16 — fixes from the M11 re-audit](../plans/M16-m11-reaudit-fixes.md) | **done** |
 | [M17 — outbound bounds that need a policy first](../plans/M17-outbound-bounds-policy.md) | planned |
+| [M18 — zero configuration, enforced: removing the second source](../plans/M18-zero-config-audit.md) | **done** |
 
 Order worked: **M9 → M4 → M5 → M6 → M7 → M8 — M1–M9 are all done.** M9.4 landed
 with M4 and M9.5 with M7.
 
 **M10–M15 come from the audit of 2026-08-01**, which read the shipped code paths
 rather than this backlog. Order worked: **M10 → M11 → M16 → M12 → M13 → M14 →
-M15**, and with M15 in, **every milestone in `plans/` is done except M17**. M12
-was the first item in this file, promoted out of it; M13–M15 are the Deferred
-list, promoted out of it. **M17 is the two questions M16 deferred** — a global
-cap on pooled connections and negative caching for MX failures — both of which
-need a policy decided before a number can be picked. Everything below this table
-is what is left of the running backlog; a new milestone takes the next free
-number, which is **M18**.
+M15 → M18**, and **every milestone in `plans/` is done except M17**. M12 was the
+first item in this file, promoted out of it; M13–M15 are the Deferred list,
+promoted out of it. **M17 is the two questions M16 deferred** — a global cap on
+pooled connections and negative caching for MX failures — both of which need a
+policy decided before a number can be picked. Everything below this table is
+what is left of the running backlog; a new milestone takes the next free number,
+which is **M19**.
+
+**M18 removed the second configuration source.** An audit against "zero CLI
+args, zero env reliance" returned eleven findings, four of which were the same
+defect seen from four directions — the worst being a relay `auth_pass_env` that
+authenticated with an **empty password** while `check` printed "prefer
+auth_pass_env". `-config`, the directory loader, both sample config directories
+and both `os.Getenv` call sites are gone. **Six of its findings are still open**
+and are listed in the milestone's own "Findings NOT addressed here"; the first,
+`gateway.warn()` never running on any bundle after the first, means deploying
+`allow_all: true` logs no open-relay warning at all.
 
 **M10 fixed six defects in paths that carry live mail.** An oversize message,
 an over-long line and an over-wide header block are now permanent refusals
@@ -113,12 +124,15 @@ with it: `Original-Envelope-Id` was carrying this gateway's own uuid where RFC
 **overwrote each other's body on disk** — which a delay warning and a later
 failure could already do.
 
-**The shipped gateway is now zero-configuration.** No environment variables, no
-CLI arguments, no configuration files: the image runs with no command at all,
-generates its identity, serves the wizard, and takes everything else from
-Central Management into a local SQLite cache. `-config <dir>` remains as a CLI
-capability — it is what `check`, `explain`, `testdata/config`, the contract suite
-and the Bun SMTP e2e run on, and the dev compose pins it for exactly that reason.
+**The gateway is zero-configuration, and there is no second source.** No
+environment variables, no configuration flags, no configuration files: the image
+runs with no command at all, generates its identity, serves the wizard, and takes
+everything else from Central Management into a local SQLite cache. M5 left
+`-config <dir>` in place for `check`, `explain`, `testdata/config`, the contract
+suite and the Bun SMTP e2e; **M18 removed it**, along with the sample config
+directories and both `os.Getenv` call sites, after the second source turned out
+to be generating defects rather than convenience. CI now validates a bundle in a
+Go test, and `pnpm provision` configures the dev stack through the console.
 
 **M6 made the fleet legible.** Every stage of the mail path is counted
 (`internal/obs`), the counters ride the existing 15-second heartbeat to the

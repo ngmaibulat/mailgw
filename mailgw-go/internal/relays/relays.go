@@ -5,7 +5,6 @@ package relays
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"reflect"
 	"sort"
 	"strconv"
@@ -60,8 +59,16 @@ type Relay struct {
 
 	AuthUser string `json:"auth_user,omitempty"`
 	AuthPass string `json:"auth_pass,omitempty"`
-	// AuthPassEnv names an environment variable holding the password, so
-	// credentials need not sit in the config file. It wins over AuthPass.
+	// AuthPassEnv named an environment variable holding the password, back when
+	// a gateway could be run from files beside an environment of its own.
+	//
+	// It is retained ONLY so that NewTable can refuse it by name. This gateway
+	// reads no environment, so resolving it would yield the empty string — and
+	// an empty password is not an error the relay reports usefully: it answers
+	// "535 authentication failed", which sends the operator to check a
+	// credential that was never sent. Refusing at load time is the difference
+	// between a named configuration error and a day of debugging a relay
+	// account.
 	AuthPassEnv string `json:"auth_pass_env,omitempty"`
 
 	// UseMX makes Exchange a DOMAIN whose MX records are resolved at delivery
@@ -86,13 +93,12 @@ type Relay struct {
 // Addr is the dial target.
 func (r Relay) Addr() string { return r.Exchange + ":" + r.Port.String() }
 
-// Password resolves the effective password, preferring the environment.
-func (r Relay) Password() string {
-	if r.AuthPassEnv != "" {
-		return os.Getenv(r.AuthPassEnv)
-	}
-	return r.AuthPass
-}
+// Password is the credential this relay authenticates with.
+//
+// It used to prefer an environment variable named by AuthPassEnv. Nothing reads
+// the environment any more, so there is one source: the value Central
+// Management decrypted and put in this gateway's bundle.
+func (r Relay) Password() string { return r.AuthPass }
 
 // TLSPolicy normalises the configured policy, defaulting to opportunistic.
 func (r Relay) TLSPolicy() string {
@@ -128,29 +134,11 @@ type Table struct {
 	groups map[string]*Group
 }
 
-// Load reads relays.json: an object mapping group name to an array of relays.
-func Load(path string) (*Table, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
-	}
-
-	var byGroup map[string][]Relay
-	if err := json.Unmarshal(raw, &byGroup); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
-	}
-
-	t, err := NewTable(byGroup)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-	return t, nil
-}
-
 // NewTable validates a set of relay groups and builds the lookup table.
 //
-// Separate from Load so that tests, and any future configuration source, get
-// exactly the same validation the file path does.
+// The only way a relay table is built. There used to be a Load beside it that
+// read relays.json off disk; a gateway is told its relays by Central
+// Management and has no other source.
 func NewTable(byGroup map[string][]Relay) (*Table, error) {
 	if len(byGroup) == 0 {
 		return nil, fmt.Errorf("no relay groups defined")
@@ -172,6 +160,16 @@ func NewTable(byGroup map[string][]Relay) (*Table, error) {
 			case "", TLSNone, TLSOpportunistic, TLSRequired:
 			default:
 				return nil, fmt.Errorf("relay group %q member %q: unknown tls policy %q", name, m.Name, m.TLS)
+			}
+			// Refused rather than ignored. A gateway with no environment
+			// resolves this to "" and then authenticates with an empty
+			// password, which the relay reports as a bad credential — so the
+			// one configuration that cannot work is the one that would look
+			// like somebody else's fault.
+			if m.AuthPassEnv != "" {
+				return nil, fmt.Errorf("relay group %q member %q: 'auth_pass_env' is not supported — "+
+					"this gateway reads no environment, so it would authenticate with an empty password; "+
+					"set the password on the relay in the console instead", name, m.Name)
 			}
 		}
 
@@ -261,13 +259,18 @@ func (t *Table) AuthenticatedMX() []string {
 	return out
 }
 
-// PlaintextCredentials lists relays carrying a literal auth_pass, so startup can
-// warn about them without printing the value.
+// PlaintextCredentials lists relays carrying a password, so startup can name
+// them without printing the value.
+//
+// It no longer excludes relays using auth_pass_env — that field is refused at
+// load time, so a table containing one does not exist. The old exclusion is
+// worth remembering: it meant the single configuration that silently broke was
+// the one configuration nothing reported.
 func (t *Table) PlaintextCredentials() []string {
 	var out []string
 	for _, name := range t.Names() {
 		for _, m := range t.groups[name].Members {
-			if m.AuthPass != "" && m.AuthPassEnv == "" {
+			if m.AuthPass != "" {
 				out = append(out, name+"/"+m.Name)
 			}
 		}

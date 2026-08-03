@@ -43,9 +43,21 @@ jobs:
             - name: Build
               run: go build ./...
 
-            # The shipped config must stay loadable; this is the same check an
-            # operator runs before a reload.
-            - name: Validate shipped configuration
+            # There is deliberately no configuration-validation step here any
+            # more. It used to run `check -config` over two sample directories,
+            # which stopped being meaningful when Central Management became the
+            # only configuration source: there is no directory to validate, and
+            # `check` reads a gateway's own cache, which CI has none of.
+            #
+            # The equivalent assertion now lives in the test run above, against
+            # the shape a gateway is actually given — a bundle:
+            #   internal/config  TestBundleConfig_FixtureIsAccepted
+            #   cmd/mailgw-go    TestLoadBundle_FixtureCompiles
+            # If you are looking for "does the shipped config still load?",
+            # that is where it went.
+            - name: Assert no configuration can come from this host
               run: |
-                  go run ./cmd/mailgw-go check -config ./testdata/config
-                  go run ./cmd/mailgw-go check -config ../mailgw-go/config
+                  if grep -rn 'os\.Getenv\|os\.LookupEnv\|os\.Environ' --include='*.go' . | grep -v '_test\.go'; then
+                      echo "The gateway must read no environment variables."
+                      exit 1
+                  fi

@@ -19,25 +19,32 @@ cd certs && bun install && cd ..
 pnpm certs                   # the console will not boot without these
 ```
 
-Then the gateway on its own, which needs nothing else running:
+Then the gateway on its own:
 
 ```bash
 cd mailgw-go
-go run ./cmd/mailgw-go check -config ./testdata/config
-go run ./cmd/mailgw-go serve -config ./testdata/config
+go run ./cmd/mailgw-go serve -data /tmp/mailgw-dev
 ```
 
-::: warning Point the spool somewhere writable
-`testdata/config/server.yaml` has `outbound.spool_dir: /opt/mailgw-go/queue`,
-which an unprivileged user cannot create. Change it, or the gateway exits with
-`cannot open spool`.
+::: warning It will not relay until it is provisioned
+There is no way to hand a gateway a configuration from this host — Central
+Management is the only source. Run with no bundle and it boots empty, generates
+an identity and waits at `http://localhost:8080` with a claim code in its log.
+
+To exercise the mail path, bring up the whole stack and provision it (below)
+rather than running the binary alone. To exercise the *rule engine* without a
+console, `go test ./internal/ruleset/` is the faster loop.
 :::
 
 Or the whole stack:
 
 ```bash
-docker compose up            # mariadb, logservice, mailgw-go, webui, mailhog
+docker compose up -d         # mariadb, logservice, mailgw-go, webui, mailhog
+pnpm provision               # drive the console: profiles, approve, deploy
 ```
+
+`pnpm provision` is what replaces the config directory the dev stack used to
+mount. It is idempotent. See `tests/README.md`.
 
 ## The loop
 
@@ -46,7 +53,6 @@ cd mailgw-go
 gofmt -l .                   # must print nothing
 go vet ./...
 go test -race ./...
-go run ./cmd/mailgw-go check -config ./testdata/config
 ```
 
 ```bash
@@ -84,24 +90,28 @@ one. Use `./bump.sh`.
 1. Read the relevant `plans/M<n>-*.md` — the reasoning is usually there already.
 2. Write the test first, and **check it fails without the fix**. A green test
    that would also be green without your change proves nothing.
-3. `go test -race ./...`, then `check`, then the Bun SMTP suite.
+3. `go test -race ./...`, then the Bun SMTP suite against a provisioned stack.
 4. If it changes behaviour on the wire, say so in `CLAUDE.md`.
 
 ## Making a change to configuration shape
 
-Anything the gateway reads has **two** sources — a file and a bundle key — and
-both must move together:
+Anything the gateway reads comes from the bundle, and nowhere else:
 
-1. `internal/config`: the struct, the file load, validation.
+1. `internal/config`: the struct and its validation.
 2. `internal/config/bundle.go`: the bundle field, and `RedactBundle` if it is a
    secret.
-3. `cmd/mailgw-go/configcmd.go`: so `config show` covers it in file mode.
-4. `cmd/mailgw-go/gateway.go`: `restartRequired`, unless it hot-swaps.
-5. The console: `bundle.ts`, and a migration if it is stored.
-6. Both sample `server.yaml` files.
+3. `cmd/mailgw-go/gateway.go`: `restartRequired`, unless it hot-swaps.
+4. The console: `bundle.ts`, and a migration if it is stored.
+5. `docs/public/config/` — the reference is where an operator finds the key now
+   that there is no sample file to read.
 
-Miss step 4 and a deployed change reports "applied" while the process keeps
+Miss step 3 and a deployed change reports "applied" while the process keeps
 running the old value.
+
+**Never add a key that names an environment variable.** The gateway reads none,
+so it can only ever resolve to the empty string. `auth_pass_env` did exactly
+that and authenticated against relays with an empty password; it is now refused
+at load time.
 
 ## Adding a rule field
 

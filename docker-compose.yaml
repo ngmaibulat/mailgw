@@ -14,33 +14,26 @@ services:
         ports:
             - "25:2525" # the real SMTP port
             - "2525:2525" # kept published so `pnpm test:e2e:smtp:go` still works
-            # The local admin UI. This service is pinned to file mode (see the
-            # command below), where the UI is a read-only status page: there is
-            # nothing to provision, so there is no claim code and POST /register
-            # answers 404. A managed node locks the same UI behind a claim code.
+            # The local admin UI, and the ONLY way to provision this container.
+            # It boots empty and shows a claim page; the code is in its log
+            # (`docker compose logs mailgw-go`).
             - "8080:8080"
-        environment:
-            API_KEY: ${API_KEY:-}
-        # File mode, pinned — the image's own default is now managed mode.
+        # No `command:` and no `environment:`, exactly like the production edge
+        # node in deploy/gateway/.
         #
-        # This is deliberate and load-bearing for the test suite: a managed
-        # gateway does not serve SMTP until an operator has approved it in the
-        # console and deployed a configuration, so `pnpm test:e2e:smtp:go`
-        # against a fresh managed stack would find nothing listening. File mode
-        # is also what `check`, `explain` and the Go contract suite run on.
-        #
-        # To exercise the real thing — wizard, approval, deploy, rollback —
-        # delete this line. The container then boots empty, generates an
-        # identity, and waits at http://localhost:8080.
-        command:
-            ["-config", "/opt/mailgw-go/config", "-admin", "0.0.0.0:8080"]
+        # This service used to be pinned to file mode with -config and a config
+        # mount, because a managed gateway does not relay until it has been
+        # approved and deployed to — so the SMTP e2e suite could just `up` and
+        # send. File mode no longer exists: Central Management is the only
+        # configuration source, so this stack has to be provisioned like a real
+        # one. `pnpm test:e2e:smtp` does that first; see tests/README.md.
         volumes:
-            - ./mailgw-go/config:/opt/mailgw-go/config:ro
             # Named volumes, not binds: the image runs as uid 65532 and would
             # otherwise need the host directories chowned to match.
             - mailgw_go_queue:/opt/mailgw-go/queue
             # The SQLite store: gateway identity (an Ed25519 private key) and
-            # the cached configuration.
+            # the cached configuration. Deleting this volume makes the node a
+            # stranger to the console, and it must be approved again.
             - mailgw_go_data:/var/lib/mailgw-go
         depends_on:
             logservice:

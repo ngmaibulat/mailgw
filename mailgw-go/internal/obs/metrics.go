@@ -480,11 +480,11 @@ func (m *Metrics) WritePrometheus(w io.Writer, g Gauges) error {
 		value      int
 	}{
 		{"mailgw_config_version",
-			"The configuration version currently applied; 0 in file mode.", g.ConfigVersion},
+			"The configuration version currently applied; 0 before the first deploy.", g.ConfigVersion},
 		{"mailgw_managed",
-			"1 when this gateway takes its configuration from Central Management.", boolGauge(g.Managed)},
+			"Always 1: Central Management is a gateway's only configuration source. Kept because the name is a dashboard contract.", boolGauge(g.Managed)},
 		{"mailgw_approved",
-			"1 when Central Management has approved this gateway; always 0 in file mode.", boolGauge(g.Approved)},
+			"1 when Central Management has approved this gateway.", boolGauge(g.Approved)},
 		{"mailgw_serving",
 			"1 when the SMTP listeners are up.", boolGauge(g.Serving)},
 	}

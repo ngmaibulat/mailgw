@@ -3,8 +3,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -613,9 +611,8 @@ func (a *Auth) Lookup(user string) (string, bool) {
 // offering a mechanism no credential can satisfy is an invitation to guess.
 func (a *Auth) Enabled() bool { return a != nil && len(a.Users) > 0 }
 
-// Config is everything loaded from the config directory.
+// Config is everything a gateway runs on, decoded from one deployed bundle.
 type Config struct {
-	Dir       string
 	Server    Server
 	Logging   Logging
 	Admin     Admin
@@ -626,9 +623,9 @@ type Config struct {
 
 // DefaultSpoolDir is the compiled-in outbound spool location.
 //
-// Exported so a centrally-managed gateway can tell "the operator chose this"
-// from "nobody said anything": a bundle with no server profile lands here, and
-// a managed node given -data /var/lib/mailgw-go usually cannot write it.
+// Exported so the gateway can tell "the operator chose this" from "nobody said
+// anything": a bundle with no server profile lands here, and the process
+// substitutes <data>/queue instead, which it is guaranteed to be able to write.
 const DefaultSpoolDir = "/opt/mailgw-go/queue"
 
 // DefaultShutdownTimeout is the compiled-in teardown budget.
@@ -720,105 +717,25 @@ func defaults() Server {
 	}
 }
 
-// ParseServer builds a Server from server.yaml bytes: the defaults, the file
-// unmarshalled over them, then validation. name appears only in error messages.
+// ParseServer builds a Server from server-profile bytes: the defaults, the
+// profile unmarshalled over them, then validation. name appears only in error
+// messages.
 //
-// strict rejects unknown keys. It is used only on the central path: that text
-// came from a console textarea an operator typed into, which is exactly the
-// case a silently-ignored typo should be caught in. The file path stays lax so
-// an existing deployment carrying a stray key keeps booting — which is also why
-// the two paths can disagree, and why `check` says which one it used.
-func ParseServer(raw []byte, name string, strict bool) (Server, error) {
+// Always strict. The text came from a console textarea an operator typed into,
+// which is exactly the case a silently-ignored typo should be caught in. This
+// used to take a strict flag because a second, lax path read the same keys off
+// disk — so the two sources could disagree about the same bytes, and `check`
+// had to say which one it had used.
+func ParseServer(raw []byte, name string) (Server, error) {
 	s := defaults()
 
-	unmarshal := yaml.Unmarshal
-	if strict {
-		unmarshal = yaml.UnmarshalStrict
-	}
-	if err := unmarshal(raw, &s); err != nil {
+	if err := yaml.UnmarshalStrict(raw, &s); err != nil {
 		return s, fmt.Errorf("parse %s: %w", name, err)
 	}
 	if err := s.validate(); err != nil {
 		return s, err
 	}
 	return s, nil
-}
-
-// Load reads and validates the whole config directory.
-func Load(dir string) (*Config, error) {
-	cfg := &Config{Dir: dir, Server: defaults()}
-
-	// server.yaml is optional; the defaults above are a working configuration
-	// for everything except the relay table.
-	serverPath := filepath.Join(dir, FileServer)
-	if raw, err := os.ReadFile(serverPath); err == nil {
-		srv, perr := ParseServer(raw, serverPath, false)
-		if perr != nil {
-			return nil, perr
-		}
-		cfg.Server = srv
-	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("read %s: %w", serverPath, err)
-	}
-
-	loggingPath := filepath.Join(dir, FileLogging)
-	if raw, err := os.ReadFile(loggingPath); err == nil {
-		if err := json.Unmarshal(raw, &cfg.Logging); err != nil {
-			return nil, fmt.Errorf("parse %s: %w", loggingPath, err)
-		}
-	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("read %s: %w", loggingPath, err)
-	}
-
-	// Optional, like logging.json above: a directory that predates the admin
-	// token is a valid directory, and no token means the endpoints stay open.
-	adminPath := filepath.Join(dir, FileAdmin)
-	if raw, err := os.ReadFile(adminPath); err == nil {
-		if err := json.Unmarshal(raw, &cfg.Admin); err != nil {
-			return nil, fmt.Errorf("parse %s: %w", adminPath, err)
-		}
-	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("read %s: %w", adminPath, err)
-	}
-
-	// Optional for the same reason: a directory that predates inbound AUTH is a
-	// valid directory, and no credentials means AUTH is never offered.
-	authPath := filepath.Join(dir, FileAuth)
-	if raw, err := os.ReadFile(authPath); err == nil {
-		if err := json.Unmarshal(raw, &cfg.Auth); err != nil {
-			return nil, fmt.Errorf("parse %s: %w", authPath, err)
-		}
-	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("read %s: %w", authPath, err)
-	}
-
-	tbl, err := relays.Load(filepath.Join(dir, FileRelays))
-	if err != nil {
-		return nil, err
-	}
-	cfg.Relays = tbl
-
-	// A failed allowlist load is fatal: this is the only gate protecting the
-	// relay, so refusing to start is the correct fail-closed response.
-	list, err := LoadAllowlist(filepath.Join(dir, FileFilter))
-	if err != nil {
-		return nil, err
-	}
-	cfg.Allowlist = list
-
-	if err := cfg.Server.validate(); err != nil {
-		return nil, err
-	}
-	if err := cfg.validateRelayRefs(); err != nil {
-		return nil, err
-	}
-	if err := cfg.validateAuth(); err != nil {
-		return nil, err
-	}
-	if err := cfg.validateDKIM(); err != nil {
-		return nil, err
-	}
-	return cfg, nil
 }
 
 // validateRelayRefs checks the parts of server.yaml that name a relay group.

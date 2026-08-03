@@ -31,7 +31,6 @@ pnpm build:containers              # the above, plus the legacy Haraka image
 
 ```bash
 cd mailgw-go && gofmt -l . && go vet ./... && go test -race ./...
-go run ./cmd/mailgw-go check -config ./testdata/config
 cd ../webui-fastify && pnpm typecheck && pnpm check && pnpm test
 cd ../logservice && bun test tests/
 ```

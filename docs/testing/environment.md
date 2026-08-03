@@ -37,50 +37,51 @@ brew install swaks              # macOS
 Check the compose file — these are the development defaults and your deployment
 may differ.
 
-## Two modes, and which plans need which
+## Every plan runs against a provisioned stack
 
-| Plan | File mode | Managed |
-|---|---|---|
-| TP-01 … TP-07 | yes | yes |
-| TP-08, TP-09 | — | **managed only** |
-| TP-10 | yes | yes |
-
-TP-08 and TP-09 test provisioning and versioned deployment, which only exist in
-managed mode.
-
-::: warning The development compose pins the gateway to file mode
-`docker-compose.yaml` passes `-config /opt/mailgw-go/config` deliberately: a
-managed gateway does not serve SMTP until an operator has approved it and
-deployed a configuration, so `pnpm test:e2e:smtp:go` against a fresh managed
-stack would find nothing listening.
-
-In that configuration the admin UI is a **read-only status page** — there is no
-claim code and `POST /register` answers `404`, so **TP-08 and TP-09 cannot be run
-against it as shipped.** Delete the `command:` line from the `mailgw-go` service
-and recreate the container; it then boots empty and waits at
-`http://localhost:8080`.
-:::
-
-For file-mode plans, run the gateway against a configuration directory you can
-edit:
+There is one mode. A gateway takes its whole configuration from Central
+Management — no environment, no arguments, no config files — so **every plan
+starts from a stack you have provisioned**, and there is no shortcut past it.
 
 ```bash
-cp -r mailgw-go/testdata/config /tmp/tp-config
-# edit /tmp/tp-config/server.yaml so outbound.spool_dir points somewhere writable
-cd mailgw-go && go run ./cmd/mailgw-go serve -config /tmp/tp-config
+pnpm certs                   # once: the console's TLS pair
+docker compose up -d
+pnpm provision               # profiles, approval, deploy — idempotent
 ```
 
-::: warning The default spool directory is not writable
-`outbound.spool_dir` defaults to `/opt/mailgw-go/queue`. Change it before you
-start, or the gateway exits with `cannot open spool` and every plan is blocked at
-step 1.
+`pnpm provision` is what makes the gateway relay: it creates the first admin, a
+relay group pointing at MailHog and the ruleset/allowlist/server profiles, waits
+for the gateway to register itself, approves its fingerprint, assigns and
+deploys. Until it has run, the gateway is listening on `:8080` with a claim code
+and **not** on SMTP — which is correct behaviour, not a broken stack.
+
+::: tip This used to be two modes
+Plans previously ran in "file mode" against a config directory
+(`mailgw-go/testdata/config` copied to `/tmp/tp-config`), and `docker-compose.yaml`
+pinned it. Both are gone. Where a plan says "edit `ngmfilter.json`", edit the
+**`lab-allowlist` profile** in the console and press Deploy; the profile bodies
+are the same text.
 :::
+
+**TP-08 and TP-09** test provisioning and versioned deployment. Run them against
+a stack you have NOT yet provisioned — `docker compose down -v && docker compose
+up -d`, then work through the wizard by hand instead of running `pnpm provision`.
+
+## Changing configuration mid-plan
+
+Every "edit the config and reload" step is now: edit the profile in the console,
+press **Deploy**, and watch it land. It applies within a second (a WebSocket
+notification; the 15s poll is the backstop). `SIGHUP` still works and means
+"re-apply the cached bundle".
+
+A configuration the gateway refuses to compile leaves the running one in force
+and comes back as `apply_error` on the gateway's page — that is the intended
+behaviour and several plans exercise it deliberately.
 
 ## Resetting between plans
 
 ```bash
-docker compose down -v && docker compose up -d     # everything, including the database
-rm -rf /tmp/tp-config/../queue/*                   # just the spool
+docker compose down -v && docker compose up -d && pnpm provision
 ```
 
 A plan that leaves mail in the queue affects the next one. The cleanup section of

@@ -45,16 +45,6 @@ func runClaim(args []string) int {
 
 	o := mustParse("claim "+sub, args, nil)
 
-	// A file-mode gateway has no store and nothing to claim: its admin UI is a
-	// read-only status page, and its operator already has the filesystem.
-	if o.configSet {
-		fmt.Fprintln(os.Stderr,
-			"claim: this gateway runs from a configuration directory, so its admin UI\n"+
-				"  has nothing to provision and no claim code. Drop -config to manage it\n"+
-				"  centrally.")
-		return 1
-	}
-
 	st, err := store.Open(o.dataDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "claim: %v\n", err)

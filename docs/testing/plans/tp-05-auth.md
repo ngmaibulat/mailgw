@@ -8,7 +8,9 @@ rule fields work.
 
 ## Preconditions
 
-- File mode, so you can edit `auth.json`.
+- A provisioned stack. Credentials are a **credential set** in the console
+  (`/config/credentials`), not an `auth.json` file; assign one to the gateway and
+  Deploy.
 - A TLS keypair available ([TP-04](/plans/tp-04-tls) passed).
 - A bcrypt hash for a known password. Any bcrypt tool; from the console:
 
@@ -189,9 +191,9 @@ Confirm with `check`: the rule's inferred stage is **mail**.
 ### 15. explain can model it
 
 ```bash
-go run ./cmd/mailgw-go explain -config /tmp/tp-config \
+go run ./cmd/mailgw-go explain \
     --rcpt b@ngm.dev --from a@x.com
-go run ./cmd/mailgw-go explain -config /tmp/tp-config \
+go run ./cmd/mailgw-go explain \
     --rcpt b@ngm.dev --from a@x.com -auth-user app@example.com
 ```
 
@@ -205,7 +207,7 @@ refused; the second shows it **not matched** and the route resolved.
 ```
 
 ```bash
-go run ./cmd/mailgw-go check -config /tmp/tp-config
+go run ./cmd/mailgw-go check
 ```
 
 **Expected.** Non-zero exit, saying the value is not a bcrypt hash.

@@ -269,9 +269,17 @@ empty, is provisioned through the wizard, and takes everything else from Central
 Management. That forced three things out of the gateway and into the bundle
 (§5.7 below), made the admin UI a permanent listener rather than an opt-in one,
 and turned `deploy/gateway` into a compose file with no `command:` and no
-`environment:` at all. `-config <dir>` survives as a CLI capability, unchanged,
+`environment:` at all. `-config <dir>` survived as a CLI capability at the time,
 because `check`, `explain`, `testdata/config`, the contract suite and the Bun
-SMTP e2e all run on it.
+SMTP e2e all ran on it.
+
+> **Superseded (M18).** That second configuration source is gone: `-config`, the
+> directory loader, the sample config directories and every environment variable
+> the gateway read have been removed, and the standing decision "File mode must
+> not regress" was reversed. Four defects came out with it, including a relay
+> `auth_pass_env` that authenticated with an empty password. See
+> [M18](./M18-zero-config-audit.md) and
+> `docs/internal/architecture/decisions.md`.
 
 **The `Source` interface was dropped.** `Load() (*loaded, error)` has nowhere to
 carry the version id or the `MarkApplied`/`MarkApplyError` bookkeeping the

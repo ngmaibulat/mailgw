@@ -3,9 +3,13 @@
 # mailgw-go logs to stdout (docker logs), so unlike Haraka there is no log dir.
 set -euo pipefail
 
-# A managed node has no config directory: the rule set, the allowlist, the relay
+# This node has no config directory: the rule set, the allowlist, the relay
 # table and the logservice endpoints all arrive from Central Management. Only the
 # two stateful directories are needed.
+#
+# The queue is mounted at /var/lib/mailgw-go/queue inside the container, beside
+# the store rather than at /opt — that is where a gateway spools when the
+# deployed server profile does not name a directory, which is the normal case.
 if [ ! -d /opt/mailgw-go/queue ]; then
     echo "Creating /opt/mailgw-go/queue (outbound spool)."
     mkdir -p /opt/mailgw-go/queue

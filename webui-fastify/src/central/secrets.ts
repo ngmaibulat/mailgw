@@ -22,9 +22,14 @@ import crypto from "node:crypto";
 // credential for every gateway, not just its own.
 //
 // So bundles carry plaintext, over TLS, to a gateway that already needs the
-// password in memory to use it. The genuinely stronger option for anyone who
-// wants it is `auth_pass_env`, which keeps the credential out of the bundle
-// entirely (migration 022, mailgw-go's relays.Relay.Password()).
+// password in memory to use it.
+//
+// This used to recommend `auth_pass_env` as the stronger option, naming a
+// variable on the gateway instead. That advice was wrong and actively harmful:
+// a gateway reads NO environment, so it resolved to an empty password and the
+// relay answered "535 authentication failed" — an error pointing at a wrong
+// credential rather than an absent one. The gateway refuses a bundle carrying
+// the field, and it is no longer emitted or offered in the relay form.
 //
 // # Format
 //

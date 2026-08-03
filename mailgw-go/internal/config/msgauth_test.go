@@ -14,7 +14,7 @@ import (
 // before msgauth existed: no DNS, no second pass over the body, no header added
 // and nothing stripped.
 func TestMsgAuth_DefaultsAreOff(t *testing.T) {
-	s, err := ParseServer([]byte("hostname: mx.ngm.dev\n"), FileServer, false)
+	s, err := ParseServer([]byte("hostname: mx.ngm.dev\n"), FileServer)
 	if err != nil {
 		t.Fatalf("ParseServer: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestMsgAuth_Validate(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := ParseServer([]byte(base+c.yaml), FileServer, false)
+			_, err := ParseServer([]byte(base+c.yaml), FileServer)
 			if err == nil {
 				t.Fatalf("want an error mentioning %q, got none", c.wantErr)
 			}
@@ -133,7 +133,7 @@ func TestMsgAuth_ValidateAccepts(t *testing.T) {
 	}
 	for name, y := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := ParseServer([]byte("hostname: mx.ngm.dev\n"+y), FileServer, false); err != nil {
+			if _, err := ParseServer([]byte("hostname: mx.ngm.dev\n"+y), FileServer); err != nil {
 				t.Fatalf("ParseServer: %v", err)
 			}
 		})
@@ -188,24 +188,5 @@ func TestValidateDKIM_ReadsTheKeyFiles(t *testing.T) {
 	off.Server.MsgAuth.Sign.Enabled = false
 	if err := off.validateDKIM(); err != nil {
 		t.Errorf("keys were validated with signing off: %v", err)
-	}
-}
-
-// TestMsgAuth_SampleConfigsSpellItOut: both shipped server.yaml files carry the
-// block at its defaults, so an operator finds the keys by reading the sample
-// rather than the source — the treatment M10 gave the tls: block.
-func TestMsgAuth_SampleConfigsSpellItOut(t *testing.T) {
-	for _, dir := range []string{testdataDir, "../../config"} {
-		t.Run(dir, func(t *testing.T) {
-			raw, err := os.ReadFile(filepath.Join(dir, FileServer))
-			if err != nil {
-				t.Fatalf("read: %v", err)
-			}
-			for _, want := range []string{"msgauth:", "authserv_id", "max_dkim_signatures", "sign:", "canonicalization"} {
-				if !strings.Contains(string(raw), want) {
-					t.Errorf("%s/%s does not mention %q", dir, FileServer, want)
-				}
-			}
-		})
 	}
 }

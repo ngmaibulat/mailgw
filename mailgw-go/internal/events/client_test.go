@@ -271,17 +271,6 @@ func TestClient_IgnoresEmptyURL(t *testing.T) {
 	}
 }
 
-func TestAPIKeyFromEnv(t *testing.T) {
-	t.Setenv("MAILGW_TEST_KEY", "abc")
-	if got := APIKeyFromEnv("MAILGW_TEST_KEY"); got != "abc" {
-		t.Errorf("got %q", got)
-	}
-	t.Setenv("API_KEY", "default-key")
-	if got := APIKeyFromEnv(""); got != "default-key" {
-		t.Errorf("empty name should fall back to API_KEY, got %q", got)
-	}
-}
-
 func spillFiles(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)

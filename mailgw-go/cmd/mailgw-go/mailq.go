@@ -104,20 +104,10 @@ func runMailq(args []string) int {
 
 // resolveSpoolDir finds the queue the same way the running gateway would.
 //
-// File mode reads outbound.spool_dir from server.yaml. Managed mode has no
-// configuration file at all, so the answer comes from the cached bundle — which
-// is why this opens the store rather than assuming <data>/queue: an operator who
-// set spool_dir in a server profile would otherwise be shown an empty queue and
-// conclude their mail had vanished.
+// The answer comes from the cached bundle rather than from <data>/queue,
+// because an operator who set outbound.spool_dir in a server profile would
+// otherwise be shown an empty queue and conclude their mail had vanished.
 func resolveSpoolDir(o opts) (string, error) {
-	if o.configSet || !o.dataSet {
-		cfg, err := config.Load(o.configDir)
-		if err != nil {
-			return "", err
-		}
-		return cfg.Server.Outbound.SpoolDir, nil
-	}
-
 	st, err := store.Open(o.dataDir)
 	if err != nil {
 		return "", err

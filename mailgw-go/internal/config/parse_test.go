@@ -2,21 +2,19 @@ package config
 
 import (
 	"net/netip"
-	"os"
-	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 )
 
-// The byte-slice entry points exist so that a configuration bundle pulled from
-// Central Management is validated by exactly the code a directory on disk is.
-// These tests are what makes "exactly" true rather than aspirational: if the
-// two paths ever diverge, that divergence is a fail-open bug in the making.
+// These tests used to assert that two entry points — bytes from a bundle and a
+// path on disk — validated a configuration identically, because a divergence
+// between them would have been a fail-open bug in the making. There is one
+// entry point now, so what is left is the contract itself: every rejection
+// must also deny.
 
-// TestParseAllowlist_MatchesLoadAllowlist runs one corpus through both entry
-// points and requires them to agree on the verdict AND on failing closed.
-func TestParseAllowlist_MatchesLoadAllowlist(t *testing.T) {
+// TestParseAllowlist_FailsClosedOverTheCorpus runs the whole corpus through
+// ParseAllowlist and requires every failure to produce a deny-all list.
+func TestParseAllowlist_FailsClosedOverTheCorpus(t *testing.T) {
 	bodies := []string{
 		`{"allowed":["127.0.0.1","::1","172.18.0.1"]}`,
 		`{"allowed":["10.0.0.0/8","2001:db8::/32"]}`,
@@ -36,26 +34,14 @@ func TestParseAllowlist_MatchesLoadAllowlist(t *testing.T) {
 	}
 
 	for _, body := range bodies {
-		path := write(t, body)
-
-		fromFile, fileErr := LoadAllowlist(path)
-		fromBytes, byteErr := ParseAllowlist([]byte(body), path)
-
-		if (fileErr == nil) != (byteErr == nil) {
-			t.Errorf("%s: LoadAllowlist err=%v but ParseAllowlist err=%v", body, fileErr, byteErr)
+		got, err := ParseAllowlist([]byte(body), "allowlist profile")
+		if err == nil {
 			continue
 		}
-		if fileErr != nil {
-			// The fail-closed contract is the whole point: a caller that
-			// ignores the error must still deny every peer.
-			if allowed(t, fromBytes, "127.0.0.1") {
-				t.Errorf("%s: a failed parse must deny every peer", body)
-			}
-			continue
-		}
-		if !reflect.DeepEqual(fromFile, fromBytes) {
-			t.Errorf("%s: file and bytes produced different allowlists:\n  file  %s\n  bytes %s",
-				body, fromFile, fromBytes)
+		// The fail-closed contract is the whole point: a caller that ignores
+		// the error must still deny every peer.
+		if allowed(t, got, "127.0.0.1") {
+			t.Errorf("%s: a failed parse must deny every peer", body)
 		}
 	}
 }
@@ -77,63 +63,25 @@ func TestParseAllowlist_EmptyInputFailsClosed(t *testing.T) {
 	}
 }
 
-// TestParseServer_MatchesLoad is the "did splitting parse from read change file
-// mode?" assertion. It is deliberately compared field for field against the
-// shipped fixture rather than against a hand-written expectation.
-func TestParseServer_MatchesLoad(t *testing.T) {
-	dir := filepath.Join("..", "..", "testdata", "config")
-
-	raw, err := os.ReadFile(filepath.Join(dir, FileServer))
-	if err != nil {
-		t.Fatalf("read fixture: %v", err)
-	}
-	parsed, err := ParseServer(raw, FileServer, false)
-	if err != nil {
-		t.Fatalf("ParseServer: %v", err)
-	}
-
-	cfg, err := Load(dir)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if !reflect.DeepEqual(parsed, cfg.Server) {
-		t.Errorf("ParseServer and Load disagree:\n  parsed %+v\n  loaded %+v", parsed, cfg.Server)
-	}
-}
-
-// The shipped fixture must survive strict parsing, or a managed gateway could
-// never be given it — which would make the central path untestable against the
-// one configuration the whole suite already trusts.
-func TestParseServer_ShippedFixtureSurvivesStrictMode(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "config", FileServer))
-	if err != nil {
-		t.Fatalf("read fixture: %v", err)
-	}
-	if _, err := ParseServer(raw, FileServer, true); err != nil {
-		t.Fatalf("the shipped server.yaml must parse strictly: %v", err)
-	}
-}
-
+// A server profile is always parsed strictly.
+//
+// This used to assert that the same bytes were ACCEPTED by a lax file-mode
+// parse and REJECTED by a strict central one — the divergence that made `check`
+// have to report which parser it had used. There is one parser now, and a
+// misspelling is an error wherever it came from: silently dropping it leaves
+// the default in place and the operator convinced they changed something.
 func TestParseServer_StrictRejectsUnknownKeys(t *testing.T) {
-	// A misspelling that a lax parser silently drops, leaving the default in
-	// place and the operator convinced they changed something.
 	body := []byte("hostnmae: relay.example\nlisten:\n  - addr: \"0.0.0.0:2525\"\n")
 
-	lax, err := ParseServer(body, FileServer, false)
-	if err != nil {
-		t.Fatalf("lax parse should accept an unknown key: %v", err)
-	}
-	if lax.Hostname != "localhost" {
-		t.Errorf("expected the default hostname to survive, got %q", lax.Hostname)
-	}
-
-	if _, err := ParseServer(body, FileServer, true); err == nil {
-		t.Fatal("strict parse must reject an unknown key")
+	if _, err := ParseServer(body, FileServer); err == nil {
+		t.Fatal("an unknown key must be rejected")
+	} else if !strings.Contains(err.Error(), "hostnmae") {
+		t.Errorf("the error must name the offending key, got: %v", err)
 	}
 }
 
 func TestParseServer_DefaultsAndValidation(t *testing.T) {
-	s, err := ParseServer(nil, FileServer, false)
+	s, err := ParseServer(nil, FileServer)
 	if err != nil {
 		t.Fatalf("an empty server profile should yield the defaults: %v", err)
 	}
@@ -144,7 +92,7 @@ func TestParseServer_DefaultsAndValidation(t *testing.T) {
 		t.Errorf("spool dir default = %q, want %q", s.Outbound.SpoolDir, DefaultSpoolDir)
 	}
 
-	if _, err := ParseServer([]byte(`hostname: ""`), FileServer, false); err == nil {
+	if _, err := ParseServer([]byte(`hostname: ""`), FileServer); err == nil {
 		t.Error("validation must still run on the byte path")
 	}
 }

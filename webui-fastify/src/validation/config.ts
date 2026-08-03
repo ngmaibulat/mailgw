@@ -35,7 +35,6 @@ export const relayInsert = createInsertSchema(relays)
         priority: true,
         auth_user: true,
         auth_pass: true,
-        auth_pass_env: true,
         tls: true,
         allow_insecure_auth: true,
         use_mx: true,

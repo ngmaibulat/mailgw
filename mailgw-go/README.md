@@ -131,11 +131,11 @@ whole SMTP contract suite runs through the compiled engine.
 ```bash
 go build ./... && go vet ./... && go test -race ./...
 
-./mailgw-go check -config ./testdata/config    # validate config; non-zero on error
-./mailgw-go serve -config ./testdata/config    # run
+./mailgw-go check    # validate the cached bundle; non-zero on error
+./mailgw-go serve    # run
 ./mailgw-go fields                             # list every matchable field
 ./mailgw-go convert-routing routing.json > routing.yaml
-./mailgw-go explain -config ./testdata/config \
+./mailgw-go explain \
     --ip 10.20.0.5 --helo box --from a@x.com --rcpt b@ngm.dev \
     [--stage connect|helo|mail|rcpt|data] [--tls] [--eml msg.eml]
 ./mailgw-go -version
@@ -151,14 +151,14 @@ go build ./... && go vet ./... && go test -race ./...
 ### The queue
 
 ```bash
-./mailgw-go mailq -config ./testdata/config           # list every envelope
-./mailgw-go mailq -config ./config -q quarantine      # just what is held
-./mailgw-go mailq -config ./config -json              # for a monitoring script
-./mailgw-go mailq flush   -config ./config            # everything ready, due now
-./mailgw-go mailq flush   -config ./config <uuid>...
-./mailgw-go mailq release -config ./config <uuid>...  # quarantine -> queue
-./mailgw-go mailq hold    -config ./config <uuid>...  # queue -> quarantine
-./mailgw-go mailq rm      -config ./config <uuid>...
+./mailgw-go mailq           # list every envelope
+./mailgw-go mailq -q quarantine      # just what is held
+./mailgw-go mailq -json              # for a monitoring script
+./mailgw-go mailq flush              # everything ready, due now
+./mailgw-go mailq flush   <uuid>...
+./mailgw-go mailq release <uuid>...  # quarantine -> queue
+./mailgw-go mailq hold    <uuid>...  # queue -> quarantine
+./mailgw-go mailq rm      <uuid>...
 ```
 
 Run it as the user the gateway runs as. It attaches to an existing spool and
@@ -180,11 +180,11 @@ answered 4xx — is parked in `failed-events/` rather than lost. Mail delivery
 never waits on the audit trail, so this is the price of that.
 
 ```sh
-./mailgw-go events        -config ./config           # what is parked, oldest first
-./mailgw-go events        -config ./config -all      # include rejected/
-./mailgw-go events        -config ./config -json     # for a monitoring script
-./mailgw-go events replay -config ./config           # resend everything now
-./mailgw-go events rm     -config ./config <file>... # give up on some
+./mailgw-go events                  # what is parked, oldest first
+./mailgw-go events        -all      # include rejected/
+./mailgw-go events        -json     # for a monitoring script
+./mailgw-go events replay           # resend everything now
+./mailgw-go events rm     <file>... # give up on some
 ```
 
 The gateway also replays on its own every `events.replay_interval` (default 5m;
@@ -281,22 +281,31 @@ Two distinctions worth knowing:
 
 | Flag | Default | Applies to | Purpose |
 |---|---|---|---|
-| `-config` | `/opt/mailgw-go/config` | all | Configuration directory. **Giving it explicitly selects file mode.** |
-| `-data` | `/var/lib/mailgw-go` | `serve` | SQLite store: gateway identity and cached configuration |
+| `-data` | `/var/lib/mailgw-go` | all | SQLite store: gateway identity and cached configuration |
 | `-admin` | `0.0.0.0:8080` | `serve` | Admin UI bind address; `""` disables it |
 | `-version` | — | all | Print the version and exit |
 
+That is the whole command line, and the defaults are what the container runs on
+— the image has no `CMD` at all. **Neither flag is configuration**: `-data` is
+where a configuration is *cached* and `-admin` is how a node that has none yet
+gets one, which is precisely why neither can arrive in a bundle.
+
+There used to be a `-config <dir>` here that selected a file mode. It is gone,
+along with the directory loader and the sample config directories; see
+[the standing decision](../docs/internal/architecture/decisions.md).
+
 ### Environment
 
-| Variable | Read by | Purpose |
-|---|---|---|
-| `API_KEY` | `internal/events` | Sent as `X-API-Key` on logservice POSTs. The variable *name* comes from `server.yaml`'s `events.api_key_env`, which defaults to `API_KEY`. |
-| *(per relay)* | `internal/relays` | A relay's `auth_pass_env` names a variable holding its password, keeping the credential out of `relays.json`. |
+**None.** The gateway reads no environment variables at all, and CI fails the
+build if `os.Getenv` appears in non-test code.
 
-**Both are file-mode conveniences.** A managed gateway reads **no environment at
-all** — that is the point of it. The logservice key arrives in the configuration
-bundle as `logging.api_key`, and an explicit value there wins over a variable
-name to look up.
+Two used to exist and both are instructive. `events.api_key_env` named the
+variable holding the logservice credential; it now arrives in the bundle as
+`logging.api_key`. A relay's `auth_pass_env` named the variable holding its
+password — on a gateway with no environment that resolved to the **empty
+string**, so the gateway authenticated with an empty password and the relay
+answered "535 authentication failed", which points at a credential being wrong
+rather than absent. It is refused at load time now, by name.
 
 `check` is worth running before any reload: it validates the relay table, every
 rule against it and against the field registry, and the allowlist; it warns
@@ -313,17 +322,17 @@ refused with a message saying so.
 
 ## Configuration
 
-There are two modes, chosen by whether `-config` appears on the command line.
+There is one source: Central Management. The gateway boots with no configuration
+at all — no environment, no arguments, no files — which is how the container
+runs it. It generates an Ed25519 keypair, serves the local wizard from `-admin`,
+and registers with a console where an operator approves its fingerprint.
+Identity and the configuration cache live in `-data` as SQLite.
 
-**File mode (`-config <dir>`)** is everything below: one directory on disk, read
-at startup and on `SIGHUP`. This is what `check`, `explain`, the test suites and
-both compose stacks use today.
-
-**Managed mode (no `-config`)** boots with no configuration at all — and with no
-environment and no arguments either, which is how the container runs it. The
-gateway generates an Ed25519 keypair, serves the local wizard from `-admin`, and
-registers with a Central Management console where an operator approves its
-fingerprint. Identity and the configuration cache live in `-data` as SQLite.
+A second source used to exist: `-config <dir>` read a directory at startup and
+on `SIGHUP`, and `check`, `explain`, the test suites and both compose stacks ran
+on it. It is gone. The sections below describe the *shape* of a configuration,
+which is unchanged — bundle keys are named for the files they replaced — but
+nothing reads a file of those names.
 
 Once approved and deployed to, it pulls a signed, versioned bundle, compiles it,
 applies it and starts serving. After that:
@@ -350,27 +359,24 @@ applies it and starts serving. After that:
 `check`, `explain` and `config show` all accept `-data` and read the cache, so
 "what is this box actually running, and is it valid?" is answerable on the box.
 
-Adding `-admin` to file mode is also allowed and gives a read-only status page.
+### The configuration
 
-### The configuration directory
-
-Lives in one directory (`/opt/mailgw-go/config` in the container). Three files
-are reused from Haraka **unchanged** — `relays.json`, `ngmfilter.json`,
-`logging.json` — and `routing.json` is read in its existing format.
+Every one of these is a **key in the deployed bundle**, named for the Haraka
+file it replaced so a configuration stays diffable against the thing it came
+from. `relays.json`, `ngmfilter.json` and `logging.json` keep their Haraka
+shapes unchanged.
 
 `server.yaml` replaces `connection.ini`, `smtp.ini`, `log.ini`, `me`,
-`smtpgreeting` and `host_list`. See `testdata/config/server.yaml`, which is
-annotated with the Haraka setting each value came from.
+`smtpgreeting` and `host_list`. The full key reference, with the Haraka setting
+each value came from, is in `docs/public/config/`.
 
-`routing.yaml` is the rule file described above. It is optional: without it,
-`routing.json` is read in its existing Haraka format and transpiled.
-`testdata/config/` ships a worked `routing.yaml`; `config/` deliberately keeps
-only `routing.json`, so CI exercises both paths.
+`routing.yaml` is the rule file described above, and is optional — without it
+`default_action` answers every recipient. A Haraka `routing.json` can be
+transpiled into it with `mailgw-go convert-routing`, which is a migration tool:
+nothing reads a `routing.json` at runtime.
 
 `admin.json` is optional too, and holds `metrics_token` — the bearer token for
-`/metrics` and `/readyz`. It has a bundle key of the same name, which is the
-rule for every file here: a bundle's keys are this directory's files one for
-one, so a deployed configuration is diffable against a directory.
+`/metrics` and `/readyz`.
 
 ## Testing
 
@@ -390,12 +396,11 @@ Three endpoints on the admin listener (`-admin`, default `0.0.0.0:8080`):
 | Endpoint | Auth | Answers |
 |---|---|---|
 | `GET /healthz` | always open | Is the process alive? Liveness only — no store, no console. A console outage must never get the process killed, and a container runtime probing it cannot present a credential. |
-| `GET /readyz` | bearer token, when one is set | Should traffic go here? Provisioned, approved, a configuration applied, and SMTP listening. In file mode, just "is it listening". |
+| `GET /readyz` | bearer token, when one is set | Should traffic go here? Provisioned, approved, a configuration applied, and SMTP listening. |
 | `GET /metrics` | bearer token, when one is set | Prometheus text. Counters are `mailgw_*_total`, plus `mailgw_build_info`, `mailgw_config_version` and the queue depths. |
 
-The token is `admin.metrics_token` — `admin.json` in file mode, the bundle's
-`admin` key under central management, where it comes from the console's
-`GATEWAY_METRICS_TOKEN`. Unset means **open**, which is what every deployment
+The token is `admin.metrics_token`, the bundle's `admin` key, which comes from
+the console's `GATEWAY_METRICS_TOKEN`. Unset means **open**, which is what every deployment
 that firewalled this port already has; a scraper presents it as a bearer header,
 not as a session cookie, because it has no browser to sign in with. It is read
 live, so a deploy that only changes it needs no restart.
@@ -481,8 +486,6 @@ the text format for a counter is three lines.
   admin listener (`-admin-tls`, paths on the gateway's own filesystem, never in
   a bundle) is the tracked follow-up.
 
-  **In file mode none of this applies** — that gateway owns its configuration on
-  disk, has nothing to provision, and the UI is a read-only status page.
 - **The IP allowlist is the only gate by default.** With no policy rule saying
   otherwise the recipient stage accepts every address, matching `npFilter.js:73`.
   Starting with an empty allowlist is refused unless `allow_all: true` is set

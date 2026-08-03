@@ -21,6 +21,17 @@ Every transition is a `rename(2)` **within one filesystem**, so a crash leaves a
 file in its old location or its new one, never half-written. Put the spool on one
 volume; splitting it across mount points breaks that guarantee.
 
+### Where `<spool_dir>` actually is
+
+`outbound.spool_dir` in the deployed server profile, if it names one. If it does
+not — the normal case — the gateway spools to **`<data>/queue`**, i.e.
+`/var/lib/mailgw-go/queue` inside the container.
+
+On an edge node deployed from `deploy/gateway/`, that is bind-mounted to
+**`/opt/mailgw-go/queue`** on the host, which is the path to inspect and to back
+up. Note it is a *sibling* of the data directory on the host but a *child* of it
+inside the container.
+
 Queue filenames carry a zero-padded due-second, so a lexical sort *is* due order
 and nothing has to be opened to find the next job. That is also what lets the
 scheduler sleep until something is genuinely due, rather than waking on a fixed
@@ -36,8 +47,8 @@ moved back to `q/` at startup rather than discarded.
 ## Inspecting it
 
 ```bash
-mailgw-go mailq -config ./config          # everything, as a table
-mailgw-go mailq -json -config ./config    # the same, machine-readable
+mailgw-go mailq          # everything, as a table
+mailgw-go mailq -json    # the same, machine-readable
 ```
 
 You get one line per envelope: its uuid, which directory it is in, its sender and
@@ -54,7 +65,9 @@ mailgw-go mailq release <uuid>...        # quarantine -> queue
 mailgw-go mailq hold <uuid>...           # queue -> quarantine
 ```
 
-All of them take `-config <dir>` or `-data <dir>`.
+All of them read the gateway's own cached configuration to find the spool, so
+run them as the user the gateway runs as. `-data <dir>` overrides where that
+cache is looked for.
 
 **`flush` after a relay comes back.** Otherwise the backoff schedule keeps a
 recovered relay waiting for up to eight hours.
@@ -98,7 +111,7 @@ a rule decided a human should look at.
 
 ```bash
 mailgw-go mailq                                    # find the uuid
-mailgw-go mailq release <uuid> -config ./config    # put it back in the queue
+mailgw-go mailq release <uuid>    # put it back in the queue
 ```
 
 ::: tip There is no console button for this yet

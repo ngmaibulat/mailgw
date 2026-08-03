@@ -12,7 +12,8 @@ collection.
 
 ## Preconditions
 
-- File mode, so you can edit `ngmfilter.json` directly.
+- A provisioned stack. Where this plan says `ngmfilter.json`, edit the
+  **`lab-allowlist` profile** in the console and press Deploy.
 - Two addresses you can connect from — loopback and one other. A second container
   or a colleague's machine will do.
 - [TP-01](/plans/tp-01-smoke) passed.
@@ -75,16 +76,15 @@ swaks --server '[::1]:2525' --quit-after CONNECT
 normalised, so listing the IPv4 form alone is enough — verify by connecting over
 IPv4 with only `127.0.0.1` listed.
 
-### 5. A missing file denies everyone
+### 5. A gateway with no allowlist denies everyone
 
-```bash
-mv /tmp/tp-config/ngmfilter.json /tmp/tp-config/ngmfilter.json.bak
-```
+Unassign the allowlist profile from the gateway (`/gateways/<id>`, clear the
+allowlist selection) and Deploy.
 
-Restart the gateway.
-
-**Expected.** The gateway **refuses to start** and says why. It does not start
-with an empty allowlist, and it does not start allowing everything.
+**Expected.** The gateway **refuses the bundle** and says why, keeping the
+configuration it is already running. It does not adopt an empty allowlist, and it
+does not start allowing everything. The reason appears as `apply_error` on the
+gateway's page in the console.
 
 ### 6. A malformed file denies everyone
 

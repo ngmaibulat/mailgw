@@ -8,7 +8,8 @@ the backoff schedule, that quarantine holds mail until a person acts, and that
 
 ## Preconditions
 
-- File mode, with a writable spool directory you can inspect.
+- A provisioned stack (see [environment](../environment)). The spool lives at
+  `/var/lib/mailgw-go/queue` in the container.
 - A relay you can stop and start — MailHog in its own container is ideal.
 - A short backoff for testing:
 

@@ -1,8 +1,6 @@
 package config
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +11,7 @@ import (
 // there must be no default rate — a mail gateway cannot pick one without
 // guessing at somebody's traffic.
 func TestRateLimit_DefaultsAreOff(t *testing.T) {
-	s, err := ParseServer([]byte("hostname: mx.ngm.dev\n"), FileServer, false)
+	s, err := ParseServer([]byte("hostname: mx.ngm.dev\n"), FileServer)
 	if err != nil {
 		t.Fatalf("ParseServer: %v", err)
 	}
@@ -37,7 +35,7 @@ ratelimit:
   messages_per_sender: {rate: 500, per: 1h}
   auth_failures_per_ip: {rate: 5, per: 10m}
   max_keys: 5000
-`), FileServer, false)
+`), FileServer)
 	if err != nil {
 		t.Fatalf("ParseServer: %v", err)
 	}
@@ -107,7 +105,7 @@ func TestRateLimit_Validate(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := ParseServer([]byte("hostname: mx.ngm.dev\n"+c.yaml), FileServer, false)
+			_, err := ParseServer([]byte("hostname: mx.ngm.dev\n"+c.yaml), FileServer)
 			if err == nil {
 				t.Fatalf("want an error mentioning %q, got none", c.wantErr)
 			}
@@ -124,33 +122,11 @@ func TestRateLimit_ValidateIgnoresHalfFinishedEdits(t *testing.T) {
 	s, err := ParseServer([]byte(`hostname: mx.ngm.dev
 ratelimit:
   connect_per_ip: {rate: 0, per: 1m, burst: 50}
-`), FileServer, false)
+`), FileServer)
 	if err != nil {
 		t.Fatalf("ParseServer: %v", err)
 	}
 	if s.RateLimit.Any() {
 		t.Error("a limit with rate 0 is on")
-	}
-}
-
-// TestRateLimit_SampleConfigsSpellItOut: both shipped server.yaml files carry
-// the block at its defaults, so an operator finds the keys by reading the sample
-// rather than the source — the treatment M10 gave `tls:` and M14 `msgauth:`.
-func TestRateLimit_SampleConfigsSpellItOut(t *testing.T) {
-	for _, dir := range []string{testdataDir, "../../config"} {
-		t.Run(dir, func(t *testing.T) {
-			raw, err := os.ReadFile(filepath.Join(dir, FileServer))
-			if err != nil {
-				t.Fatalf("read: %v", err)
-			}
-			for _, want := range []string{
-				"ratelimit:", "connect_per_ip", "messages_per_sender",
-				"messages_per_user", "rcpts_per_domain", "auth_failures_per_ip", "max_keys",
-			} {
-				if !strings.Contains(string(raw), want) {
-					t.Errorf("%s/%s does not mention %q", dir, FileServer, want)
-				}
-			}
-		})
 	}
 }

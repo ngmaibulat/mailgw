@@ -42,10 +42,11 @@ commands:
   convert-routing   transpile a Haraka routing.json into routing.yaml
   fields            list the fields rules can match on
 
-With no -config, the gateway is centrally managed: it stores its identity and
-its configuration cache under -data and is provisioned through the admin UI.
-Pass -config <dir> to run from files instead. check and explain read whichever
-of the two you name; with neither they read the default config directory.
+The gateway is centrally managed and has no other configuration source: it
+stores its identity and its configuration cache under -data, is provisioned
+through the admin UI, and is told everything else by Central Management. There
+is no way to hand it a configuration from this host — no directory, no file, no
+environment. check, explain, mailq and events all read the same cache.
 
 `
 
@@ -87,25 +88,24 @@ func main() {
 
 // opts is the shared flag set's result.
 //
-// Only `serve` reads more than configDir; `check` and `explain` still take a
-// plain directory, so their behaviour is untouched. configSet/adminSet record
-// whether the flag actually appeared on the command line, which is what
-// distinguishes "file mode" from "managed mode" — a default value cannot say
-// that, and `check`/`explain` must keep their /opt/mailgw-go/config default.
+// There is deliberately no -config and no notion of "was this flag typed".
+// Central Management is the only configuration source, so every command reads
+// the same place and the defaults are the whole of a shipped node's command
+// line: the image runs the binary with no arguments at all.
+//
+// What remains are properties of THIS PROCESS rather than of the configuration
+// — where its state lives and where its provisioning UI listens — which is
+// exactly why they cannot come from a bundle: -data is where the bundle would
+// be cached, and -admin is how a node with no bundle yet is provisioned.
 type opts struct {
-	configDir string
-	configSet bool
 	dataDir   string
-	dataSet   bool
 	adminAddr string
-	adminSet  bool
 }
 
-// mustParse handles the shared -config, -data, -admin and -version flags.
+// mustParse handles the shared -data, -admin and -version flags.
 func mustParse(name string, args []string, extra func(*flag.FlagSet)) opts {
 	fs := flag.NewFlagSet(name, flag.ExitOnError)
 	var o opts
-	fs.StringVar(&o.configDir, "config", "/opt/mailgw-go/config", "configuration directory")
 	fs.StringVar(&o.dataDir, "data", "/var/lib/mailgw-go", "data directory: SQLite store and gateway identity")
 	fs.StringVar(&o.adminAddr, "admin", "0.0.0.0:8080", `admin UI bind address ("" disables it)`)
 	showVersion := fs.Bool("version", false, "print the version and exit")
@@ -118,18 +118,6 @@ func mustParse(name string, args []string, extra func(*flag.FlagSet)) opts {
 		fmt.Printf("mailgw-go %s (%s)\n", version, commit)
 		os.Exit(0)
 	}
-
-	// flag has no "was this set?"; Visit walks only the flags actually given.
-	fs.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "config":
-			o.configSet = true
-		case "data":
-			o.dataSet = true
-		case "admin":
-			o.adminSet = true
-		}
-	})
 	return o
 }
 
@@ -145,42 +133,6 @@ type loaded struct {
 	// they were transpiled from the Haraka format.
 	source string
 	legacy bool
-}
-
-func load(dir string) (*loaded, error) {
-	cfg, err := config.Load(dir)
-	if err != nil {
-		return nil, err
-	}
-	l := &loaded{cfg: cfg}
-
-	// routing.yaml wins when present. Without it the Haraka routing.json is
-	// transpiled into exactly the same compiled ruleset, so an existing
-	// deployment keeps working untouched and its behaviour stays diffable.
-	yamlPath := filepath.Join(dir, config.FileRouting)
-	if _, statErr := os.Stat(yamlPath); statErr == nil {
-		if l.file, err = ruleset.LoadFile(yamlPath); err != nil {
-			return nil, err
-		}
-		l.source = yamlPath
-	} else if !os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("read %s: %w", yamlPath, statErr)
-	} else {
-		jsonPath := filepath.Join(dir, config.FileRoutingJS)
-		table, err := ruleset.LoadLegacyRouting(jsonPath)
-		if err != nil {
-			return nil, err
-		}
-		if err := table.Validate(cfg.Relays); err != nil {
-			return nil, err
-		}
-		l.file, l.source, l.legacy = table.Transpile(), jsonPath, true
-	}
-
-	if l.rules, err = ruleset.Compile(l.file, cfg.Relays, ruleset.DefaultSchema()); err != nil {
-		return nil, err
-	}
-	return l, nil
 }
 
 // unpopulated lists fields the schema accepts but this build never fills in.
@@ -201,9 +153,9 @@ var unpopulated = map[string]string{
 // inboundTLS describes what a peer connecting to this gateway would be offered.
 //
 // Worth a line of its own because the answer is not readable from the keys: a
-// managed node with no cert or key still ends up serving TLS, from a pair it
-// generates itself, and an operator reading `check` should not have to know that
-// to work out why STARTTLS is or is not being advertised.
+// node with no cert or key still ends up serving TLS, from a pair it generates
+// itself, and an operator reading `check` should not have to know that to work
+// out why STARTTLS is or is not being advertised.
 func inboundTLS(cfg *config.Config) string {
 	t := cfg.Server.TLS
 	switch {
@@ -212,26 +164,22 @@ func inboundTLS(cfg *config.Config) string {
 	case t.ConfiguredPublic():
 		return fmt.Sprintf(" %s", t.Cert)
 	default:
-		return " a self-signed pair under the data directory (managed mode); none in file mode"
+		return " a self-signed pair generated under the data directory"
 	}
 }
 
 // loadFor resolves the configuration the way serve does, so `check` and
-// `explain` answer questions about what this gateway is actually running rather
-// than about a directory it may not use.
+// `explain` answer questions about what this gateway is actually running.
 //
-// An explicit -config is file mode. An explicit -data reads the SQLite cache a
-// managed gateway fills. Neither keeps the historical /opt/mailgw-go/config
-// default, so a bare `check` is unchanged.
+// There is one source and therefore one branch. This used to fork on whether
+// -config or -data had been typed, which meant a bare `check` read a directory
+// the running gateway did not use — and on a node upgraded from file mode, a
+// stale one that still existed, reporting a valid configuration and an empty
+// queue while the live spool was elsewhere.
 //
 // The returned func releases the store handle and is never nil.
 func loadFor(o opts) (*loaded, *store.CachedConfig, func(), error) {
 	noop := func() {}
-
-	if o.configSet || !o.dataSet {
-		l, err := load(o.configDir)
-		return l, nil, noop, err
-	}
 
 	// Note this is not a read-only open: it creates the directory and the
 	// database and runs migrations. Running it as a different user than the
@@ -268,24 +216,16 @@ func runCheck(o opts) int {
 	defer release()
 	cfg := l.cfg
 
-	if cached != nil {
-		fmt.Printf("config OK: %s\n", bundleSource(cached))
-		fmt.Printf("  digest:     %s\n", cached.SHA256)
-		fmt.Printf("  fetched:    %s\n", cached.FetchedAt.Format(time.RFC3339))
-		if cached.AppliedAt != nil {
-			fmt.Printf("  applied:    %s\n", cached.AppliedAt.Format(time.RFC3339))
-		} else {
-			fmt.Printf("  applied:    never\n")
-		}
-		if cached.ApplyError != "" {
-			fmt.Printf("  last error: %s\n", cached.ApplyError)
-		}
-		// The two paths deliberately differ here, so say which one ran: a
-		// server profile with an unknown key is rejected from the console and
-		// tolerated from disk.
-		fmt.Printf("  parsed:     strictly (an unknown key in the server profile is rejected)\n")
+	fmt.Printf("config OK: %s\n", bundleSource(cached))
+	fmt.Printf("  digest:     %s\n", cached.SHA256)
+	fmt.Printf("  fetched:    %s\n", cached.FetchedAt.Format(time.RFC3339))
+	if cached.AppliedAt != nil {
+		fmt.Printf("  applied:    %s\n", cached.AppliedAt.Format(time.RFC3339))
 	} else {
-		fmt.Printf("config OK: %s\n", cfg.Dir)
+		fmt.Printf("  applied:    never\n")
+	}
+	if cached.ApplyError != "" {
+		fmt.Printf("  last error: %s\n", cached.ApplyError)
 	}
 	fmt.Printf("  hostname:   %s\n", cfg.Server.Hostname)
 	fmt.Printf("  listen:     %v\n", listenAddrs(cfg))
@@ -313,8 +253,13 @@ func runCheck(o opts) int {
 	if cfg.Allowlist.AllowAll() {
 		fmt.Fprintln(os.Stderr, "  WARNING: allow_all is set — this accepts mail from any peer")
 	}
+	// Deliberately no "prefer auth_pass_env" advice any more: this gateway has
+	// no environment, so following it would produce an EMPTY password and a
+	// relay rejection that looks like a wrong credential. The field is refused
+	// at load time; see relays.EnvCredentials.
 	if creds := cfg.Relays.PlaintextCredentials(); len(creds) > 0 {
-		fmt.Fprintf(os.Stderr, "  WARNING: plaintext auth_pass in relays.json for %v (prefer auth_pass_env)\n", creds)
+		fmt.Fprintf(os.Stderr, "  NOTE: %v carry a relay password; it is encrypted at rest in the console "+
+			"and travels only inside this gateway's signed bundle\n", creds)
 	}
 	if mx := cfg.Relays.AuthenticatedMX(); len(mx) > 0 {
 		fmt.Fprintf(os.Stderr, "  WARNING: %v send credentials to MX-resolved hosts; the DNS decides who receives them\n", mx)
@@ -526,22 +471,15 @@ func listenAddrs(cfg *config.Config) []string {
 	return out
 }
 
-// runServe picks the configuration source.
+// runServe runs the gateway. There is one way to configure it.
 //
-// An explicitly-given -config means file mode: today's behaviour, byte for
-// byte, which is what keeps check/explain/testdata/CI and the Bun SMTP suite
-// working. Anything else is managed mode, where the configuration comes from
-// Central Management into the local SQLite cache.
-//
-// Both paths now converge on one *gateway, brought up from a *loaded — the
-// difference between them is only where those bytes came from, and when.
+// This used to pick between a file-mode path and a managed one. The second
+// source is gone: the configuration comes from Central Management into the
+// local SQLite cache, and nothing on this host can supply one.
 func runServe(o opts) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if o.configSet {
-		return serveFile(ctx, o)
-	}
 	return serveManaged(ctx, o)
 }
 
@@ -673,62 +611,6 @@ func serveManaged(ctx context.Context, o opts) int {
 			return 1
 		}
 	}
-	log.Info("shutting down")
-	return 0
-}
-
-func serveFile(ctx context.Context, o opts) int {
-	dir := o.configDir
-	l, err := load(dir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
-		return 1
-	}
-
-	log := newLogger(l.cfg.Server.Log)
-	slog.SetDefault(log)
-	log.Info("starting", "version", version, "commit", commit, "config", dir,
-		"rules", rulesSource(l), "policy_rules", len(l.rules.Policy), "route_rules", len(l.rules.Routes))
-
-	g := newGateway(log)
-	if _, err := g.apply(ctx, l); err != nil {
-		return 1
-	}
-	defer g.shutdown()
-
-	go g.watchSignals(ctx, func(ctx context.Context) error { return g.reloadDir(ctx, dir) })
-
-	// The admin UI is opt-in in file mode: this gateway already has its
-	// configuration, so the UI is a read-only status page. A failed admin
-	// listener is worth an error but must not stop a gateway whose actual job
-	// is relaying mail.
-	if o.adminSet && o.adminAddr != "" {
-		ui := &adminui.Server{
-			Version:      version,
-			Commit:       commit,
-			ConfigDir:    dir,
-			SpoolFn:      g.Spool,
-			Log:          log,
-			Metrics:      g.Metrics(),
-			MetricsToken: g.AdminToken,
-			// A file-mode gateway owns its configuration, so readiness is only
-			// "are the listeners up?" — but it is wired to the real source
-			// rather than hardcoded, so the answer stays honest.
-			State: func() adminui.State { return adminui.State{Serving: g.Serving()} },
-			Gauges: func() obs.Gauges {
-				gg := obs.Gauges{Serving: g.Serving()}
-				adminui.SpoolGauges(&gg, g.Spool())
-				return gg
-			},
-		}
-		go func() {
-			if err := ui.ListenAndServe(ctx, o.adminAddr); err != nil {
-				log.Error("admin UI failed", "addr", o.adminAddr, "err", err)
-			}
-		}()
-	}
-
-	<-ctx.Done()
 	log.Info("shutting down")
 	return 0
 }

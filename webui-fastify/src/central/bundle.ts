@@ -20,8 +20,10 @@ import { decrypt } from "./secrets.ts";
 // Composes a gateway's assigned profiles and relay groups into the one JSON
 // document it pulls from GET /agent/config.
 //
-// The keys mirror the config-directory files mailgw-go already reads, so the
-// same `check` / `explain` code paths and the whole Go test suite keep working:
+// The keys are named for the config files mailgw-go used to read from disk. It
+// no longer reads any — this bundle is its only configuration source — but the
+// names are kept because they are what makes a deployed configuration diffable
+// against the Haraka install it came from:
 //
 //   server    -> server.yaml   (text, verbatim)
 //   routing   -> routing.yaml  (text, verbatim — the rule DSL)
@@ -42,10 +44,6 @@ export interface BundleRelay {
     priority: number;
     auth_user?: string;
     auth_pass?: string;
-    // Name of an environment variable on the gateway holding the password.
-    // Keeps the credential out of the bundle entirely; mailgw-go prefers it
-    // over auth_pass when both are present.
-    auth_pass_env?: string;
     // none | opportunistic | required. Omitted when unset, where mailgw-go
     // defaults to opportunistic.
     tls?: string;
@@ -248,9 +246,13 @@ export async function composeBundle(
                     if (m.auth_pass) {
                         relay.auth_pass = decrypt(m.auth_pass);
                     }
-                    if (m.auth_pass_env) {
-                        relay.auth_pass_env = m.auth_pass_env;
-                    }
+                    // auth_pass_env is deliberately NOT emitted. A gateway
+                    // reads no environment, so it would resolve to an empty
+                    // password and the relay would answer "535 authentication
+                    // failed" — an error that points at a wrong credential
+                    // rather than an absent one. The gateway refuses a bundle
+                    // carrying it; not sending it keeps existing rows that
+                    // still have the column from breaking every deploy.
                     if (m.tls) {
                         relay.tls = m.tls;
                     }

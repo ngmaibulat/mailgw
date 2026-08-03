@@ -5,8 +5,6 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -21,13 +19,9 @@ func quietLogger() *slog.Logger {
 
 func allowlistFrom(t *testing.T, body string) *config.Allowlist {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "ngmfilter.json")
-	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	a, err := config.LoadAllowlist(p)
+	a, err := config.ParseAllowlist([]byte(body), "allowlist profile")
 	if err != nil {
-		t.Fatalf("LoadAllowlist: %v", err)
+		t.Fatalf("ParseAllowlist: %v", err)
 	}
 	return a
 }

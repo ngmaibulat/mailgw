@@ -35,6 +35,7 @@ Every file carries its **status on line 3**, in the same shape:
 | [M15](./M15-rate-limiting.md) | Rate limiting | `mailgw-go/internal/{ratelimit,smtpsrv,config,obs}`, `cmd/mailgw-go` | **done** |
 | [M16](./M16-m11-reaudit-fixes.md) | Fixes from the M11 re-audit | `mailgw-go/internal/{smtpsrv,deliver,queue,events,config,obs}`, `cmd/mailgw-go` | **done** |
 | [M17](./M17-outbound-bounds-policy.md) | Outbound bounds that need a policy first | `mailgw-go/internal/{deliver,config,obs}` | planned |
+| [M18](./M18-zero-config-audit.md) | Zero configuration, enforced: removing the second source | `mailgw-go`, `tests`, `deploy`, `docs`, `webui-fastify` | **done** |
 
 **Order worked:** M9 → M4 → M5 → M6 → M7 → M8 → M10. **M1–M10 are all done.**
 M9.4 landed with M4 and M9.5 with M7, as the notes here suggested they should.
@@ -145,12 +146,22 @@ store would have made `POST /claim` an unauthenticated write to the gateway's
 own database, and a `Secure` cookie on a plain-HTTP listener is simply never
 sent, so the UI would have signed nobody in.
 
-**M5 grew past its own plan.** The shipped gateway is now zero-configuration —
+**M5 grew past its own plan.** The shipped gateway became zero-configuration —
 no environment, no arguments, no files — which pulled the logservice API key,
 relay TLS policy and `allow_all` out of the gateway and into what Central
 Management serves, and added a WebSocket notification channel. M5's own "What
 was built differently" section is the authority; the contract notes below are
 still accurate except where it says otherwise.
+
+**M18 finished what M5 started, by deletion.** M5 kept `-config <dir>` as a
+second configuration source for `check`, `explain`, the sample config
+directories, CI and the Bun SMTP suite. An audit found four defects that were
+all the same defect — having two sources — including a relay `auth_pass_env`
+that authenticated with an **empty password** while `check` recommended it. The
+second source, both sample directories and both `os.Getenv` call sites are gone;
+the standing decision "File mode must not regress" is reversed. CI validates a
+bundle in a Go test, and `pnpm provision` configures the dev stack through the
+console.
 
 M1's plan is **reconstructed** — that milestone predates this directory and was
 never written up. It records the finished state, not the plan that produced it.

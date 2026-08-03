@@ -108,7 +108,7 @@ with a connect-stage field would still fire at `mail`.
 Test a rule without sending anything:
 
 ```bash
-mailgw-go explain -config ./config --rcpt b@partner.com --from a@x.com \
+mailgw-go explain --rcpt b@partner.com --from a@x.com \
     -auth-user app@example.com
 ```
 

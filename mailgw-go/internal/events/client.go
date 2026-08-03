@@ -440,16 +440,6 @@ type SpillRecord struct {
 	Body   json.RawMessage `json:"body"`
 }
 
-// APIKeyFromEnv reads the API key from the named environment variable.
-// logservice accepts every request when its own API_KEY is unset, so an empty
-// value here is valid rather than an error.
-func APIKeyFromEnv(name string) string {
-	if name == "" {
-		name = "API_KEY"
-	}
-	return os.Getenv(name)
-}
-
 func errString(err error) string {
 	if err == nil {
 		return "unknown"

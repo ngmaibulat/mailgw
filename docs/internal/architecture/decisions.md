@@ -33,19 +33,54 @@ keeps `CGO_ENABLED=0` with a `distroless/static` base; a cgo driver would mean a
 different base image. All SQL lives behind `internal/store`, and only `store.go`
 imports the driver, so swapping it stays a one-file change.
 
-## File mode must not regress
+## A gateway accepts nothing from its host
 
-`-config <dir>` keeps working byte-identically. It is what `check`, `explain`,
-`testdata/config`, the contract test suite and the Bun end-to-end suite all run
-on, and the development compose file pins it for that reason.
+Central Management is the **only** configuration source. The gateway reads no
+environment variables, takes no configuration flags, and loads no configuration
+files. What it runs on is one signed bundle, cached in SQLite under `-data`.
 
-Verify with `pnpm test:mailgw-go` and `SMTP_PORT=2525 bun test tests/smtp`.
+This reverses an earlier decision recorded here, "File mode must not regress",
+which kept `-config <dir>` working byte-identically because `check`, `explain`,
+the sample config directories, the contract suite and the Bun end-to-end suite
+all ran on it. Two configuration sources turned out to be the thing generating
+defects rather than a convenience:
+
+- the spool directory resolved differently in each mode, so the shipped edge
+  node bind-mounted a directory nothing ever wrote to;
+- `check`, `explain`, `mailq` and `events` with no flags read a *directory*
+  while `config show` and `claim` read the *store*, so on a node upgraded from
+  file mode the diagnostic commands reported a stale configuration and an empty
+  queue;
+- the two parsers disagreed on purpose — lax for files, strict for bundles — so
+  `check` had to print which one it had used;
+- `auth_pass_env` and `events.api_key_env` named environment variables that
+  could only ever resolve to the empty string, and the relay case authenticated
+  with an empty password while the startup warning actively recommended it.
+
+All four disappeared with the second source rather than being fixed.
+
+**What replaced the things file mode was carrying.** CI validates a bundle in a
+Go test (`internal/config.TestBundleConfig_FixtureIsAccepted`,
+`cmd/mailgw-go.TestLoadBundle_FixtureCompiles`) instead of running `check` over
+a sample tree. The dev compose stack boots unprovisioned like a real node, and
+`tests/provision.ts` drives the console to configure it before the SMTP e2e
+suite runs.
+
+**The two things that are still host state, and why they are not exceptions.**
+`-data` is where the bundle is cached and `-admin` is how a node with no bundle
+yet is provisioned; neither is configuration, and neither can travel in a bundle
+without a chicken-and-egg. A TLS certificate and a DKIM signing key are still
+operator-placed files — see [A private key never travels in a
+bundle](#a-private-key-never-travels-in-a-bundle).
+
+Verify with `pnpm test:mailgw-go`, and by grepping: `os.Getenv` must not appear
+in non-test code, which CI enforces.
 
 ## Reload is all-or-nothing
 
 Only the allowlist and the compiled ruleset hot-swap. On any failure the running
-configuration stays in force. "Re-read the files" in file mode, "re-apply from
-the cache" in managed mode — one code path.
+configuration stays in force. SIGHUP means "re-apply from the cache"; it used to
+mean "re-read the files" as well, on the same code path.
 
 ## A private key never travels in a bundle
 

@@ -4,16 +4,16 @@
 mailgw-go <command> [flags]
 ```
 
-With no `-config`, the gateway is **centrally managed**: it stores its identity
-and configuration cache under `-data` and is provisioned through the admin UI.
-Pass `-config <dir>` to run from files instead. `check` and `explain` read
-whichever of the two you name.
+The gateway is **centrally managed** and has no other configuration source: it
+stores its identity and configuration cache under `-data`, is provisioned
+through the admin UI, and is told everything else by the console. `check`,
+`explain`, `mailq`, `events` and `config show` all read that same cache, so they
+answer questions about what this gateway is actually running.
 
 ## serve
 
 ```bash
-mailgw-go serve -config ./config
-mailgw-go serve                        # managed; -data defaults to the data dir
+mailgw-go serve                        # or just: mailgw-go
 ```
 
 The default command — `mailgw-go` with no subcommand serves.
@@ -26,7 +26,7 @@ flight, flush audit events.
 ## check
 
 ```bash
-mailgw-go check -config ./config
+mailgw-go check
 mailgw-go check -data /var/lib/mailgw-go     # what a managed node is running
 ```
 
@@ -36,7 +36,7 @@ and before every restart; it is the cheapest test in the system.
 ## explain
 
 ```bash
-mailgw-go explain -config ./config --rcpt bob@partner.com --from alice@example.com
+mailgw-go explain --rcpt bob@partner.com --from alice@example.com
 ```
 
 Answers "why would this message go there?" without sending anything.
@@ -137,8 +137,13 @@ equivalent to the table it came from; edit it freely afterwards.
 
 ## Global flags
 
-| Flag | Meaning |
-|---|---|
-| `-config <dir>` | run from a configuration directory (file mode) |
-| `-data <dir>` | identity and configuration cache (managed mode) |
-| `-version` | print the version and exit |
+| Flag | Default | Meaning |
+|---|---|---|
+| `-data <dir>` | `/var/lib/mailgw-go` | identity and configuration cache |
+| `-admin <addr>` | `0.0.0.0:8080` | admin UI bind address |
+| `-version` | — | print the version and exit |
+
+These are the whole command line, and both defaults are what a shipped node
+runs on — the container image has no `CMD` at all. Neither is *configuration*:
+`-data` is where a configuration is cached and `-admin` is how a node that has
+no configuration yet gets one, which is why neither can arrive in a bundle.

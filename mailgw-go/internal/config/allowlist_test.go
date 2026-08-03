@@ -2,26 +2,14 @@ package config
 
 import (
 	"net/netip"
-	"os"
-	"path/filepath"
 	"testing"
 )
 
-// write drops content into a temp ngmfilter.json and returns its path.
-func write(t *testing.T, content string) string {
-	t.Helper()
-	p := filepath.Join(t.TempDir(), "ngmfilter.json")
-	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
-		t.Fatalf("write fixture: %v", err)
-	}
-	return p
-}
-
 func mustLoad(t *testing.T, content string) *Allowlist {
 	t.Helper()
-	a, err := LoadAllowlist(write(t, content))
+	a, err := ParseAllowlist([]byte(content), "allowlist profile")
 	if err != nil {
-		t.Fatalf("LoadAllowlist: unexpected error: %v", err)
+		t.Fatalf("ParseAllowlist: unexpected error: %v", err)
 	}
 	return a
 }
@@ -57,7 +45,7 @@ func TestAllowlist_DeniesUnlistedIP(t *testing.T) {
 
 // npFilter.js:52 treats a null config as fatal and denies every connection.
 func TestAllowlist_FailsClosedOnNullConfig(t *testing.T) {
-	a, err := LoadAllowlist(write(t, `null`))
+	a, err := ParseAllowlist([]byte(`null`), "allowlist profile")
 	if err == nil {
 		t.Fatal("expected an error for a null config")
 	}
@@ -74,7 +62,7 @@ func TestAllowlist_FailsClosedWhenAllowedIsNotAnArray(t *testing.T) {
 		`{"allowed":5}`,
 		`{}`,
 	} {
-		a, err := LoadAllowlist(write(t, body))
+		a, err := ParseAllowlist([]byte(body), "allowlist profile")
 		if err == nil {
 			t.Errorf("%s: expected an error", body)
 		}
@@ -84,10 +72,12 @@ func TestAllowlist_FailsClosedWhenAllowedIsNotAnArray(t *testing.T) {
 	}
 }
 
-func TestAllowlist_FailsClosedOnMissingFile(t *testing.T) {
-	a, err := LoadAllowlist(filepath.Join(t.TempDir(), "does-not-exist.json"))
+// A bundle that carries no allowlist key at all: the analogue of the missing
+// ngmfilter.json this used to assert on, and the same fail-closed answer.
+func TestAllowlist_FailsClosedOnAbsentProfile(t *testing.T) {
+	a, err := ParseAllowlist(nil, "allowlist profile")
 	if err == nil {
-		t.Fatal("expected an error for a missing file")
+		t.Fatal("expected an error for an absent allowlist")
 	}
 	if allowed(t, a, "127.0.0.1") {
 		t.Error("a failed load must deny every peer")
@@ -152,7 +142,7 @@ func TestAllowlist_V4MappedEntryMatchesV4Peer(t *testing.T) {
 }
 
 func TestAllowlist_EmptyArrayRequiresExplicitAllowAll(t *testing.T) {
-	a, err := LoadAllowlist(write(t, `{"allowed":[]}`))
+	a, err := ParseAllowlist([]byte(`{"allowed":[]}`), "allowlist profile")
 	if err == nil {
 		t.Fatal("an empty allowlist must be an error unless allow_all is set")
 	}
@@ -172,7 +162,7 @@ func TestAllowlist_RejectsMalformedEntry(t *testing.T) {
 		`{"allowed":["10.0.0.0/99"]}`,
 		`{"allowed":[""]}`,
 	} {
-		a, err := LoadAllowlist(write(t, body))
+		a, err := ParseAllowlist([]byte(body), "allowlist profile")
 		if err == nil {
 			t.Errorf("%s: expected an error", body)
 		}

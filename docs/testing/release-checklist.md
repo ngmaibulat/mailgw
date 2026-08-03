@@ -11,7 +11,7 @@ cd mailgw-go
 gofmt -l .                     # must print nothing
 go vet ./...
 go test -race ./...
-go run ./cmd/mailgw-go check -config ./testdata/config
+go run ./cmd/mailgw-go check
 
 cd ../logservice && bun test tests/
 cd ../webui-fastify && pnpm typecheck && pnpm check && pnpm test
@@ -100,7 +100,7 @@ queue path" is a useful record; silence is not.
 | Version | |
 | Date | |
 | Run by | |
-| Stack | file mode / managed |
+| Applied config version | |
 | Plans run | |
 | Plans skipped, and why | |
 | Failures | |

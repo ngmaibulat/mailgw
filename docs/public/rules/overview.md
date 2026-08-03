@@ -74,7 +74,7 @@ will suggest what you meant.
 ## Seeing what a rule does
 
 ```bash
-mailgw-go explain -config ./config --rcpt bob@partner.com --from alice@example.com
+mailgw-go explain --rcpt bob@partner.com --from alice@example.com
 ```
 
 It prints every policy and route rule, whether each matched, at which stage, and

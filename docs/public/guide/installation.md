@@ -5,23 +5,20 @@ decide up front.
 
 ## Try it locally
 
-The repository ships a working configuration directory. From a checkout:
+A gateway cannot be configured from the machine it runs on, so "try it locally"
+means bringing up the console too. From a checkout:
 
 ```bash
-cd mailgw-go
-go run ./cmd/mailgw-go check -config ./testdata/config   # validate first
-go run ./cmd/mailgw-go serve -config ./testdata/config   # listens on 2525
+pnpm certs                   # the TLS pair the console needs
+docker compose up -d         # mariadb, log service, gateway, console, MailHog
+pnpm provision               # create profiles, approve the node, deploy
 ```
 
-`check` exits non-zero on a bad configuration and prints what it understood —
-which listeners, which relay groups, which rules, and any warnings. Run it before
-`serve`, always; it is the cheapest test in the system.
-
-::: warning The default spool directory
-`outbound.spool_dir` defaults to `/opt/mailgw-go/queue`, which an unprivileged
-user cannot create. For a local run, point it somewhere writable in your
-`server.yaml`.
-:::
+`docker-compose.yaml` at the repository root brings up everything, and
+`pnpm provision` walks the gateway through the same provisioning an operator
+does by hand: it creates the first admin, a relay group pointing at MailHog and
+the three config profiles, approves the gateway's fingerprint, and deploys. It
+is idempotent.
 
 Send it something:
 
@@ -29,19 +26,20 @@ Send it something:
 swaks --server localhost:2525 --from you@example.com --to someone@ngm.dev
 ```
 
-## The whole stack, with Docker
+The gateway takes host port 25 and also publishes 2525. The console is on HTTPS
+with a self-signed certificate.
 
-`docker-compose.yaml` at the repository root brings up everything: MariaDB, the
-log service, the gateway, the admin console and a MailHog instance to catch
-outbound mail.
+::: tip Why there is no single-binary quickstart
+Running `mailgw-go` on its own gives you a node that boots, generates an
+identity, and waits — it will not relay until a console has deployed a
+configuration to it. That is the same behaviour a production edge node has, and
+it is deliberate: a gateway with no allowlist would deny every peer anyway, and
+a listener that can only reject looks healthy to a load balancer.
+:::
 
-```bash
-pnpm certs          # generate the TLS pair the console needs
-docker compose up
-```
-
-The gateway takes host port 25 and also publishes 2525. The console is on
-HTTPS with a self-signed certificate.
+Once it is running, `mailgw-go check` prints what the gateway understood — which
+listeners, which relay groups, which rules, and any warnings — reading the
+configuration it actually has cached.
 
 ## Production
 
@@ -100,19 +98,36 @@ credentials. Narrowing who can reach the port is the second control, and you wan
 both.
 :::
 
-Back up **`/opt/mailgw-go/data`**. It holds the node's private key, its claim
-code and its configuration cache. Lose it and the node is a stranger to the
-console: it must be registered and approved again.
+Back up **both** host directories, for different reasons:
 
-## Which mode am I in?
+- **`/opt/mailgw-go/data`** holds the node's private key, its claim code and its
+  configuration cache. Lose it and the node is a stranger to the console: it
+  must be registered and approved again.
+- **`/opt/mailgw-go/queue`** is the outbound spool — mail already answered `250`
+  but not yet delivered, plus anything quarantined. Lose it and you lose mail a
+  sender has been told is queued.
 
-| | File mode | Managed |
-|---|---|---|
-| How it starts | `serve -config <dir>` | no arguments at all |
-| Where configuration lives | files you edit | a bundle deployed from the console |
-| Reload | `SIGHUP` re-reads the files | a deploy, applied within seconds |
-| Admin UI | opt-in, off by default | always on, needed to provision |
-| Inspect it | `check -config <dir>` | `check -data <dir>`, `config show` |
+## How a gateway is configured
 
-Both modes run the same validators, so a configuration that passes `check` in one
-behaves the same in the other.
+There is one way, and it is worth stating plainly because it constrains
+everything else on this page.
+
+| | |
+|---|---|
+| How it starts | with no arguments at all |
+| Where configuration lives | a bundle deployed from the console, cached in SQLite under `/var/lib/mailgw-go` |
+| How it changes | a deploy, applied within seconds |
+| Reload | `SIGHUP` re-applies from the cache |
+| Admin UI | always on; it is how a node is provisioned |
+| Inspect it | `check`, `config show`, `explain`, `mailq` — all read the cache |
+
+The gateway reads **no environment variables, no command-line configuration and
+no configuration files**. Nothing on the host it runs on can change what it
+does; only the console can.
+
+::: tip This used to be two modes
+Earlier versions also accepted `serve -config <dir>` and read a directory of
+files. That is gone. If you are following an older runbook, the files it tells
+you to edit are now **config profiles** in the console — same names, same
+contents, see [Central Management](/guide/central-management).
+:::

@@ -1,11 +1,12 @@
-// Package config loads and validates mailgw-go's on-disk configuration.
+// Package config parses and validates the configuration bundle Central
+// Management deploys. There is no other source: nothing here reads a
+// configuration directory, and the gateway reads no environment.
 package config
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/netip"
-	"os"
 	"strings"
 )
 
@@ -29,24 +30,14 @@ type ngmfilterFile struct {
 	AllowAll bool            `json:"allow_all"`
 }
 
-// LoadAllowlist reads ngmfilter.json. Every failure path returns a deny-all
-// Allowlist alongside the error, mirroring the fail-closed guard at
-// mailgw/plugins/npFilter.js:52-57.
-func LoadAllowlist(path string) (*Allowlist, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return &Allowlist{}, fmt.Errorf("read %s: %w", path, err)
-	}
-	return ParseAllowlist(raw, path)
-}
-
-// ParseAllowlist parses ngmfilter.json bytes. name appears only in error
-// messages: it is a path on the file path and a bundle key on the central one.
+// ParseAllowlist parses an allowlist profile's bytes. name appears only in
+// error messages, and is the bundle key.
 //
-// Separate from LoadAllowlist so that the configuration bundle Central
-// Management deploys gets exactly the same validation the file does — including
-// the fail-closed contract: every failure path returns a deny-all Allowlist
-// alongside the error, so a caller that ignores the error still denies traffic.
+// The fail-closed contract is the point of it, and it is inherited from
+// mailgw/plugins/npFilter.js:52-57: every failure path returns a deny-all
+// Allowlist alongside the error, so a caller that ignores the error still
+// denies traffic. There used to be a LoadAllowlist beside this that read the
+// same bytes off disk; nothing on this host supplies configuration any more.
 func ParseAllowlist(raw []byte, name string) (*Allowlist, error) {
 	// A bundle whose allowlist key is absent arrives as a nil RawMessage, and
 	// json.Unmarshal would report "unexpected end of JSON input", which says

@@ -1,10 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/config"
@@ -39,13 +37,6 @@ func runConfig(args []string) int {
 
 	o := mustParse("config show", args, nil)
 
-	// A gateway running from files has no bundle. Compose the equivalent view
-	// from its directory so the two modes are diffable rather than answering
-	// "wrong mode".
-	if o.configSet {
-		return showConfigDir(o.configDir)
-	}
-
 	st, err := store.Open(o.dataDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config show: %v\n", err)
@@ -76,67 +67,6 @@ func runConfig(args []string) int {
 		fmt.Fprintf(os.Stderr, "config show: %v\n", err)
 		return 1
 	}
-	fmt.Println(string(out))
-	return 0
-}
-
-// showConfigDir renders a configuration directory in the same shape the console
-// would deploy, so `config show` answers the same question in both modes.
-func showConfigDir(dir string) int {
-	b := config.Bundle{Format: config.BundleFormat}
-
-	if raw, err := os.ReadFile(filepath.Join(dir, config.FileServer)); err == nil {
-		s := string(raw)
-		b.Server = &s
-	}
-	if raw, err := os.ReadFile(filepath.Join(dir, config.FileRouting)); err == nil {
-		s := string(raw)
-		b.Routing = &s
-	}
-	if raw, err := os.ReadFile(filepath.Join(dir, config.FileFilter)); err == nil {
-		b.Allowlist = raw
-	}
-	if raw, err := os.ReadFile(filepath.Join(dir, config.FileRelays)); err == nil {
-		if err := json.Unmarshal(raw, &b.Relays); err != nil {
-			fmt.Fprintf(os.Stderr, "config show: %s: %v\n", config.FileRelays, err)
-			return 1
-		}
-	}
-	if raw, err := os.ReadFile(filepath.Join(dir, config.FileLogging)); err == nil {
-		if err := json.Unmarshal(raw, &b.Logging); err != nil {
-			fmt.Fprintf(os.Stderr, "config show: %s: %v\n", config.FileLogging, err)
-			return 1
-		}
-	}
-	if raw, err := os.ReadFile(filepath.Join(dir, config.FileAdmin)); err == nil {
-		var admin config.Admin
-		if err := json.Unmarshal(raw, &admin); err != nil {
-			fmt.Fprintf(os.Stderr, "config show: %s: %v\n", config.FileAdmin, err)
-			return 1
-		}
-		b.Admin = &admin
-	}
-	if raw, err := os.ReadFile(filepath.Join(dir, config.FileAuth)); err == nil {
-		var auth config.Auth
-		if err := json.Unmarshal(raw, &auth); err != nil {
-			fmt.Fprintf(os.Stderr, "config show: %s: %v\n", config.FileAuth, err)
-			return 1
-		}
-		b.Auth = &auth
-	}
-
-	raw, err := json.Marshal(b)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "config show: %v\n", err)
-		return 1
-	}
-	out, err := config.RedactBundle(raw)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "config show: %v\n", err)
-		return 1
-	}
-
-	fmt.Fprintf(os.Stderr, "# %s (file mode; no deployed version)\n", dir)
 	fmt.Println(string(out))
 	return 0
 }

@@ -47,21 +47,25 @@ when it returns — mail flow never waits on the audit trail.
 - **It does not sign or verify messages.** No DKIM, no SPF, no DMARC.
 - **It does not rewrite addresses.** What arrives is what is relayed.
 
-## Two ways to run it
+## How you run it
 
-**From files.** Point it at a configuration directory with `-config`. Everything
-lives in that directory, you edit it with an editor, and `SIGHUP` reloads it.
-Good for a single gateway, for development, and for anyone who already has a
-configuration-management system.
+**Centrally managed, and only that.** You run it with no arguments at all. It
+generates an identity on first boot, serves a small local provisioning page, and
+pulls its entire configuration from a management console as a versioned bundle.
+An operator approves the node once; after that, configuration is deployed and
+rolled back centrally.
 
-**Centrally managed.** Run it with no arguments at all. It generates an identity
-on first boot, serves a small local provisioning page, and pulls its entire
-configuration from a management console as a versioned bundle. An operator
-approves the node once; after that, configuration is deployed and rolled back
-centrally. Good for a fleet.
+A gateway reads **no environment variables, no configuration flags and no
+configuration files**. There is nothing on the host to edit, template or keep in
+sync, and nothing on the host can change what the gateway does.
 
-The two modes run the same code and the same validators. See
-[Central Management](/guide/central-management).
+That is a deliberate trade, and it costs something worth knowing up front: a
+single gateway is more work to stand up than one with a config file would be,
+because you need a console first. What it buys is that a fleet has exactly one
+place to look, versioned, with rollback — and that a node cannot drift from what
+the console believes it is running.
+
+See [Central Management](/guide/central-management).
 
 ## Where to go next
 

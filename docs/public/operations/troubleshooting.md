@@ -23,7 +23,7 @@ raising the cap: a cap over sessions that never end is not a defence.
 `default_action` applied. Ask why:
 
 ```bash
-mailgw-go explain -config ./config --rcpt the@address.example --from sender@example.com
+mailgw-go explain --rcpt the@address.example --from sender@example.com
 ```
 
 **A `550` you did not expect.** `explain` names the rule. If it names none, check
@@ -59,7 +59,7 @@ command. If the credential set was unassigned or emptied, it stops immediately.
 ## Mail is queued and not moving
 
 ```bash
-mailgw-go mailq -config ./config
+mailgw-go mailq
 ```
 
 The last error column says why. Common answers:

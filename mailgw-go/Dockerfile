@@ -40,8 +40,9 @@ USER nonroot:nonroot
 
 # 2525 rather than 25: the nonroot user cannot bind a privileged port. Map it in
 # compose if port 25 is wanted on the host.
-# 8080 is the local admin UI (wizard + status). It is UNAUTHENTICATED — see
-# README.md; restrict it to the management network at the firewall.
+# 8080 is the local admin UI (wizard + status). It is locked by a claim code the
+# gateway mints on first boot and writes to its log — see README.md. Restrict it
+# to the management network at the firewall anyway; see the note below.
 EXPOSE 2525 8080
 
 ENTRYPOINT ["/usr/local/bin/mailgw-go"]
@@ -58,12 +59,13 @@ ENTRYPOINT ["/usr/local/bin/mailgw-go"]
 # point: a gateway with no allowlist would deny every peer anyway, and a
 # listener that can only reject looks healthy to a load balancer.
 #
-# File mode has not gone anywhere — `-config <dir>` still works, and `check`,
-# `explain` and the e2e suites run on it. The dev compose stack pins it
-# explicitly for exactly that reason.
+# There is no second configuration source. `-config <dir>` used to run this
+# binary from a directory of files, kept for CI and the e2e suites; it is gone,
+# along with every environment variable the gateway once read. Central
+# Management is the only thing that can configure a gateway.
 #
-# The admin UI on 8080 is UNAUTHENTICATED and now always listening. Anyone who
-# can reach it can point this gateway at a different Central Manager and receive
-# its relay credentials. Restrict the port at the firewall —
-# deploy/gateway/05-firewall.sh does this, and on an edge node it is required,
-# not optional.
+# The admin UI on 8080 is always listening, and is locked by a claim code. The
+# firewall is still required, not optional: what an authenticated caller can do
+# is point this gateway at a Central Manager of their choosing and be handed its
+# relay credentials, and on an edge node this is a root process with no port
+# mapping to narrow. deploy/gateway/05-firewall.sh does it.

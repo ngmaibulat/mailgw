@@ -36,11 +36,11 @@ docker compose logs --since 5m mailgw-go
 docker compose exec mailgw-go /mailgw-go config show -data /var/lib/mailgw-go
 ```
 
-Secrets are redacted, so this is safe to attach. In file mode, attach the
-configuration directory minus any real credentials.
+Secrets are redacted, so this is safe to attach. It is the whole of the
+gateway's configuration — there is nothing else on the host to collect.
 
-**Version and mode.** `mailgw-go -version`, and whether the gateway is file-mode
-or managed.
+**Version.** `mailgw-go -version`, and the applied configuration version, which
+`config show` prints above.
 
 ## What to leave out
 

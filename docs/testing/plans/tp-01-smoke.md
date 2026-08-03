@@ -39,8 +39,8 @@ Record the whole capability list — later plans compare against it.
 
 ```bash
 docker compose exec mailgw-go /mailgw-go check -data /var/lib/mailgw-go
-# or, file mode:
-cd mailgw-go && go run ./cmd/mailgw-go check -config /tmp/tp-config
+# on the gateway itself:
+cd mailgw-go && go run ./cmd/mailgw-go check
 ```
 
 **Expected.** Exit code `0`. Output names the hostname, listeners, allowlist,

@@ -2,19 +2,29 @@ package relays
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func writeRelays(t *testing.T, content string) string {
+// parseTable decodes the relay-group JSON a bundle carries and builds a table
+// from it, which is the only way a table is built now — there is no relays.json
+// on disk to read.
+func parseTable(t *testing.T, content string) (*Table, error) {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "relays.json")
-	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
-		t.Fatalf("write fixture: %v", err)
+	var byGroup map[string][]Relay
+	if err := json.Unmarshal([]byte(content), &byGroup); err != nil {
+		return nil, err
 	}
-	return p
+	return NewTable(byGroup)
+}
+
+func mustTable(t *testing.T, content string) *Table {
+	t.Helper()
+	tbl, err := parseTable(t, content)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	return tbl
 }
 
 // The shipped mailgw/config/relays.json writes the port as a string.
@@ -66,11 +76,8 @@ const shippedShape = `{
   ]
 }`
 
-func TestLoad_ShippedShape(t *testing.T) {
-	tbl, err := Load(writeRelays(t, shippedShape))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+func TestNewTable_ShippedShape(t *testing.T) {
+	tbl := mustTable(t, shippedShape)
 
 	g, ok := tbl.Lookup("Exchange")
 	if !ok {
@@ -91,9 +98,9 @@ func TestLoad_ShippedShape(t *testing.T) {
 // the prototype chain, so a relay named "toString" resolves truthy and hands a
 // Function to Haraka as an MX. A Go map lookup cannot, and this pins it.
 func TestLookup_DoesNotResolveInheritedNames(t *testing.T) {
-	tbl, err := Load(writeRelays(t, shippedShape))
+	tbl, err := parseTable(t, shippedShape)
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("NewTable: %v", err)
 	}
 	for _, name := range []string{"toString", "constructor", "valueOf", "__proto__", "hasOwnProperty"} {
 		if _, ok := tbl.Lookup(name); ok {
@@ -115,20 +122,20 @@ func TestLoad_RejectsInvalidConfigs(t *testing.T) {
 		"bad tls policy": `{"A":[{"name":"x","exchange":"h","port":25,"tls":"maybe"}]}`,
 	}
 	for name, body := range cases {
-		if _, err := Load(writeRelays(t, body)); err == nil {
+		if _, err := parseTable(t, body); err == nil {
 			t.Errorf("%s: expected an error", name)
 		}
 	}
 }
 
-func TestLoad_SortsByPriority(t *testing.T) {
-	tbl, err := Load(writeRelays(t, `{"A":[
+func TestNewTable_SortsByPriority(t *testing.T) {
+	tbl, err := parseTable(t, `{"A":[
 		{"name":"third","exchange":"c","port":25,"priority":20},
 		{"name":"first","exchange":"a","port":25,"priority":0},
 		{"name":"second","exchange":"b","port":25,"priority":10}
-	]}`))
+	]}`)
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("NewTable: %v", err)
 	}
 	g, _ := tbl.Lookup("A")
 	want := []string{"first", "second", "third"}
@@ -142,13 +149,13 @@ func TestLoad_SortsByPriority(t *testing.T) {
 // Attempts must never reorder across priority bands, however it shuffles within
 // them.
 func TestAttempts_PreservesPriorityBands(t *testing.T) {
-	tbl, err := Load(writeRelays(t, `{"A":[
+	tbl, err := parseTable(t, `{"A":[
 		{"name":"hi-1","exchange":"a","port":25,"priority":0},
 		{"name":"hi-2","exchange":"b","port":25,"priority":0},
 		{"name":"lo-1","exchange":"c","port":25,"priority":10}
-	]}`))
+	]}`)
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("NewTable: %v", err)
 	}
 	g, _ := tbl.Lookup("A")
 
@@ -167,7 +174,7 @@ func TestAttempts_PreservesPriorityBands(t *testing.T) {
 }
 
 func TestAttempts_DoesNotMutateGroup(t *testing.T) {
-	tbl, _ := Load(writeRelays(t, shippedShape))
+	tbl, _ := parseTable(t, shippedShape)
 	g, _ := tbl.Lookup("Exchange")
 	before := []string{g.Members[0].Name, g.Members[1].Name}
 	for i := 0; i < 20; i++ {
@@ -178,14 +185,34 @@ func TestAttempts_DoesNotMutateGroup(t *testing.T) {
 	}
 }
 
-func TestPassword_PrefersEnv(t *testing.T) {
-	t.Setenv("MAILGW_TEST_RELAY_PASS", "from-env")
-	r := Relay{AuthPass: "from-file", AuthPassEnv: "MAILGW_TEST_RELAY_PASS"}
-	if got := r.Password(); got != "from-env" {
-		t.Errorf("got %q, want from-env", got)
+func TestPassword_ComesFromTheBundle(t *testing.T) {
+	if got := (Relay{AuthPass: "hunter2"}).Password(); got != "hunter2" {
+		t.Errorf("got %q, want hunter2", got)
 	}
-	if got := (Relay{AuthPass: "from-file"}).Password(); got != "from-file" {
-		t.Errorf("got %q, want from-file", got)
+}
+
+// auth_pass_env must be REFUSED, not ignored.
+//
+// This gateway reads no environment, so the field can only ever resolve to the
+// empty string — and an empty password is not an error a relay reports
+// usefully: it answers "535 authentication failed", which sends the operator to
+// check a credential that was never sent. Ignoring the field would silently
+// fall back to auth_pass, which for a relay configured this way is empty too.
+//
+// Revert the check in NewTable and this test fails with the table building
+// happily and Password() returning "".
+func TestNewTable_RefusesAuthPassEnv(t *testing.T) {
+	_, err := parseTable(t, `{"A":[
+		{"name":"one","exchange":"a","port":25,"auth_user":"u","auth_pass_env":"RELAY_PASS"}
+	]}`)
+	if err == nil {
+		t.Fatal("auth_pass_env must be refused: it would authenticate with an empty password")
+	}
+	if !strings.Contains(err.Error(), "auth_pass_env") {
+		t.Errorf("the error must name the offending field, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "empty password") {
+		t.Errorf("the error must say what would go wrong, got: %v", err)
 	}
 }
 
@@ -201,7 +228,7 @@ func TestString_RedactsPassword(t *testing.T) {
 }
 
 func TestPlaintextCredentials(t *testing.T) {
-	tbl, _ := Load(writeRelays(t, shippedShape))
+	tbl, _ := parseTable(t, shippedShape)
 	got := tbl.PlaintextCredentials()
 	if len(got) != 3 {
 		t.Errorf("got %v, want 3 entries", got)

@@ -3,48 +3,75 @@ package config
 import (
 	"encoding/json"
 	"net/netip"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/relays"
 )
 
-// testdataBundle builds a bundle equivalent to testdata/config, the fixture the
-// whole suite already trusts. Composing it here rather than committing a copy
-// means the two cannot drift apart silently.
+// The fixture bundle, inline.
+//
+// It used to be composed by reading testdata/config off disk, which was the
+// right shape while a gateway could still be run from a directory: the test
+// asserted that a bundle and a directory produced the same configuration. There
+// is no directory any more — Central Management is the only configuration
+// source — so the fixture is the wire format itself, and this file is what CI
+// runs in place of the `check -config` it used to invoke on a sample tree.
+const (
+	fixtureServer = `
+hostname: devbook.local
+local_domains: [devbook.local, ngm.dev]
+listen:
+    - addr: "0.0.0.0:2525"
+max:
+    bytes: 26214400
+    recipients: 100
+outbound:
+    spool_dir: /var/lib/mailgw-go/queue
+`
+
+	fixtureRouting = `
+routes:
+    - name: default
+      match: {always: true}
+      action: {relay: Outbound}
+`
+
+	fixtureAllowlist = `{"allowed": ["127.0.0.1", "::1", "172.18.0.1"]}`
+
+	fixtureRelays = `{
+  "Exchange": [
+    {"name":"Exch-01","auth_user":"someuser","auth_pass":"somepass","priority":0,
+     "exchange":"sandbox.smtp.mailtrap.io","port":"2525"}
+  ],
+  "Outbound": [
+    {"name":"Default","auth_user":"someuser","auth_pass":"somepass","priority":0,
+     "exchange":"sandbox.smtp.mailtrap.io","port":"2525"}
+  ]
+}`
+)
+
 func testdataBundle(t *testing.T) Bundle {
 	t.Helper()
-	dir := filepath.Join("..", "..", "testdata", "config")
 
-	read := func(name string) []byte {
-		raw, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			t.Fatalf("read %s: %v", name, err)
-		}
-		return raw
-	}
-
-	server := string(read(FileServer))
-	routing := string(read(FileRouting))
+	server, routing := fixtureServer, fixtureRouting
 
 	var byGroup map[string][]relays.Relay
-	if err := json.Unmarshal(read(FileRelays), &byGroup); err != nil {
-		t.Fatalf("parse %s: %v", FileRelays, err)
-	}
-	var logging Logging
-	if err := json.Unmarshal(read(FileLogging), &logging); err != nil {
-		t.Fatalf("parse %s: %v", FileLogging, err)
+	if err := json.Unmarshal([]byte(fixtureRelays), &byGroup); err != nil {
+		t.Fatalf("parse the relay fixture: %v", err)
 	}
 
 	return Bundle{
 		Format:    BundleFormat,
 		Server:    &server,
 		Routing:   &routing,
-		Allowlist: read(FileFilter),
+		Allowlist: []byte(fixtureAllowlist),
 		Relays:    byGroup,
-		Logging:   logging,
+		Logging: Logging{
+			URLConn:     "http://logservice:3000/api/connection",
+			URLQueue:    "http://logservice:3000/api/queue",
+			URLDelivery: "http://logservice:3000/api/delivery",
+		},
 	}
 }
 
@@ -57,42 +84,33 @@ func marshal(t *testing.T, b Bundle) []byte {
 	return raw
 }
 
-// The claim this milestone makes is that a bundle and a directory produce the
-// same configuration. This is the config half of it; the rule half is in
-// cmd/mailgw-go/bundle_test.go.
-func TestBundleConfig_MatchesDirectoryLoad(t *testing.T) {
-	dir := filepath.Join("..", "..", "testdata", "config")
-
-	fromDir, err := Load(dir)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
+// This replaces the `check -config` CI step that used to validate a sample
+// configuration directory. It is the same question — "would a gateway accept
+// this?" — asked of the only shape a gateway can now be given.
+func TestBundleConfig_FixtureIsAccepted(t *testing.T) {
 	b, err := ParseBundle(marshal(t, testdataBundle(t)))
 	if err != nil {
 		t.Fatalf("ParseBundle: %v", err)
 	}
-	fromBundle, err := b.Config(BundleOptions{})
+	cfg, err := b.Config(BundleOptions{})
 	if err != nil {
 		t.Fatalf("Bundle.Config: %v", err)
 	}
 
-	if fromBundle.Server.Hostname != fromDir.Server.Hostname {
-		t.Errorf("hostname: bundle %q, dir %q", fromBundle.Server.Hostname, fromDir.Server.Hostname)
+	if cfg.Server.Hostname != "devbook.local" {
+		t.Errorf("hostname = %q, want devbook.local", cfg.Server.Hostname)
 	}
-	if fromBundle.Logging != fromDir.Logging {
-		t.Errorf("logging: bundle %+v, dir %+v", fromBundle.Logging, fromDir.Logging)
+	if got := cfg.Relays.Names(); len(got) != 2 {
+		t.Errorf("relay groups = %v, want two", got)
 	}
-	if !fromBundle.Relays.Equal(fromDir.Relays) {
-		t.Errorf("relays: bundle %v, dir %v", fromBundle.Relays.Names(), fromDir.Relays.Names())
+	if !cfg.Allowlist.Allowed(netip.MustParseAddr("127.0.0.1")) {
+		t.Error("the fixture allowlist should admit 127.0.0.1")
 	}
-	if fromBundle.Allowlist.String() != fromDir.Allowlist.String() {
-		t.Errorf("allowlist: bundle %s, dir %s", fromBundle.Allowlist, fromDir.Allowlist)
+	if cfg.Allowlist.AllowAll() {
+		t.Error("the fixture allowlist must not be allow-all")
 	}
-	// Dir is the one field that must NOT match: a bundle did not come from a
-	// directory and must not claim to have.
-	if fromBundle.Dir != "" {
-		t.Errorf("a bundle-sourced config should have no Dir, got %q", fromBundle.Dir)
+	if _, ok := b.RoutingText(); !ok {
+		t.Error("the fixture should carry a routing profile")
 	}
 }
 

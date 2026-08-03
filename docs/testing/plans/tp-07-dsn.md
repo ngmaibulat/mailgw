@@ -7,7 +7,7 @@ never bounced, and that the RFC 3461 parameters a sender supplies are honoured.
 
 ## Preconditions
 
-- File mode.
+- A provisioned stack (see [environment](../environment)).
 - A relay that can be made to **reject** a recipient `5xx`. A second MailHog will
   not do this — use a small `nc`-scripted listener, or a real relay with an
   address you know it refuses.

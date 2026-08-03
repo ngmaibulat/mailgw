@@ -63,6 +63,7 @@ Afterwards:
   docker logs -f mailgw-go
   docker exec mailgw-go /usr/local/bin/mailgw-go config show   # what it is running
   docker exec mailgw-go /usr/local/bin/mailgw-go check         # is that valid?
+  docker exec mailgw-go /usr/local/bin/mailgw-go mailq         # anything stuck?
   docker exec mailgw-go /usr/local/bin/mailgw-go claim reset   # lost the code
 
 SECURITY: port 8080 is this node's admin UI, served by a root process on an
@@ -72,7 +73,13 @@ relay credentials — so narrow what can reach it as well:
 
   MGMT_CIDR=<your management network> bash 05-firewall.sh
 
-BACKUP: /opt/mailgw-go/data holds this gateway's private key, its claim code and
-its cached configuration. Lose it and the node re-registers as a stranger, and
-stops relaying until an operator approves it again.
+BACKUP: two directories, and they are not interchangeable.
+
+  /opt/mailgw-go/data   this gateway's private key, its claim code and its
+                        cached configuration. Lose it and the node re-registers
+                        as a stranger, and stops relaying until an operator
+                        approves it again. Back this up.
+  /opt/mailgw-go/queue  the outbound spool: mail accepted but not yet delivered,
+                        plus anything quarantined or buried. Losing it loses
+                        mail this gateway has already told a sender it has.
 EOF

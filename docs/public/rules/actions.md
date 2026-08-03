@@ -72,7 +72,7 @@ queueing it. The client is told `250`.
 
 ```bash
 mailgw-go mailq                                # see what is held
-mailgw-go mailq release <uuid> -config ./config
+mailgw-go mailq release <uuid>
 ```
 
 ### accept

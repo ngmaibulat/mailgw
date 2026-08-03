@@ -21,7 +21,6 @@ export class CtrlRelay {
                 priority: 10,
                 auth_user: "",
                 auth_pass: "",
-                auth_pass_env: "",
                 tls: "",
                 allow_insecure_auth: false,
             },

@@ -57,20 +57,20 @@ describe it in the console's schema file.
 
 ## How configuration reaches a gateway
 
-Two modes, one set of validators.
+One way. The gateway runs with no arguments and pulls a JSON bundle from the
+console into a local SQLite cache; `check`, `explain`, `mailq`, `events` and
+`config show` all read that same cache.
 
-**File mode** (`-config <dir>`) reads a directory. It is what `check`, `explain`,
-the contract test suite and the Bun end-to-end suite all run on, and the
-development compose file pins it for that reason.
+There is no second source: no configuration directory, no configuration flags
+and no environment variables. A bundle's keys still mirror what used to be
+filenames (`server.yaml`, `routing.yaml`, `ngmfilter.json`, `relays.json`,
+`logging.json`, `admin.json`, `auth.json`), which is why the configuration
+reference is still organised that way — but nothing reads a file of that name.
+See [a gateway accepts nothing from its host](/architecture/decisions) for what
+the second source cost while it existed.
 
-**Managed mode** (no arguments) pulls a JSON bundle from the console into a local
-SQLite cache. The bundle's keys mirror the configuration directory's filenames
-one for one — that is the whole design, and it is what lets `check` and `explain`
-work identically in both modes.
-
-Both paths converge on one `*config.Config` through the same validators, so a
-configuration that passes in one behaves the same in the other. See
-[Central Management](/architecture/central-management).
+The bundle is decoded and validated by `internal/config` into one
+`*config.Config`. See [Central Management](/architecture/central-management).
 
 ## The through-lines
 

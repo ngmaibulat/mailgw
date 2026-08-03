@@ -165,10 +165,17 @@ therefore crosses the management network in the clear, once.
 and prints it. Read it once out of `docker logs mailgw-go` — or re-run
 `04-gateway.sh`, which prints it — and the UI works as before.
 
-### Back up `/opt/mailgw-go/data`
+### Back up both `/opt/mailgw-go` directories
 
-It holds the gateway's Ed25519 private key, its admin claim code **and** its
-cached configuration — the things that must survive a container replacement.
-Lose it and the node re-registers as a stranger and stops relaying until an
-operator approves it again. `02-checkdirs.sh` creates it `0700` and refuses to
-continue if the mode is wider.
+**`/opt/mailgw-go/data`** holds the gateway's Ed25519 private key, its admin
+claim code **and** its cached configuration — the things that must survive a
+container replacement. Lose it and the node re-registers as a stranger and stops
+relaying until an operator approves it again. `02-checkdirs.sh` creates it
+`0700` and refuses to continue if the mode is wider.
+
+**`/opt/mailgw-go/queue`** is the outbound spool: mail this gateway has accepted
+and answered `250` for but not yet delivered, plus anything quarantined or
+buried. Losing it loses mail a sender has already been told is queued. It is
+mounted at `/var/lib/mailgw-go/queue` inside the container — beside the store,
+not at `/opt` — because that is where a gateway spools when the deployed server
+profile does not name a directory, which is the normal case.

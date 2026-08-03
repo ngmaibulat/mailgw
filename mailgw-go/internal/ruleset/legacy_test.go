@@ -1,6 +1,7 @@
 package ruleset
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -27,9 +28,13 @@ func relayTable(t *testing.T, groups ...string) *relays.Table {
 		body += `"` + g + `":[{"name":"m","exchange":"h.example.com","port":25}]`
 	}
 	body += "}"
-	tbl, err := relays.Load(writeFile(t, "relays.json", body))
+	var byGroup map[string][]relays.Relay
+	if err := json.Unmarshal([]byte(body), &byGroup); err != nil {
+		t.Fatalf("parse the relay fixture: %v", err)
+	}
+	tbl, err := relays.NewTable(byGroup)
 	if err != nil {
-		t.Fatalf("relays.Load: %v", err)
+		t.Fatalf("relays.NewTable: %v", err)
 	}
 	return tbl
 }
@@ -221,8 +226,17 @@ func TestValidate_RequiresRelay(t *testing.T) {
 	}
 }
 
+// The Haraka-format table `convert-routing` transpiles. It is no longer a file
+// this repo ships — nothing loads a routing.json at runtime — but the format is
+// still what an operator migrating off Haraka feeds the converter, so the
+// legacy matcher stays pinned to a representative one.
+const legacyShippedTable = `[
+  {"routename":"To Exchange","sender":"","sender_domain":"","rcpt":"","rcpt_domain":"ngm.dev","relay":"Exchange"},
+  {"routename":"Default","sender":"","sender_domain":"","rcpt":"","rcpt_domain":"","relay":"Outbound"}
+]`
+
 func TestValidate_AcceptsTheShippedRoutingTable(t *testing.T) {
-	tbl, err := LoadLegacyRouting("../../testdata/config/routing.json")
+	tbl, err := LoadLegacyRouting(writeFile(t, "routing.json", legacyShippedTable))
 	if err != nil {
 		t.Fatalf("LoadLegacyRouting: %v", err)
 	}

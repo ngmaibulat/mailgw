@@ -24,10 +24,6 @@ block content
           input#auth_pass.form-control(type='password' name='auth_pass' value='' placeholder=(action == 'Update' ? 'Leave blank to keep current' : ''))
           small.form-hint Encrypted at rest when CONFIG_SECRET_KEY is set. It is decrypted here when a gateway bundle is composed, so no key ever reaches a gateway.
         .form-field
-          label(for='auth_pass_env') Password from environment variable
-          input#auth_pass_env.form-control(type='text' name='auth_pass_env' value=`${data.auth_pass_env || ''}` placeholder='e.g. RELAY_EXCHANGE_PASS')
-          small.form-hint Name of a variable on the GATEWAY. When set it wins over the password above and the credential never enters the deployed bundle.
-        .form-field
           label(for='tls') Outbound TLS
           select#tls.form-control(name='tls')
             option(value='' selected=!data.tls) opportunistic (default)
