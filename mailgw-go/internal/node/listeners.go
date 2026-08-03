@@ -154,6 +154,21 @@ func (l *smtpListeners) start(
 
 // closeAll stops accepting new connections. In-flight sessions are drained by
 // the server's own Shutdown.
+// addrs is what the listeners actually bound, which differs from what the
+// configuration asked for whenever it asked for port 0.
+//
+// Read without a lock because start() runs under a sync.Once and appends to lns
+// before anything can call this: the admin listener is answering by then, but a
+// gateway that has not applied a configuration has no listeners at all and gets
+// an empty slice, which is the truthful answer.
+func (l *smtpListeners) addrs() []string {
+	out := make([]string, 0, len(l.lns))
+	for _, ln := range l.lns {
+		out = append(out, ln.Addr().String())
+	}
+	return out
+}
+
 func (l *smtpListeners) closeAll() {
 	for _, ln := range l.lns {
 		_ = ln.Close()

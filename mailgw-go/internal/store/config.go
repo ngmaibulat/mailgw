@@ -169,3 +169,20 @@ func (s *Store) MarkApplyError(versionID int64, msg string) error {
 	}
 	return nil
 }
+
+// ClearConfigCache forgets every cached bundle.
+//
+// It exists for the test control API in cmd/mailgw-go-test, which needs to put
+// a node back to the state a fresh data volume would give it without destroying
+// the identity — one container then serves a whole test file instead of one
+// compose cycle per case.
+//
+// Nothing in the shipped binary calls it, and nothing should: the cache is what
+// a gateway boots from when Central Management is unreachable, so emptying it on
+// a real node converts a console outage into a node that cannot serve mail.
+func (s *Store) ClearConfigCache() error {
+	if _, err := s.db.ExecContext(context.Background(), `DELETE FROM config_cache`); err != nil {
+		return fmt.Errorf("clear config cache: %w", err)
+	}
+	return nil
+}
