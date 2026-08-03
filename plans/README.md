@@ -34,7 +34,7 @@ Every file carries its **status on line 3**, in the same shape:
 | [M14](./M14-message-authentication.md) | Message authentication: SPF, DKIM, DMARC | `mailgw-go/internal/{msgauth,smtpsrv,queue,ruleset,config,obs}`, `cmd/mailgw-go` | **done** |
 | [M15](./M15-rate-limiting.md) | Rate limiting | `mailgw-go/internal/{ratelimit,smtpsrv,config,obs}`, `cmd/mailgw-go` | **done** |
 | [M16](./M16-m11-reaudit-fixes.md) | Fixes from the M11 re-audit | `mailgw-go/internal/{smtpsrv,deliver,queue,events,config,obs}`, `cmd/mailgw-go` | **done** |
-| [M17](./M17-outbound-bounds-policy.md) | Outbound bounds that need a policy first | `mailgw-go/internal/{deliver,config,obs}` | planned |
+| [M17](./M17-outbound-bounds-policy.md) | Outbound bounds that need a policy first | `mailgw-go/internal/{deliver,config,obs,queue,node}` | **done** |
 | [M18](./M18-zero-config-audit.md) | Zero configuration, enforced: removing the second source | `mailgw-go`, `tests`, `deploy`, `docs`, `webui-fastify` | **done** |
 | [M19](./M19-test-only-control-api.md) | A test-only build with an unauthenticated control API | `mailgw-go/internal/{node,testctl}`, `cmd/mailgw-go-test`, `tests`, `deploy` | **done** |
 
@@ -72,10 +72,8 @@ to panic the process. **The lesson worth keeping: M11's tests all construct thei
 subject directly, and three of its seven items only take effect through
 `cmd/mailgw-go`'s wiring, which had no test at all.** M16 adds one.
 
-**Order worked from here:** **M11 → M16 → M12 → M13 → M14 → M15**; planned:
-**M17**. With M15 in, **every milestone in this directory is done except M17** —
-which is not a feature but the two questions M16 deferred, both of which need a
-policy decided before a number can be picked.
+**Order worked from here:** **M11 → M16 → M12 → M13 → M14 → M15 → M18 → M19 →
+M17**. With M17 in, **every milestone in this directory is done.**
 M11 was taken first because it is self-contained and touches only the gateway,
 and M16 followed immediately because it is that same code. M12 is the security
 item `mailgw-go/TODO.md` ranked first and it unblocks two things held behind it.
@@ -83,6 +81,27 @@ M13 precedes M14 because authenticated submission changes what the
 message-authentication policy should say. Once again the numbers are identity:
 M11 and M16 being worked before M12 does not renumber anything, exactly as M9 was
 worked first without moving.
+
+**M17 was the last one open, and it was open because it was two questions rather
+than two numbers.** M11 could add `max.connections` because "how many" is a
+number an operator picks; "what do you evict" and "how long is a failure
+believed" are not that shape, and getting either wrong is worse than the gap it
+closes. Both are now answered in its own file. The pool **refuses at its global
+cap rather than evicting** — and the cost M17's own plan predicted for refusing
+turned out not to exist, because `Get` frees a slot and `Put` reclaims it, so a
+relay already pooled recycles its own and never meets the cap; what is refused is
+a *new* exchanger, which has no warm connection to lose. A DNS failure is
+**believed for 30 seconds**, a number derived rather than chosen: it must expire
+before `outbound.backoff`'s first entry (60s), or the cache becomes the reason a
+recovered domain stays unreachable. Which reframes what the entry is for — if it
+never survives to the next retry it is not remembering a domain's health at all,
+only deduplicating the burst of concurrent lookups a draining queue makes against
+a resolver that is already failing. **It also went against its own plan once**:
+the plan said `0` should mean "unchanged", citing the `msgauth` precedent, but
+this is a bound on an already-opt-in feature and its two immediate siblings are
+defaulted precisely so that enabling reuse stays a one-line change — so it is
+defaulted to 256 and an explicit `0` is refused, on `max.connections`'s
+reasoning.
 
 **M15 finished the pair M11 started.** `max.connections` bounds how many
 connections exist at once; rate limits bound how often anything happens at all —
@@ -291,10 +310,19 @@ and how the console shows it as alive.
   `blitiri.com.ar/go/spf`, which the plan had expected to hand-roll. Note the
   second one carries `gopkg.in/yaml.v3` for its conformance test only: `go list
   -deps ./...` must keep showing that absent from the build graph on an upgrade.
-- **File mode must not regress.** `-config <dir>` keeps working byte-identically.
-  It is what `check`, `explain`, `testdata/config`, `internal/smtpsrv/contract_test.go`
-  and the Bun SMTP e2e suite all run on. Every plan below states what it must not
-  break; verify with `pnpm test:mailgw-go` and `SMTP_PORT=2525 bun test tests/smtp`.
+- ~~**File mode must not regress.** `-config <dir>` keeps working
+  byte-identically.~~ **Reversed by [M18](./M18-zero-config-audit.md).** This was
+  true when M4–M6 were written and is now false: `-config`, the directory loader,
+  both sample config directories and both `os.Getenv` sites are **gone**, and an
+  audit found that keeping the second source was itself generating defects — one
+  of them a relay `auth_pass_env` that authenticated with an **empty password**
+  while `check` recommended it. There is one configuration source: a bundle from
+  the console, cached locally. CI validates an inline bundle fixture in a Go test,
+  and `pnpm provision` configures the dev stack through the console. Left here
+  struck through rather than deleted, because a plan written against a constraint
+  that silently vanished is worse than one written against a constraint it can
+  see was lifted. Verify with `pnpm test:mailgw-go` and
+  `SMTP_PORT=2525 bun test tests/smtp`.
 - **Reload semantics are already decided** (`cmd/mailgw-go/main.go` `watchReload`):
   all-or-nothing, keep the running configuration on any failure, and only the
   allowlist and the compiled ruleset are hot-swappable via `atomic.Pointer`.

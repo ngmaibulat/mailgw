@@ -122,6 +122,8 @@ outbound:
     data_timeout: 10m
     reuse_connections: false
     connection_idle_timeout: 30s
+    max_pooled_connections: 256
+    mx_cache_ttl: 5m
 ```
 
 `poll_interval` is a **ceiling on how long the scheduler sleeps, not a fixed
@@ -134,7 +136,29 @@ goes unnoticed — so it is cheap to raise.
 
 `reuse_connections` ships **off**. Turning it on changes what every relay in the
 field sees — per-connection message caps, connection-keyed rate limits — and
-nothing observable in a default deployment shows a need for it.
+nothing observable in a default deployment shows a need for it. The three keys
+below it are read only when it is on, but they are defaulted anyway, so enabling
+reuse is a one-line change rather than four.
+
+`max_pooled_connections` bounds idle connections across **every** relay.
+`per_group_connections` bounds one, and a pooled connection is identified by the
+address it dials — so with [`use_mx`](/config/relays#use-mx) the set grows with
+whatever DNS names, not with your relay table. Without a global number the real
+ceiling is `per_group_connections × distinct mail exchangers seen within
+connection_idle_timeout`, which nothing states.
+
+At the cap the gateway **closes the connection it just finished with rather than
+evicting somebody else's**. Nothing fails — the next message to that relay dials
+again — and a relay already in the pool is unaffected, because taking a
+connection out frees its slot and putting it back reclaims it. Watch
+`mailgw_delivery_pool_full_total`; a steady rate means the cap rather than the
+workload is deciding what gets pooled, and the answer is to raise the number. It
+must be positive when `reuse_connections` is on: set it high to lift the ceiling,
+rather than to `0`.
+
+`mx_cache_ttl` is how long an MX answer is reused. DNS **failures** are cached
+too, but only for 30 seconds and not configurably — see
+[`use_mx`](/config/relays#use-mx).
 
 See [The queue](/operations/queue).
 

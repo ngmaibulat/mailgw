@@ -26,7 +26,7 @@ see is right.
 | TP-03 | [Routing rules](/plans/tp-03-routing) | per-recipient routing, stage timing, split |
 | TP-04 | [Inbound TLS](/plans/tp-04-tls) | STARTTLS, implicit TLS, renewal |
 | TP-05 | [Inbound AUTH](/plans/tp-05-auth) | credentials, gating, rule fields |
-| TP-06 | [Queue and retries](/plans/tp-06-queue) | deferral, backoff, quarantine, mailq |
+| TP-06 | [Queue and retries](/plans/tp-06-queue) | deferral, backoff, quarantine, mailq, the pool cap, MX caching |
 | TP-07 | [Bounces and DSN](/plans/tp-07-dsn) | notifications and RFC 3461 parameters |
 | TP-08 | [Claim and provisioning](/plans/tp-08-provisioning) | first boot to first configuration |
 | TP-09 | [Deploy and rollback](/plans/tp-09-deploy-rollback) | versioned configuration |

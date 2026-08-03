@@ -207,6 +207,79 @@ limits — and nothing observable showed a need.
 **`smtpgreeting` is not reproducible.** go-smtp owns the banner string. It would
 need a small upstream patch adding a greeting hook.
 
+## The pool refuses at its cap; it does not evict (M17)
+
+`outbound.max_pooled_connections` bounds idle connections across every relay,
+because `MaxPerRelay` bounds one *key* and a key is built from `relay.Addr()` —
+so with `use_mx` the key set follows DNS, and the real ceiling was
+`per_group_connections × distinct exchangers seen within
+connection_idle_timeout`. Nobody could compute that number.
+
+At the cap `Pool.Put` **closes the connection it was just handed**. It does not
+choose a victim. The two eviction policies considered both make one relay pay for
+another's traffic: least-recently-used hands a busy relay a quiet one's warm
+connection, so the quiet one pays a full dial, TLS and AUTH on its next envelope;
+evicting from the largest bucket penalises a relay precisely for being the one
+pooling was enabled for. Declining to pool is always safe, because a pooled
+connection is only ever an optimisation — and it is the same call `mx.go` already
+makes for the cache next door: *an eviction policy that has to be explained is
+worse than the miss it prevents*.
+
+The cost the M17 plan predicted for refusal does not materialise, and the reason
+is worth keeping. `Get` **takes** a connection out of the pool and `Put` returns
+it, so a key already pooled recycles its own slot and never meets the cap. What
+the cap refuses is a **new** key — an exchanger seen for the first time — which
+by definition has no warm connection to lose. Refusal therefore protects
+incumbents and denies newcomers, which is what eviction was supposed to buy.
+
+A side effect worth stating: `setIdle` deletes a key when its slice empties, so
+every live key holds at least one connection. A cap on connections is therefore a
+cap on keys, which is why `totalLocked` can afford to sum the map instead of
+maintaining a counter that would drift across `take`, `Put`, `expired`, `setIdle`
+and `Close`.
+
+## A DNS failure is believed for 30 seconds (M17)
+
+`Resolver` used to cache successes only, so while DNS was unavailable every
+envelope on every attempt paid a fresh lookup and its full timeout — with
+`outbound.concurrency: 10` draining a queue, ten simultaneous lookups against a
+resolver that was already failing.
+
+**Successes and failures cannot share a TTL**, and the asymmetry is the whole
+design. A stale success costs one delivery attempt to the wrong host and the
+queue retries. A stale *failure* means refusing to try a domain whose DNS has
+come back, and `outbound.backoff` means the next attempt may be an hour away — so
+reusing the 5-minute success TTL, which is the obvious implementation, is the
+wrong default. A failure is a statement about the resolver, not about the zone.
+
+**30 seconds, and the number comes from `outbound.backoff`'s first entry (60s).**
+Below the shortest retry, a negative entry is always expired by the time an
+envelope retries, so this cache can never be why a recovered domain stays
+unreachable. What it actually buys is the concurrent case above — stampede
+suppression with a short memory, not a record of a domain's health. That is also
+why it is a constant rather than a configuration key: nobody can measure a better
+value, and the one thing it must not do is outlive a retry.
+
+Three consequences that are decisions rather than details:
+
+- **A null MX is cached at the full TTL, not this one.** RFC 7505 is a permanent
+  answer a domain published on purpose; it belongs with the successes. It was not
+  cached at all before M17.
+- **SERVFAIL and a timeout are not distinguished**, though only the first is an
+  answer. A timing-out resolver is precisely the case that produces the stampede,
+  so excluding it would leave the harm unaddressed.
+- **The cached error is returned verbatim**, with no marker saying it came from
+  cache. It becomes `Envelope.LastErr`, which is the only evidence when no relay
+  was contacted, and it is read back by both `mailq -json` and the expiry DSN —
+  which goes to a sender who has no idea this gateway has a DNS cache. Two
+  identical failures must not read as two different failures.
+
+Both kinds live in **one map**, so `maxCacheEntries` keeps covering the total; a
+second map would reintroduce exactly the unbounded growth M11.4 closed. There is
+deliberately **no counter**: `queue/runner.go` already logs `cannot resolve mail
+exchangers` per envelope and that line is unaffected by the cache, so a DNS
+outage stays exactly as visible as before — only the DNS traffic collapses.
+
 ## Quarantine release is CLI-only
 
 Configuration flows one way — the console composes bundles, gateways pull them —

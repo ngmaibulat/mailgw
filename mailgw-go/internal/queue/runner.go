@@ -429,6 +429,17 @@ func (r *Runner) attempt(ctx context.Context, env *Envelope, inflight string) {
 			r.obs().DeliverConnReused.Add(1)
 		}
 
+		// The global pool cap turned this connection away. Nothing failed — the
+		// next envelope to this relay simply dials again — so a counter is the
+		// only place it can show up at all. Debug rather than Warn for the same
+		// reason: on its own it is the cap working, and only a rate makes it
+		// worth acting on.
+		if res.PoolFull {
+			r.obs().DeliverPoolFull.Add(1)
+			log.Debug("pooled connection closed; outbound.max_pooled_connections reached",
+				"relay", relay.Name, "host", relay.Exchange)
+		}
+
 		// An opportunistic relay that could not upgrade sent this message in the
 		// clear. That is the intended behaviour of the policy, but it used to
 		// leave no trace anywhere except TLS=false on the audit row — so a relay

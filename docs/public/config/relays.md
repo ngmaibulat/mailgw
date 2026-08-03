@@ -99,3 +99,24 @@ Two things it is not:
 
 A null MX record (RFC 7505) is honoured: that domain accepts no mail, and the
 gateway does not try.
+
+### What is cached, and for how long
+
+Answers are held for `outbound.mx_cache_ttl` (5 minutes by default), because Go's
+resolver does not expose record TTLs.
+
+**Failures are held too, but only for 30 seconds**, and that number is fixed
+rather than configurable. It exists for one case: `outbound.concurrency` workers
+draining a queue against a domain whose DNS is unreachable would otherwise each
+pay a fresh lookup and its full timeout, turning a slow resolver into an
+unavailable one. Thirty seconds is below the shortest retry in the default
+`outbound.backoff`, so a message retrying always re-resolves — this cache can
+never be why a domain stays unreachable after its DNS is fixed. A SERVFAIL and a
+timeout are treated the same.
+
+A null MX is **not** in that 30-second cache. It is a permanent answer the domain
+published deliberately, so it is held for the full `mx_cache_ttl` like any other.
+
+None of this changes what you see when DNS fails: the gateway still logs
+`cannot resolve mail exchangers` for every affected envelope, and the message
+still defers and retries normally. Only the DNS traffic collapses.

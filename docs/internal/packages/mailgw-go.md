@@ -125,6 +125,11 @@ gateway can leave stray root-owned WAL files.
 `hostname`, `logging` and `attach` are on the restart list. An atomic pointer
 would let all three hot-swap.
 
+**`Pool.totalLocked` walks the map on every `Put`.** Cheap only because `setIdle`
+drops a key when it empties, so the key count is itself bounded by
+`max_pooled_connections` — a few hundred adds against a network round trip. If
+the cap were ever removed, this becomes an unbounded scan on the delivery path.
+
 **Rolling an image back after a store schema bump bricks the node.** `store.Open`
 refuses a database newer than the binary, and the migrations are forward-only.
 Recovery means replacing the data volume — which destroys the identity and forces

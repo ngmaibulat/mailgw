@@ -12,6 +12,8 @@ These look like omissions and are not — the reasoning is in
 - `REQUIRETLS` is not advertised; `mail.requiretls` is declared unpopulated.
 - `BINARYMIME` is not enabled, so `mail.body` can never read it.
 - Attachment scanning and outbound connection reuse ship **off**.
+- The connection pool **refuses** at its global cap rather than evicting, and a
+  DNS failure is believed for a fixed 30s. Both are M17 policy decisions.
 - The banner greeting is not reproducible — go-smtp owns the string.
 - Over-long DATA lines are refused, not folded, because folding breaks DKIM.
 - DSN parameters are not propagated to the next hop; the gateway answers for the
@@ -88,7 +90,15 @@ into `connect_per_ip`, so the peer's *next* connection is refused, would close
 the gap and was left out as too clever for a first cut.
 
 **Nothing rate-limits per relay on the way out.** `outbound.concurrency` and
-`per_group_connections` bound connections, not messages per second.
+`per_group_connections` bound connections, not messages per second. A *rate*
+there is a question about what receiving relays tolerate, which M7 declined to
+guess at and M17 left where M16 put it.
+
+**`max_pooled_connections` is not read live.** `outbound` is on the
+`restartRequired` list, so the pool is rebuilt — empty — when the key changes.
+Unlike M15's rate limits, which were deliberately made live so an operator can
+retune one mid-incident, this is a file-descriptor ceiling and a restart is the
+honest cost. It is only worth revisiting if pooling stops being opt-in.
 
 ## Real gaps in the console
 

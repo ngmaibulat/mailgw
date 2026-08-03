@@ -28,6 +28,20 @@ import (
 type Pool struct {
 	// MaxPerRelay bounds idle connections held for one relay.
 	MaxPerRelay int
+	// MaxTotal bounds idle connections across every relay. Zero is no global
+	// cap, which is the pre-M17 behaviour; config defaults it and refuses an
+	// explicit 0 whenever reuse_connections is on.
+	//
+	// MaxPerRelay alone does not bound this set. poolKey is built from
+	// relay.Addr(), and use_mx mints one synthetic relay per exchanger, so the
+	// key set follows DNS rather than the relay table — the ceiling without
+	// this is MaxPerRelay × distinct exchangers seen within IdleTimeout, which
+	// nothing states and nobody can compute.
+	//
+	// Note what this bounds as a side effect: setIdle deletes a key the moment
+	// its slice empties, so every live key holds at least one connection, and a
+	// cap on connections is therefore a cap on keys as well.
+	MaxTotal int
 	// MaxMessages is how many messages one connection may carry before it is
 	// retired. Relays commonly enforce their own limit and answer the message
 	// after it with a 421; retiring first keeps that from looking like a
@@ -127,14 +141,34 @@ func (p *Pool) Get(relay relays.Relay, opts Options, prepare func(*smtp.Client, 
 // messages is how many this connection has now carried. A connection is only
 // accepted if it is under every limit; otherwise it is closed here, so a caller
 // can always hand its connection over and forget about it.
-func (p *Pool) Put(relay relays.Relay, opts Options, c *smtp.Client, conn net.Conn, messages int) {
+//
+// It reports whether MaxTotal — and only MaxTotal — turned the connection away.
+// Over MaxPerRelay is a busy relay behaving exactly as configured and is not
+// worth a counter; over MaxTotal is a ceiling an operator may need to raise, so
+// that one rides back out on Result the way Reused and TLSDowngraded do.
+//
+// At the global cap the connection is CLOSED, not swapped for an older one.
+// Declining to pool is always safe — a pooled connection is only ever an
+// optimisation — and the alternatives all make one relay pay for another's
+// traffic: evicting least-recently-used hands a busy relay a quiet one's warm
+// connection, and evicting from the largest bucket penalises a relay precisely
+// for being the one pooling was turned on for. It is also the call mx.go
+// already makes for the cache next door, for the reason stated there: an
+// eviction policy that has to be explained is worse than the miss it prevents.
+//
+// The cap is far less punishing than it looks, because Get TAKES a connection
+// out of the pool and Put returns it: a steadily busy key recycles its own slot
+// and never reaches the cap at all. What the cap actually refuses is a NEW key —
+// an exchanger seen for the first time — which by definition has no warm
+// connection to lose.
+func (p *Pool) Put(relay relays.Relay, opts Options, c *smtp.Client, conn net.Conn, messages int) bool {
 	if p == nil || c == nil {
 		_ = quietQuit(c)
-		return
+		return false
 	}
 	if p.MaxMessages > 0 && messages >= p.MaxMessages {
 		_ = quietQuit(c)
-		return
+		return false
 	}
 
 	key := poolKey(relay, opts)
@@ -147,7 +181,8 @@ func (p *Pool) Put(relay relays.Relay, opts Options, c *smtp.Client, conn net.Co
 	if max <= 0 {
 		max = 2
 	}
-	over := len(p.idle[key]) >= max
+	full := p.MaxTotal > 0 && p.totalLocked() >= p.MaxTotal
+	over := full || len(p.idle[key]) >= max
 	if !over {
 		p.idle[key] = append(p.idle[key],
 			&pooled{client: c, conn: conn, messages: messages, usedAt: time.Now()})
@@ -161,6 +196,23 @@ func (p *Pool) Put(relay relays.Relay, opts Options, c *smtp.Client, conn net.Co
 		// that long — the rule expired() already states.
 		_ = quietQuit(c)
 	}
+	return full
+}
+
+// totalLocked counts every idle connection. Callers must already hold p.mu.
+//
+// Summed rather than maintained as a field, because a counter kept alongside the
+// map is a counter that drifts — take, Put, expired, setIdle and Close all
+// change the set. The sum is cheap for a reason worth stating: setIdle drops a
+// key when its slice empties, so once MaxTotal is enforced the key count is
+// bounded by MaxTotal too, and this walks a few hundred entries at most against
+// a network round trip.
+func (p *Pool) totalLocked() int {
+	n := 0
+	for _, cs := range p.idle {
+		n += len(cs)
+	}
+	return n
 }
 
 // Discard closes a connection that must not be reused.

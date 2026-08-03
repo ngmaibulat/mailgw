@@ -2,8 +2,10 @@ package deliver
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -469,6 +471,158 @@ func TestPool_ReapLeavesFreshConnectionsAlone(t *testing.T) {
 
 	if idleCount(p) != 1 {
 		t.Errorf("%d idle connections, want 1 — the reaper took a fresh one", idleCount(p))
+	}
+}
+
+// dialRelay opens a greeted session against a real fake relay and hands back the
+// socket underneath it.
+//
+// The global-cap tests drive Pool.Put directly rather than through Deliver,
+// because what has to be asserted is what happens to the connection the pool
+// turns away — and Deliver never lets go of it. A real relay rather than
+// guard_test's blackHole, because quietQuit sends QUIT and waits for the 221.
+func dialRelay(t *testing.T, relay relays.Relay) (*smtp.Client, net.Conn) {
+	t.Helper()
+	conn, err := net.Dial("tcp", relay.Addr())
+	if err != nil {
+		t.Fatalf("dial %s: %v", relay.Addr(), err)
+	}
+	c := smtp.NewClient(conn)
+	if err := c.Hello("devbook.local"); err != nil {
+		t.Fatalf("EHLO: %v", err)
+	}
+	return c, conn
+}
+
+// closed reports whether the socket has been shut, which is how a refused
+// connection is told apart from a leaked one.
+func closed(t *testing.T, conn net.Conn) bool {
+	t.Helper()
+	if err := conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		return true // already closed
+	}
+	_, err := conn.Read(make([]byte, 1))
+	return err != nil && !errors.Is(err, os.ErrDeadlineExceeded)
+}
+
+// MaxPerRelay bounds one key; nothing bounded the number of KEYS, and poolKey is
+// built from relay.Addr(), so with use_mx the key set follows DNS. Three relays
+// under a global cap of two is that ceiling in miniature.
+func TestPool_BoundsPooledConnectionsGlobally(t *testing.T) {
+	p := &Pool{MaxPerRelay: 5, MaxTotal: 2, MaxMessages: 10, IdleTimeout: time.Minute}
+	t.Cleanup(func() { p.Close(context.Background()) })
+	opts := Options{LocalName: "devbook.local"}
+
+	var relayList []relays.Relay
+	for range 3 {
+		r, _ := startCountingRelay(t)
+		relayList = append(relayList, r)
+	}
+
+	for i, r := range relayList[:2] {
+		c, conn := dialRelay(t, r)
+		if full := p.Put(r, opts, c, conn, 1); full {
+			t.Fatalf("relay %d was refused below the global cap", i)
+		}
+	}
+	if got := idleCount(p); got != 2 {
+		t.Fatalf("%d idle connections after two puts, want 2", got)
+	}
+
+	third := relayList[2]
+	c, conn := dialRelay(t, third)
+	if full := p.Put(third, opts, c, conn, 1); !full {
+		t.Error("Put did not report the global cap refusing the connection")
+	}
+	if got := idleCount(p); got != 2 {
+		t.Errorf("%d idle connections, want 2 — the cap admitted a third", got)
+	}
+	// The policy is refuse-and-close, not evict: the connection the cap turned
+	// away must be gone, or the cap would bound the map while leaking sockets.
+	if !closed(t, conn) {
+		t.Error("the refused connection was left open")
+	}
+	// And nothing was evicted to make room for it.
+	if c, _, _ := p.Get(relayList[0], opts, nil); c == nil {
+		t.Error("the cap evicted an incumbent instead of refusing the newcomer")
+	}
+}
+
+// The argument the whole policy rests on: Get takes a connection OUT of the pool,
+// which frees its slot, and Put returns it. A key already in the pool therefore
+// recycles its own slot and never meets the cap — so refusing newcomers does not
+// disable pooling for the busy relay it was turned on for.
+func TestPool_ABusyKeyRecyclesItsOwnSlotAtTheCap(t *testing.T) {
+	p := &Pool{MaxPerRelay: 5, MaxTotal: 1, MaxMessages: 10, IdleTimeout: time.Minute}
+	t.Cleanup(func() { p.Close(context.Background()) })
+	opts := Options{LocalName: "devbook.local"}
+
+	relay, _ := startCountingRelay(t)
+	c, conn := dialRelay(t, relay)
+	if full := p.Put(relay, opts, c, conn, 1); full {
+		t.Fatalf("the first connection was refused at a cap of 1")
+	}
+
+	got, gotConn, msgs := p.Get(relay, opts, nil)
+	if got == nil {
+		t.Fatal("the pooled connection was not handed back")
+	}
+	if full := p.Put(relay, opts, got, gotConn, msgs+1); full {
+		t.Error("a key returning its own connection was refused by the global cap")
+	}
+	if n := idleCount(p); n != 1 {
+		t.Errorf("%d idle connections, want 1", n)
+	}
+}
+
+// Being over per_group_connections is one relay behaving exactly as configured.
+// It is not the global ceiling and must not be reported as one, or the counter
+// would fire on healthy pooling.
+func TestPool_PerRelayRefusalIsNotReportedAsGlobal(t *testing.T) {
+	p := &Pool{MaxPerRelay: 1, MaxTotal: 10, MaxMessages: 10, IdleTimeout: time.Minute}
+	t.Cleanup(func() { p.Close(context.Background()) })
+	opts := Options{LocalName: "devbook.local"}
+
+	relay, _ := startCountingRelay(t)
+	for i := range 2 {
+		c, conn := dialRelay(t, relay)
+		if full := p.Put(relay, opts, c, conn, 1); full {
+			t.Errorf("put %d reported the global cap for a per-relay refusal", i)
+		}
+	}
+	if n := idleCount(p); n != 1 {
+		t.Errorf("%d idle connections, want 1", n)
+	}
+}
+
+// The reason a global cap is needed at all: without use_mx the key set is the
+// relay table, and with it the key set is whatever DNS names.
+func TestPool_TheKeySetFollowsDNS(t *testing.T) {
+	r := &Resolver{Lookup: staticMX(
+		&net.MX{Host: "mx1.partner.com.", Pref: 10},
+		&net.MX{Host: "mx2.partner.com.", Pref: 20},
+		&net.MX{Host: "mx3.partner.com.", Pref: 30},
+	)}
+	relay := relays.Relay{Name: "Outbound", Exchange: "partner.com", Port: 25, UseMX: true}
+
+	expanded, err := Expand(context.Background(), r, relay)
+	if err != nil {
+		t.Fatalf("Expand: %v", err)
+	}
+	if len(expanded) != 3 {
+		t.Fatalf("Expand produced %d relays, want 3", len(expanded))
+	}
+
+	seen := map[string]bool{}
+	for _, m := range expanded {
+		seen[poolKey(m, Options{})] = true
+	}
+	if len(seen) != 3 {
+		t.Errorf("three exchangers produced %d pool keys, want 3 — "+
+			"if they collapsed, the ceiling this cap exists for would not exist", len(seen))
+	}
+	if k := poolKey(relay, Options{}); seen[k] {
+		t.Error("a synthetic MX relay shares a pool key with the configured relay")
 	}
 }
 

@@ -206,6 +206,23 @@ func TestValidate_RejectsBadServerConfig(t *testing.T) {
 		"proxy_trusted without proxy_protocol": func(s *Server) {
 			s.Listen = []Listener{{Addr: ":25", ProxyTrusted: []string{"10.0.0.0/8"}}}
 		},
+		// Both are consulted only when reuse_connections is on, and an explicit
+		// 0 for either would silently mean "no bound": connection_idle_timeout
+		// disables all three eviction paths at once, and max_pooled_connections
+		// leaves the pool bounded only by per_group_connections × however many
+		// exchangers DNS names — which is the ceiling the key exists to state.
+		"zero connection idle timeout": func(s *Server) {
+			s.Outbound.ReuseConnections = true
+			s.Outbound.ConnectionIdleTimeout = 0
+		},
+		"zero max pooled connections": func(s *Server) {
+			s.Outbound.ReuseConnections = true
+			s.Outbound.MaxPooledConnections = 0
+		},
+		"negative max pooled connections": func(s *Server) {
+			s.Outbound.ReuseConnections = true
+			s.Outbound.MaxPooledConnections = -1
+		},
 	}
 	for name, mutate := range cases {
 		s := base()
@@ -218,6 +235,15 @@ func TestValidate_RejectsBadServerConfig(t *testing.T) {
 	ok := base()
 	if err := ok.validate(); err != nil {
 		t.Errorf("the base config should validate, got %v", err)
+	}
+
+	// Turning connection reuse on must stay a ONE-line change: every bound it
+	// needs is defaulted, which is the reason those defaults sit beside keys
+	// that are otherwise never read.
+	reuse := base()
+	reuse.Outbound.ReuseConnections = true
+	if err := reuse.validate(); err != nil {
+		t.Errorf("reuse_connections alone should validate on the defaults, got %v", err)
 	}
 }
 

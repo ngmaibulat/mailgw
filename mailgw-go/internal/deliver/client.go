@@ -72,6 +72,16 @@ type Result struct {
 	// rather than a fresh dial.
 	Reused bool
 
+	// PoolFull records that the connection could not be kept because
+	// outbound.max_pooled_connections was already reached, so it was closed and
+	// the next envelope to this relay pays a fresh dial.
+	//
+	// Only the GLOBAL cap sets this. Being over per_group_connections is a busy
+	// relay behaving as configured; being over the global cap is the ceiling an
+	// operator would want to raise, and it is otherwise invisible because
+	// nothing fails.
+	PoolFull bool
+
 	Rcpts []RcptResult
 	Err   error
 
@@ -190,7 +200,7 @@ func Deliver(ctx context.Context, relay relays.Relay, msg Message, opts Options)
 			// No pooling: QUIT and close, exactly as before this existed.
 			_ = quietQuit(c)
 		case res.Err == nil && res.poolable:
-			opts.Pool.Put(relay, opts, c, conn, res.messages)
+			res.PoolFull = opts.Pool.Put(relay, opts, c, conn, res.messages)
 		default:
 			opts.Pool.Discard(c)
 		}

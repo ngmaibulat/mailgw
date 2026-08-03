@@ -26,6 +26,7 @@ var wantKeys = []string{
 	"deliver_connreused",
 	"deliver_deferred",
 	"deliver_ok",
+	"deliver_pool_full",
 	"deliver_tls_downgraded",
 	"dkim_sign_failed",
 	"dkim_signed",

@@ -57,9 +57,36 @@ const DefaultTTL = 5 * time.Minute
 // explained is worse than that.
 const maxCacheEntries = 1024
 
+// negativeTTL is how long a resolution FAILURE is reused.
+//
+// Successes and failures cannot share a TTL, and the asymmetry is why. A stale
+// success costs one delivery attempt to the wrong host and the queue retries; a
+// stale failure means refusing to try a domain whose DNS has already come back,
+// and outbound.backoff means the next attempt may be an hour away. A failure is
+// a statement about the resolver, not about the zone.
+//
+// The number comes from outbound.backoff's first entry, which is 60s: at 30s a
+// negative entry is always expired by the time an envelope retries, so this
+// cache can never be the reason a recovered domain stays unreachable. What it
+// buys is the case that actually hurts — outbound.concurrency workers draining a
+// queue all resolve the same failing domain within the same few seconds, each
+// paying a full lookup timeout against a resolver that is already failing. It is
+// stampede suppression with a short memory, not a record of a domain's health,
+// which is also why it is a constant rather than a configuration key.
+//
+// A null MX is deliberately NOT in here: see Hosts.
+const negativeTTL = 30 * time.Second
+
 type cachedMX struct {
 	hosts []Host
-	at    time.Time
+	// err is set for a cached FAILURE, in which case hosts is nil. Both kinds
+	// live in one map so maxCacheEntries keeps covering the total — a second
+	// map would reintroduce exactly the unbounded growth that bound closed.
+	err error
+	at  time.Time
+	// ttl is per entry, because the three kinds do not share one: an answer and
+	// a null MX are held for the configured MX TTL, a failure for negativeTTL.
+	ttl time.Duration
 }
 
 func (r *Resolver) ttl() time.Duration {
@@ -91,8 +118,8 @@ func (r *Resolver) Hosts(ctx context.Context, domain string) ([]Host, error) {
 		return nil, fmt.Errorf("mx: empty domain")
 	}
 
-	if hosts, ok := r.cached(domain); ok {
-		return hosts, nil
+	if hosts, err, ok := r.cached(domain); ok {
+		return hosts, err
 	}
 
 	lookup := r.Lookup
@@ -108,7 +135,17 @@ func (r *Resolver) Hosts(ctx context.Context, domain string) ([]Host, error) {
 		// an empty list, and that is the implicit-MX case, not an error.
 		var dnsErr *net.DNSError
 		if !asDNSNotFound(err, &dnsErr) {
-			return nil, fmt.Errorf("mx %s: %w", domain, err)
+			// A real resolution failure — SERVFAIL, REFUSED, a timeout. Cached
+			// briefly so a queue draining at outbound.concurrency does not put
+			// one lookup per envelope onto a resolver that is already failing.
+			//
+			// SERVFAIL and a timeout are NOT distinguished, though only the
+			// first is an answer: a timing-out resolver is precisely the case
+			// that produces the stampede, so excluding it would leave the harm
+			// this exists for unaddressed.
+			failure := fmt.Errorf("mx %s: %w", domain, err)
+			r.store(domain, nil, failure, negativeTTL)
+			return nil, failure
 		}
 		records = nil
 	}
@@ -120,7 +157,14 @@ func (r *Resolver) Hosts(ctx context.Context, domain string) ([]Host, error) {
 		// declaring that it accepts no mail at all. Falling back to the implicit
 		// A record here would deliver to a host that said not to.
 		if name == "" {
-			return nil, fmt.Errorf("mx %s: null MX; the domain accepts no mail", domain)
+			// Cached at the FULL TTL, not negativeTTL. This is the one failure
+			// that is not a failure: it is a permanent answer the domain
+			// published on purpose, so it belongs with the successes. Re-asking
+			// every 30s would be asking the one question whose answer will
+			// never change.
+			nullMX := fmt.Errorf("mx %s: null MX; the domain accepts no mail", domain)
+			r.store(domain, nil, nullMX, r.ttl())
+			return nil, nullMX
 		}
 		hosts = append(hosts, Host{Name: name, Pref: int(m.Pref)})
 	}
@@ -130,7 +174,7 @@ func (r *Resolver) Hosts(ctx context.Context, domain string) ([]Host, error) {
 	}
 	sortHosts(hosts)
 
-	r.store(domain, hosts)
+	r.store(domain, hosts, nil, r.ttl())
 	return hosts, nil
 }
 
@@ -156,18 +200,31 @@ func sortHosts(hosts []Host) {
 	}
 }
 
-func (r *Resolver) cached(domain string) ([]Host, bool) {
+// cached returns a stored answer or a stored failure. The bool reports a hit,
+// so a cached failure is a hit with a nil host list and a non-nil error.
+func (r *Resolver) cached(domain string) ([]Host, error, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	c, ok := r.cache[domain]
-	if !ok || r.clock().Sub(c.at) > r.ttl() {
-		return nil, false
+	// Each entry carries its own TTL: a failure expires in negativeTTL, an
+	// answer in r.ttl().
+	if !ok || r.clock().Sub(c.at) > c.ttl {
+		return nil, nil, false
+	}
+	if c.err != nil {
+		// Returned verbatim, with no marker saying it came from here — and that
+		// is deliberate. This error becomes Envelope.LastErr, which is the only
+		// evidence when no relay was contacted, and it is read back by both
+		// `mailq -json` and the expiry DSN. The DSN goes to a sender who has no
+		// idea this gateway has a DNS cache, and two identical failures must not
+		// read as two different failures.
+		return nil, c.err, true
 	}
 	// A copy, so the reshuffle below cannot reorder what a concurrent caller is
 	// already walking — and so the cached order stays the resolved one.
 	hosts := append([]Host(nil), c.hosts...)
 	sortHosts(hosts)
-	return hosts, true
+	return hosts, nil, true
 }
 
 // store caches an answer, and is also where the cache is bounded.
@@ -181,20 +238,28 @@ func (r *Resolver) cached(domain string) ([]Host, bool) {
 //
 // Safe against an in-flight caller: cached() returns a defensive copy, so
 // deleting an entry cannot change a slice somebody is already reading.
-func (r *Resolver) store(domain string, hosts []Host) {
+func (r *Resolver) store(domain string, hosts []Host, err error, ttl time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.cache == nil {
 		r.cache = map[string]cachedMX{}
 	}
-	r.cache[domain] = cachedMX{hosts: append([]Host(nil), hosts...), at: r.clock()}
+	r.cache[domain] = cachedMX{
+		hosts: append([]Host(nil), hosts...),
+		err:   err,
+		at:    r.clock(),
+		ttl:   ttl,
+	}
 
 	if len(r.cache) <= maxCacheEntries {
 		return
 	}
-	now, ttl := r.clock(), r.ttl()
+	// Each entry against its OWN ttl, which also means the sweep reclaims
+	// negative entries first — they expire in 30s where an answer lasts five
+	// minutes — without any rule saying so.
+	now := r.clock()
 	for d, c := range r.cache {
-		if d != domain && now.Sub(c.at) > ttl {
+		if d != domain && now.Sub(c.at) > c.ttl {
 			delete(r.cache, d)
 		}
 	}

@@ -74,7 +74,10 @@ The last error column says why. Common answers:
 
 **Everything is deferring and `mailgw_delivery_connect_failed_total` is climbing
 fast.** With `use_mx`, check DNS: an MX lookup failure means no destination was
-reachable at all.
+reachable at all. Note that a resolution **failure** is cached for 30 seconds, so
+immediately after you fix DNS a message retried by hand may still report the old
+error — wait half a minute and flush again. It cannot delay a normally scheduled
+retry, since 30s is below the shortest `outbound.backoff`.
 
 ## Bounces are not arriving
 

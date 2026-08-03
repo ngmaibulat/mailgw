@@ -122,6 +122,9 @@ type Metrics struct {
 	DeliverBounced    atomic.Int64
 	DeliverConnFail   atomic.Int64
 	DeliverConnReused atomic.Int64
+	// DeliverPoolFull counts finished connections closed rather than kept,
+	// because outbound.max_pooled_connections was already reached.
+	DeliverPoolFull atomic.Int64
 	// DeliverTLSDowngraded counts opportunistic relay attempts that failed to
 	// upgrade and were carried in the clear.
 	DeliverTLSDowngraded atomic.Int64
@@ -344,6 +347,15 @@ var counters = []counter{
 		"Attempts served by an already-open relay connection instead of a new dial. " +
 			"Per RELAY-attempt. Always 0 unless outbound.reuse_connections is on.",
 		func(m *Metrics) *atomic.Int64 { return &m.DeliverConnReused }},
+	{"deliver_pool_full", "mailgw_delivery_pool_full_total",
+		"Finished relay connections closed instead of kept, because " +
+			"outbound.max_pooled_connections was already reached. Per RELAY-attempt. " +
+			"Always 0 unless outbound.reuse_connections is on. Nothing fails when " +
+			"this moves — the next envelope to that relay pays a fresh dial — but a " +
+			"steady rate means the cap, not the workload, is deciding what gets " +
+			"pooled. Being over per_group_connections is NOT counted here: that is " +
+			"one relay behaving as configured, where this is a global ceiling.",
+		func(m *Metrics) *atomic.Int64 { return &m.DeliverPoolFull }},
 	{"deliver_tls_downgraded", "mailgw_delivery_tls_downgraded_total",
 		"Attempts against an opportunistic relay where STARTTLS failed and the " +
 			"message was sent in the clear. Per RELAY-attempt. A relay that used " +

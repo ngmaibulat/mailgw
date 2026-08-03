@@ -38,7 +38,7 @@ and M9.5 into M7. It is numbered M9 so nothing above it moves: milestone
 | [M14 — message authentication: SPF, DKIM, DMARC](../plans/M14-message-authentication.md) | **done** |
 | [M15 — rate limiting](../plans/M15-rate-limiting.md) | **done** |
 | [M16 — fixes from the M11 re-audit](../plans/M16-m11-reaudit-fixes.md) | **done** |
-| [M17 — outbound bounds that need a policy first](../plans/M17-outbound-bounds-policy.md) | planned |
+| [M17 — outbound bounds that need a policy first](../plans/M17-outbound-bounds-policy.md) | **done** |
 | [M18 — zero configuration, enforced: removing the second source](../plans/M18-zero-config-audit.md) | **done** |
 | [M19 — a test-only build with an unauthenticated control API](../plans/M19-test-only-control-api.md) | **done** |
 
@@ -47,13 +47,24 @@ with M4 and M9.5 with M7.
 
 **M10–M15 come from the audit of 2026-08-01**, which read the shipped code paths
 rather than this backlog. Order worked: **M10 → M11 → M16 → M12 → M13 → M14 →
-M15 → M18**, and **every milestone in `plans/` is done except M17**. M12 was the
-first item in this file, promoted out of it; M13–M15 are the Deferred list,
-promoted out of it. **M17 is the two questions M16 deferred** — a global cap on
-pooled connections and negative caching for MX failures — both of which need a
-policy decided before a number can be picked. Everything below this table is
-what is left of the running backlog; a new milestone takes the next free number,
-which is **M20**.
+M15 → M18 → M19 → M17**, and **every milestone in `plans/` is now done.** M12 was
+the first item in this file, promoted out of it; M13–M15 are the Deferred list,
+promoted out of it. Everything below this table is what is left of the running
+backlog; a new milestone takes the next free number, which is **M20**.
+
+**M17 closed the two questions M16 deferred**, and it was last precisely because
+they were *questions rather than numbers*: what a full connection pool evicts,
+and how long a DNS failure is believed. The answers are refuse-rather-than-evict
+and 30 seconds. Both are argued in its own file, but two things are worth having
+here. The pool cap costs far less than the plan feared, because `Get` frees a
+slot and `Put` reclaims it — so a relay already pooled recycles its own and never
+meets the cap, and what gets refused is a *new* MX exchanger with no warm
+connection to lose. And the 30 seconds is **derived**: it has to expire before
+`outbound.backoff`'s first entry (60s), or the cache becomes the reason a
+recovered domain stays unreachable — which means a negative entry never survives
+to the next retry, and is therefore not remembering a domain's health at all,
+only collapsing the burst of concurrent lookups a draining queue makes against a
+failing resolver.
 
 **M19 pays the bill M18 left on the test suite.** Removing the second
 configuration source was right, and it left the e2e suite unable to bootstrap
@@ -262,26 +273,48 @@ nothing Haraka does is missing here.**
       before the client is answered. A per-digest cache would help a fleet
       sending the same attachment repeatedly.
 
-## Follow-ups M16 deferred — now [M17](../plans/M17-outbound-bounds-policy.md)
+## Follow-ups M16 deferred — closed by [M17](../plans/M17-outbound-bounds-policy.md)
 
 Recorded here as well as in M16's own "deliberately not done", because a
 deferral visible only inside the milestone that made it is a deferral nobody
-reads again. Both are **questions before they are numbers**, which is why
-neither was folded into M11's resource-bounds pass.
+reads again. Both were **questions before they were numbers**, which is why
+neither was folded into M11's resource-bounds pass — and why M17 was worked last
+even though its code turned out to be small.
 
-- [ ] **No global cap on pooled connections.** `MaxPerRelay` bounds one key, and
-      with `use_mx` the key set follows DNS — so the real ceiling is
-      `MaxPerRelay × distinct exchangers seen within connection_idle_timeout`.
-      The reaper genuinely bounds that now (M16 made
-      `connection_idle_timeout: 0` an error), so this is a sharp edge rather
-      than a leak. A second, global limit needs a policy for **what to evict
-      when it is reached**, and that is the part nobody has decided.
-      Only reachable with `outbound.reuse_connections` on, which ships off.
-- [ ] **No negative caching for MX failures.** `Resolver.Hosts` caches successes
-      only, so while DNS is down every envelope, on every attempt, pays a fresh
-      lookup and its timeout. Adding one means deciding **how long a failure is
-      believed** — too long and a domain stays unreachable after its DNS is
-      fixed, too short and it buys nothing.
+- [x] ~~**No global cap on pooled connections.**~~ **Done in
+      [M17.1](../plans/M17-outbound-bounds-policy.md).**
+      `outbound.max_pooled_connections`, defaulted to 256 and refused when
+      explicitly `0` while `reuse_connections` is on. The policy question — what
+      is evicted — was answered **nothing**: at the cap `Pool.Put` closes the
+      connection it was just handed. Eviction makes one relay pay for another's
+      traffic, declining to pool is always safe, and it is the call `mx.go`
+      already makes for the cache next door. The cost is smaller than it looks,
+      because `Get` frees a slot and `Put` reclaims it, so what the cap refuses
+      is a *new* exchanger rather than an incumbent. `deliver_pool_full` counts
+      it; per-key refusals deliberately do not.
+- [x] ~~**No negative caching for MX failures.**~~ **Done in
+      [M17.2](../plans/M17-outbound-bounds-policy.md).** Failures are cached for
+      a fixed **30s** — a constant, not a key, and the number is derived from
+      `outbound.backoff`'s first entry (60s) so a negative entry always expires
+      before an envelope retries. A null MX is cached at the **full** TTL
+      instead, being a permanent answer the domain published on purpose (it was
+      not cached at all before). SERVFAIL and timeouts are treated alike, both
+      kinds share one map so `maxCacheEntries` still covers the total, and the
+      cached error is returned **verbatim** because it becomes `LastErr` and is
+      read back by the expiry DSN.
+
+## Follow-ups M17 created
+
+- [ ] **`max_pooled_connections` is not read live.** `outbound` is on the
+      `restartRequired` list, so changing it restarts the gateway and the rebuilt
+      pool starts empty. M15 deliberately made its rate limits live so an
+      operator can retune one mid-incident; this is a file-descriptor ceiling and
+      a restart is the honest cost while pooling is opt-in. Worth revisiting only
+      if `reuse_connections` ever ships on.
+- [ ] **`Pool.totalLocked` scans the map on every `Put`.** Cheap only because
+      `setIdle` drops a key when it empties, so the key count is itself bounded
+      by the cap. If the cap were ever removed, this becomes an unbounded scan on
+      the delivery path.
 
 ## Follow-ups M15 created
 

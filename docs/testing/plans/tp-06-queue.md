@@ -215,10 +215,79 @@ was updated, the message is delivered twice. That is inherent to any spooling MT
 and is the deliberate trade — the alternative is losing it.
 :::
 
+### 17. Connection reuse is off by default
+
+With the shipped configuration, send three messages and check the counter.
+
+```bash
+curl -s http://localhost:8080/metrics | grep -E 'connections_reused|pool_full'
+```
+
+**Expected.** Both `mailgw_delivery_connections_reused_total` and
+`mailgw_delivery_pool_full_total` are `0`. Nothing is pooled unless
+`outbound.reuse_connections` is deployed as `true`.
+
+### 18. The global pool cap refuses rather than evicting
+
+Deploy a `server` profile turning reuse on with a cap of 1, and configure **two**
+relay groups pointing at different addresses (a second MailHog, or the same host
+on two ports).
+
+```yaml
+outbound:
+    reuse_connections: true
+    max_pooled_connections: 1
+    connection_idle_timeout: 5m
+```
+
+Send a message through the first relay, then one through the second.
+
+```bash
+curl -s http://localhost:8080/metrics | grep -E 'connections_reused|pool_full'
+```
+
+**Expected.** `pool_full` is at least `1` — the second relay's connection was
+closed rather than kept. Nothing is deferred, nothing is bounced, and both
+messages deliver: the cap costs a redial, never a delivery.
+
+Now send a **second** message through the *first* relay.
+
+**Expected.** `connections_reused` increases. The relay already in the pool keeps
+its slot — it takes the connection out and puts the same one back — so the cap
+refuses newcomers without disabling pooling for the incumbent.
+
+::: warning Set it back
+`max_pooled_connections: 1` is a test value. Restore the default (256) before
+moving on; `outbound` needs a restart, so a redeploy is a gateway restart.
+:::
+
+### 19. A DNS failure is cached briefly, and does not outlive a retry
+
+Configure a relay with `use_mx: true` and an `exchange` domain whose DNS you can
+break (point the container at a resolver you can stop, or use a domain that
+SERVFAILs).
+
+Send several messages while resolution is failing.
+
+**Expected.** Each message defers with `cannot resolve mail exchangers` in the
+log and in `mailq -json`'s `LastErr` — the visible behaviour is unchanged. What
+changes is that the gateway is not issuing one lookup per envelope: with
+`outbound.concurrency: 10` and DNS down, lookups collapse to roughly one per
+30 seconds per domain.
+
+Restore DNS and wait for the next scheduled retry.
+
+**Expected.** The message delivers on its next attempt. The negative cache is
+shorter than the shortest `outbound.backoff` entry, so it can never be the reason
+a recovered domain stays unreachable. Flushing by hand *immediately* after fixing
+DNS may still report the old error for up to 30 seconds — that is the cache, and
+it is expected.
+
 ## Cleanup
 
 Empty the spool, restore the original `server.yaml` and `routing.yaml`, restart
-the relay.
+the relay. Confirm `outbound.reuse_connections` is back off and
+`max_pooled_connections` back at its default.
 
 ## Result
 
@@ -240,3 +309,6 @@ the relay.
 | 14 in-flight refused | | |
 | 15 gauges | | |
 | 16 restart recovery | | |
+| 17 reuse off by default | | |
+| 18 pool cap refuses, does not evict | | |
+| 19 MX failure cached briefly | | |

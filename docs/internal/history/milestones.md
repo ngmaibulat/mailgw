@@ -29,6 +29,18 @@ connections exist at once, rate limits bound how *often* anything happens — pe
 IP, per sender, per user, per recipient domain, per failed AUTH. All off by
 default, all 4xx, all read live.
 
+**M17** answered the two questions M16 deferred, both of which needed a *policy*
+before a number could be picked: a global cap on pooled connections, which
+**refuses** rather than evicting, and negative caching for MX failures, believed
+for 30s because that is below the shortest retry backoff.
+
+**M18** enforced zero configuration by deletion — `-config`, the directory
+loader, both sample config directories and both `os.Getenv` sites, after an audit
+found four defects that were all the same defect: having two sources.
+
+**M19** gave the repo a second binary, `mailgw-go-test`, so a test can inject a
+bundle without a console round trip. It is never shipped, and CI asserts that.
+
 **Every milestone in `plans/` is now done.**
 
 ## Which to read before changing what
@@ -37,6 +49,7 @@ default, all 4xx, all read live.
 |---|---|
 | the rule engine | `M2-routing-dsl.md` |
 | the spool or delivery | `M1`, `M7-queue-completeness.md`, `M11`, `M16` |
+| the connection pool or MX resolution | `M17-outbound-bounds-policy.md`, `M16` |
 | Central Management | `M3`, `M4`, `M5-config-pull.md` |
 | counters | `M6-observability.md` |
 | inbound TLS or attachments | `M8-parity-hardening.md` |

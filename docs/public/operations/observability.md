@@ -145,6 +145,7 @@ mailgw_delivery_bounced_total             per RECIPIENT, rejected 5xx
 mailgw_delivery_deferred_total            per ENVELOPE-attempt
 mailgw_delivery_connect_failed_total      per RELAY
 mailgw_delivery_connections_reused_total  per RELAY-attempt
+mailgw_delivery_pool_full_total           per RELAY-attempt
 mailgw_delivery_tls_downgraded_total      per RELAY-attempt
 ```
 
@@ -154,6 +155,13 @@ three-member group adds three, which is what makes it useful for spotting one ba
 relay among several. `deferred` is **per envelope-attempt** — one, however many
 relays were tried.
 :::
+
+The last three are `0` unless `outbound.reuse_connections` is on.
+`pool_full` counts finished connections closed rather than kept, because
+`outbound.max_pooled_connections` was already reached — **nothing fails when it
+moves**; the next message to that relay dials again. Being over
+`per_group_connections` is not counted here: that is one relay behaving as
+configured, where this is the global ceiling.
 
 ### Notifications
 
@@ -215,6 +223,7 @@ mailgw_config_version the applied configuration version
 | `rate(mailgw_ratelimited_connections_total)` sustained | either an abusive peer or a limit set below your real traffic |
 | `mailgw_dkim_sign_failed_total > 0` | mail is going out unsigned and being refused at the far end while the logs here say delivered |
 | `mailgw_delivery_tls_downgraded_total` rising | a relay that used to encrypt stopped |
+| `rate(mailgw_delivery_pool_full_total)` sustained | connection reuse is on but the global cap, not your workload, is deciding what gets pooled — raise `outbound.max_pooled_connections` |
 | `mailgw_messages_loop_rejected_total > 0` | mail is looping |
 | `mailgw_config_version` differing across the fleet | a deploy did not land |
 

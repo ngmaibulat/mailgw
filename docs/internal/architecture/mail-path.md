@@ -118,6 +118,18 @@ deliberately — RFC 7435 opportunistic security is encryption *without*
 authentication, and verifying under it bought nothing because the only thing on
 the other side of the failure was a cleartext redial. `required` verifies fully.
 
+The pool is bounded twice: `per_group_connections` per key, and
+`max_pooled_connections` across all of them — the second because a key is built
+from `relay.Addr()`, so with `use_mx` the key set follows DNS rather than the
+relay table. At the global cap `Put` **closes** the connection rather than
+evicting another; MX resolution **failures** are cached for 30s. Both are policy
+decisions with reasoning that must not be re-litigated from the code —
+see [Standing decisions](./decisions).
+
+`internal/deliver` still has **no `obs.Metrics` and no logger**. Every signal it
+produces rides out on `Result` and the runner counts it, which is why `PoolFull`
+sits beside `Reused` and `TLSDowngraded` rather than incrementing anything here.
+
 ## Audit events
 
 `internal/events` — bounded channel, sender pool, timeout and retry, spilling to

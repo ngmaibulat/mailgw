@@ -186,6 +186,15 @@ type Outbound struct {
 	// relay closes idle connections on its own schedule; one we already know is
 	// stale is cheaper to drop than to discover.
 	ConnectionIdleTimeout Duration `json:"connection_idle_timeout,omitempty"`
+	// MaxPooledConnections bounds idle connections across ALL relays.
+	//
+	// PerGroupConnections bounds one pool key, and a pool key is built from
+	// relay.Addr() — so with use_mx the key set follows DNS rather than the
+	// relay table, one synthetic relay per exchanger. Without this the real
+	// ceiling is per_group_connections × distinct exchangers seen within
+	// connection_idle_timeout: a number no key states and no operator can
+	// compute.
+	MaxPooledConnections int `json:"max_pooled_connections,omitempty"`
 
 	// MXCacheTTL is how long an MX answer is reused for a use_mx relay. Go's
 	// resolver does not expose record TTLs, so this is a fixed interval rather
@@ -684,7 +693,13 @@ func defaults() Server {
 			// enabling it is a one-line change rather than three.
 			MaxMessagesPerConnection: 50,
 			ConnectionIdleTimeout:    Duration(30 * time.Second),
-			MXCacheTTL:               Duration(5 * time.Minute),
+			// 256 idle sockets is far past what an ordinary relay table can
+			// reach — per_group_connections defaults to 5, so this is fifty
+			// distinct exchangers held at once — and only use_mx makes the key
+			// set that wide. It is a file-descriptor ceiling, not a throughput
+			// knob: the number to raise if deliver_pool_full ever moves.
+			MaxPooledConnections: 256,
+			MXCacheTTL:           Duration(5 * time.Minute),
 		},
 		DSN: DSNConfig{Enabled: true, Return: "headers", MaxReturnBytes: 256 * 1024},
 		Attach: AttachConfig{
@@ -907,6 +922,15 @@ func (s *Server) validate() error {
 	if s.Outbound.ReuseConnections && s.Outbound.ConnectionIdleTimeout <= 0 {
 		return fmt.Errorf("%s: outbound.connection_idle_timeout must be positive "+
 			"when outbound.reuse_connections is set", FileServer)
+	}
+	// Same reasoning again, and the same wording as max.connections: an explicit
+	// 0 out of a console textarea would mean "no global ceiling", which is the
+	// state this key exists to end — leaving the pool bounded only by
+	// per_group_connections × however many exchangers DNS names.
+	if s.Outbound.ReuseConnections && s.Outbound.MaxPooledConnections <= 0 {
+		return fmt.Errorf("%s: outbound.max_pooled_connections must be positive "+
+			"when outbound.reuse_connections is set "+
+			"(set it high rather than 0 to lift the cap)", FileServer)
 	}
 	if strings.TrimSpace(s.Outbound.SpoolDir) == "" {
 		return fmt.Errorf("%s: outbound.spool_dir is required", FileServer)

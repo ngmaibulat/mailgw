@@ -1,6 +1,10 @@
 # M17 — Outbound bounds that need a policy first
 
-**Status:** planned  ·  **Packages:** `mailgw-go/internal/{deliver,config,obs}`  ·  **Depends on:** M11, M16  ·  **Blocks:** —
+**Status:** **done** (2026-08-03)  ·  **Packages:** `mailgw-go/internal/{deliver,config,obs,queue,node}`, `docs`  ·  **Depends on:** M11, M16  ·  **Blocks:** —
+
+> Read [What was built differently, and why](#what-was-built-differently-and-why)
+> first: both policy questions below were answered, and one of them was answered
+> against this file's own suggestion.
 
 > Source: the "Deliberately not done here" section of
 > [M16](./M16-m11-reaudit-fixes.md). Both items were looked at during the
@@ -167,19 +171,156 @@ cd mailgw-go
 gofmt -l . && go vet ./... && go test -race ./...
 ```
 
-- **A decision recorded before code.** Both items above are one policy question
-  each; write the answer into this file's "What was built differently" section
-  with the reasoning, because the number will look arbitrary to whoever reads it
-  next.
-- `internal/deliver` tests already stand up **real go-smtp instances as fake
-  relays** and inject `Lookup`; neither item needs a new harness.
-- **Assert the eviction, not just the cap** — M15's plan makes the same point,
-  and for the same reason: a test that only checks refusals passes against an
-  implementation that never evicts.
-- **A clock is injected already** (`Resolver.now`, `mx.go:34`). Use it; a
-  negative-TTL test that sleeps is a flaky test.
-- For M17.1, a test with `use_mx` and several exchangers, since that is the only
-  way the key set grows and therefore the only way the global cap is reachable.
+All clean. **Every decision was confirmed against the unfixed code**, not merely
+asserted: each new test was run with its own change reverted and observed to
+fail, including each policy choice separately.
+
+| Reverted | What failed |
+|---|---|
+| the global cap in `Put` | `Put did not report the global cap`; `3 idle connections, want 2`; `the refused connection was left open` |
+| caching transient failures | `resolved 5 times, want 1 — the failure is not being cached` |
+| the null-MX store | `resolved 2 times, want 1 — a null MX is not cached at all` |
+| null MX at `negativeTTL` instead of the full TTL | `a null MX expired on the negative TTL` |
+| failures sharing the success TTL | `a recovered domain was still refused from cache: mx partner.com: … server misbehaving` |
+| the validation | `zero max pooled connections: expected a validation error` |
+| the default | `reuse_connections alone should validate on the defaults` |
+| the `counters` table row | all three obs guards, including `Metrics.DeliverPoolFull is in no counters entry` |
+
+The fifth of those is worth keeping: reverting the TTL split reproduces, in a
+test, the exact harm the 30-second number exists to prevent — a domain whose DNS
+has come back still being refused out of cache.
+
+New tests:
+
+- `internal/deliver/pool_test.go` — `BoundsPooledConnectionsGlobally` (three
+  relays under a cap of two: the third is refused, **closed**, and no incumbent
+  is evicted), `ABusyKeyRecyclesItsOwnSlotAtTheCap` (the argument the whole
+  policy rests on), `PerRelayRefusalIsNotReportedAsGlobal` (the counter must not
+  fire on healthy pooling), `TheKeySetFollowsDNS` (three exchangers, three pool
+  keys — the growth the cap exists for). Helpers `dialRelay` and `closed`: the
+  cap tests drive `Put` directly, because what has to be asserted is the fate of
+  the connection the pool turns away and `Deliver` never lets go of it.
+- `internal/deliver/mx_test.go` — `CachesAResolutionFailureBriefly` (which also
+  asserts `negativeTTL < 60s`, so the constant cannot drift past the shortest
+  backoff without a test saying so), `AFailureIsNotHeldForTheSuccessTTL`,
+  `ANullMXIsCachedAtTheFullTTL`, `ACachedFailureReadsIdenticallyToAFreshOne`,
+  `TheNegativeCacheSharesTheBound`. All use the injected `Resolver.now`; nothing
+  sleeps.
+- `internal/config/config_test.go` — the two new invalid cases, **plus
+  `connection_idle_timeout: 0`, which M16 added and never tested**, and a
+  positive case asserting `reuse_connections: true` validates on the defaults
+  alone, which is what makes enabling reuse a one-line change.
+
+## What was built differently, and why
+
+Both questions this file exists to ask were answered. The answers, and the one
+place the answer went against this file's own suggestion.
+
+**1. The pool refuses at the cap. It does not evict — and the cost this file
+predicted for refusing does not materialise.**
+
+The table above warned that refusing "silently disables pooling for the busiest
+relay, which is the one it was turned on for". It does not, and the reason is
+mechanical: `Get` **takes** a connection out of the pool, which frees its slot,
+and `Put` returns it, which reclaims the same slot. A key already in the pool
+recycles its own slot and never meets the cap. What the cap refuses is a **new**
+key — an exchanger seen for the first time — which by definition has no warm
+connection to lose. Refusal therefore protects incumbents and denies newcomers,
+which is what eviction was supposed to buy.
+`TestPool_ABusyKeyRecyclesItsOwnSlotAtTheCap` pins it.
+
+That left the decisive argument as internal consistency. `mx.go:49-57` already
+makes this exact call for the cache next door — *"an eviction policy that has to
+be explained is worse than that"* — and `pool.go` documents a pooled connection
+as *"only ever an optimisation"*. Both eviction policies make one relay pay for
+another's traffic. So this file's own aside was right: M17.1 is a few lines and a
+counter.
+
+**A property nobody anticipated, and it is why `totalLocked` can be a scan.**
+`setIdle` deletes a key the moment its slice empties, so every live key holds at
+least one connection — which means a cap on connections is also a cap on **keys**.
+That is precisely the unwritten ceiling M17.1 was written to close, closed by the
+same line. It also makes summing the map on each `Put` cheap enough to prefer
+over a maintained counter, which would have to stay correct across `take`, `Put`,
+`expired`, `setIdle` and `Close`.
+
+**2. The default is 256, not `0`-meaning-unchanged — against this file's own
+"Shape once decided".**
+
+That section proposed `0` meaning the existing behaviour, "the treatment
+`reuse_connections` and every `msgauth` key already get". The wrong precedent was
+cited. `max_pooled_connections` is not a *feature* toggle like `msgauth`; it is a
+bound on a feature that is already opt-in, and its two immediate siblings —
+`max_messages_per_connection` and `connection_idle_timeout` — are defaulted with
+the comment saying why: *"Only consulted when reuse_connections is on, but
+defaulted here so enabling it is a one-line change rather than three."* Zero would
+have made it four.
+
+So it follows M11's `max.connections` reasoning instead: defaulted, and **refused
+when explicitly 0** while `reuse_connections` is on, with the same "set it high
+rather than 0" wording. An explicit zero out of a console textarea would mean "no
+global ceiling", which is the state the key exists to end. An upgrade still
+changes nothing, because the whole pool is off by default.
+
+**3. Thirty seconds, and the number is derived rather than chosen.**
+
+The asymmetry this file identifies is real and it is what picks the number: a
+negative entry must always be expired by the time an envelope retries, or the
+cache becomes the reason a recovered domain stays unreachable. `outbound.backoff`
+starts at 60s, so anything below that is safe and 30s leaves margin. The test
+asserts `negativeTTL < 60s` so the constant cannot drift past the shortest
+backoff silently.
+
+What follows from that is the part worth recording: **if a negative entry never
+survives to the next retry, it is not remembering a domain's health at all.** Its
+entire job is the concurrent case — `outbound.concurrency` workers draining a
+queue all resolving the same failing domain within the same few seconds. It is
+stampede suppression with a short memory. That reframing is also the answer to
+"should it be tunable": no, because nobody can measure a better value for a
+window that exists only to deduplicate a burst.
+
+**4. Three sub-decisions the shape section left open.**
+
+- **A null MX is cached at the full TTL**, as this file suspected it should be.
+  It was not cached at all before, so this is a small improvement in passing.
+- **SERVFAIL and a timeout are not distinguished.** This file asked whether they
+  should be, noting a timeout may be this gateway's own network. They are not: a
+  timing-out resolver is *precisely* the case that produces the stampede, so
+  excluding it would leave the main harm unaddressed while adding a branch.
+- **"Dropped on the first success" needed no code.** A success simply overwrites
+  the entry in the same map, which `TestHosts_AFailureIsNotHeldForTheSuccessTTL`
+  pins.
+
+**5. The cached error is returned verbatim, with no marker.**
+
+The obvious touch is to say "(cached)" so an operator can tell. It was rejected:
+this error becomes `Envelope.LastErr`, which M16.9 established is the *only*
+evidence when no relay was contacted, and it is read back by both `mailq -json`
+and the expiry DSN — which goes to a **sender** who has no idea this gateway has
+a DNS cache. Two identical failures must not read as two different failures.
+
+**6. No counter for M17.2, and the reason is that nothing became less visible.**
+
+MX failure does not ride on `Result`; it surfaces in `queue/runner.go`, which
+already logs `cannot resolve mail exchangers` **per envelope**. That line is
+unaffected by the cache — only the DNS traffic collapses — so a DNS outage stays
+exactly as visible as before. A counter would have meant plumbing a signal out of
+`Resolver` through `targets()` to say something `deliver_deferred` and that Warn
+already say. Same reasoning DMARC's absent counter got in M14. The snapshot
+therefore goes 46 → **47**, not 48.
+
+### Accepted as-is
+
+- **`max_pooled_connections` is not read live**, unlike M15's rate limits.
+  `outbound` is on the `restartRequired` list (a `reflect.DeepEqual` over the
+  whole struct, so the new key needed no change there), and the rebuilt pool
+  starts empty. M15 made its limits live because an operator retunes one
+  mid-incident; this is a file-descriptor ceiling, and a restart is the honest
+  cost while pooling is opt-in.
+- **The per-key refusal is still uncounted.** It predates this milestone and is
+  healthy behaviour — one relay at its configured depth. Counting it would make
+  `deliver_pool_full` fire during normal operation and stop meaning "raise the
+  number".
 
 ## Deliberately not done here
 

@@ -548,10 +548,29 @@ the text format for a counter is three lines.
   relay in the field sees from this gateway — many cap messages per connection,
   many rate-limit per connection rather than per message — and none of that is
   observable from here.
+- **The pool refuses at its cap; it does not evict.**
+  `outbound.max_pooled_connections` bounds idle connections across every relay,
+  because the per-relay bound bounds one *key* and a key is the address dialled —
+  so with `use_mx` the key set follows DNS. At the cap `Put` closes the
+  connection it was handed rather than choosing a victim: eviction makes one
+  relay pay for another's traffic, and declining to pool is always safe. It costs
+  less than it sounds, because `Get` frees a slot and `Put` reclaims it, so a
+  relay already pooled recycles its own and never meets the cap — what is refused
+  is a *new* exchanger, which has no warm connection to lose.
+  `deliver_pool_full` counts it.
 - **`use_mx` is a smarthost named by domain, not direct-to-MX delivery.** It
   resolves the *relay's* exchange, never the recipient's domain. Delivering per
   recipient domain would need the session to split envelopes by domain as well,
   and carries its own TLS and reputation story.
+- **A DNS failure is believed for 30 seconds.** Successes are held for
+  `outbound.mx_cache_ttl`; failures cannot share that TTL, because a stale
+  success costs one attempt to the wrong host while a stale *failure* keeps
+  refusing a domain whose DNS came back — and the next retry may be an hour away.
+  30s is below `outbound.backoff`'s first entry, so a negative entry always
+  expires before an envelope retries; what it buys is the concurrent case, where
+  `outbound.concurrency` workers draining a queue each pay a full lookup timeout
+  against a resolver that is already failing. A null MX is *not* in it: RFC 7505
+  is a permanent answer, so it is cached with the successes.
 - **A crash mid-SMTP can redeliver.** Inherent to any spooling MTA: the
   alternative is losing mail.
 - **`outbound.poll_interval` is a ceiling, not a tick.** Queue filenames carry

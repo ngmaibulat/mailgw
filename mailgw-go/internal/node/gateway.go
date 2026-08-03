@@ -487,6 +487,7 @@ func (g *gateway) bringUp(ctx context.Context, l *Loaded) error {
 	if out.ReuseConnections {
 		pool = &deliver.Pool{
 			MaxPerRelay: out.PerGroupConnections,
+			MaxTotal:    out.MaxPooledConnections,
 			MaxMessages: out.MaxMessagesPerConnection,
 			IdleTimeout: out.ConnectionIdleTimeout.D(),
 		}
@@ -498,7 +499,8 @@ func (g *gateway) bringUp(ctx context.Context, l *Loaded) error {
 		go pool.Reap(ctx, out.ConnectionIdleTimeout.D())
 		g.log.Info("reusing relay connections between envelopes",
 			"max_messages_per_connection", out.MaxMessagesPerConnection,
-			"idle_timeout", out.ConnectionIdleTimeout.D())
+			"idle_timeout", out.ConnectionIdleTimeout.D(),
+			"max_pooled_connections", out.MaxPooledConnections)
 	}
 
 	signer, err := dkimSigner(cfg)

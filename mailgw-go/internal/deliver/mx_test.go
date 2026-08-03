@@ -126,6 +126,174 @@ func TestHosts_CachesAndExpires(t *testing.T) {
 	}
 }
 
+// While DNS is down, every envelope on every attempt used to pay a fresh lookup
+// and its full timeout — with outbound.concurrency workers draining a queue, that
+// is a stampede against a resolver that is already failing.
+func TestHosts_CachesAResolutionFailureBriefly(t *testing.T) {
+	calls := 0
+	now := time.Now()
+	r := &Resolver{
+		TTL: 5 * time.Minute,
+		now: func() time.Time { return now },
+		Lookup: func(context.Context, string) ([]*net.MX, error) {
+			calls++
+			return nil, &net.DNSError{Err: "server misbehaving", Name: "partner.com", IsTemporary: true}
+		},
+	}
+
+	for i := range 5 {
+		if _, err := r.Hosts(context.Background(), "partner.com"); err == nil {
+			t.Fatalf("call %d: a DNS failure was not reported", i)
+		}
+	}
+	if calls != 1 {
+		t.Errorf("resolved %d times, want 1 — the failure is not being cached", calls)
+	}
+
+	// And it is believed only briefly. negativeTTL is below outbound.backoff's
+	// first entry (60s) precisely so a retrying envelope always re-resolves: a
+	// cache must never be the reason a recovered domain stays unreachable.
+	if negativeTTL >= 60*time.Second {
+		t.Fatalf("negativeTTL is %s, which can outlive the shortest retry backoff", negativeTTL)
+	}
+	now = now.Add(negativeTTL + time.Second)
+	if _, err := r.Hosts(context.Background(), "partner.com"); err == nil {
+		t.Fatal("a DNS failure was not reported after the negative TTL")
+	}
+	if calls != 2 {
+		t.Errorf("resolved %d times after the negative TTL, want 2", calls)
+	}
+}
+
+// A failure is a statement about the resolver, not about the zone, so it must not
+// inherit the success TTL. At mx_cache_ttl a blip would survive several retries.
+func TestHosts_AFailureIsNotHeldForTheSuccessTTL(t *testing.T) {
+	calls := 0
+	now := time.Now()
+	r := &Resolver{
+		TTL: time.Hour,
+		now: func() time.Time { return now },
+		Lookup: func(context.Context, string) ([]*net.MX, error) {
+			calls++
+			if calls == 1 {
+				return nil, &net.DNSError{Err: "server misbehaving", Name: "partner.com", IsTemporary: true}
+			}
+			return []*net.MX{{Host: "mx.partner.com.", Pref: 10}}, nil
+		},
+	}
+
+	if _, err := r.Hosts(context.Background(), "partner.com"); err == nil {
+		t.Fatal("the first lookup should have failed")
+	}
+
+	// Well inside the one-hour success TTL, and the domain is reachable again.
+	now = now.Add(negativeTTL + time.Second)
+	hosts, err := r.Hosts(context.Background(), "partner.com")
+	if err != nil {
+		t.Fatalf("a recovered domain was still refused from cache: %v", err)
+	}
+	if len(hosts) != 1 || hosts[0].Name != "mx.partner.com" {
+		t.Errorf("got %v, want the recovered answer", hosts)
+	}
+
+	// The success overwrote the failure in the same map, so it is now held for
+	// the full TTL rather than 30s.
+	now = now.Add(2 * negativeTTL)
+	if _, err := r.Hosts(context.Background(), "partner.com"); err != nil {
+		t.Fatalf("Hosts: %v", err)
+	}
+	if calls != 2 {
+		t.Errorf("resolved %d times, want 2 — the recovered answer was not cached", calls)
+	}
+}
+
+// RFC 7505 is a permanent answer the domain published on purpose. It belongs with
+// the successes: re-asking every 30s asks the one question whose answer will
+// never change.
+func TestHosts_ANullMXIsCachedAtTheFullTTL(t *testing.T) {
+	calls := 0
+	now := time.Now()
+	r := &Resolver{
+		TTL: 5 * time.Minute,
+		now: func() time.Time { return now },
+		Lookup: func(context.Context, string) ([]*net.MX, error) {
+			calls++
+			return []*net.MX{{Host: ".", Pref: 0}}, nil
+		},
+	}
+
+	assertNullMX := func(when string) {
+		t.Helper()
+		_, err := r.Hosts(context.Background(), "nomail.example")
+		if err == nil {
+			t.Fatalf("%s: a null MX was accepted", when)
+		}
+		if !strings.Contains(err.Error(), "no mail") {
+			t.Errorf("%s: error %q does not explain the null MX", when, err)
+		}
+	}
+
+	assertNullMX("first call")
+	assertNullMX("cached")
+	if calls != 1 {
+		t.Errorf("resolved %d times, want 1 — a null MX is not cached at all", calls)
+	}
+
+	// Past the negative TTL, still cached: this is not a transient failure.
+	now = now.Add(negativeTTL + time.Second)
+	assertNullMX("past the negative TTL")
+	if calls != 1 {
+		t.Errorf("resolved %d times, want 1 — a null MX expired on the negative TTL", calls)
+	}
+
+	// Past the full TTL, re-asked like any other answer.
+	now = now.Add(5 * time.Minute)
+	assertNullMX("past the full TTL")
+	if calls != 2 {
+		t.Errorf("resolved %d times after the full TTL, want 2", calls)
+	}
+}
+
+// The message an operator and a bounced sender both read must not depend on
+// whether DNS was consulted: it becomes Envelope.LastErr, which mailq -json and
+// the expiry DSN read back.
+func TestHosts_ACachedFailureReadsIdenticallyToAFreshOne(t *testing.T) {
+	r := &Resolver{Lookup: func(context.Context, string) ([]*net.MX, error) {
+		return nil, &net.DNSError{Err: "server misbehaving", Name: "partner.com", IsTemporary: true}
+	}}
+
+	_, first := r.Hosts(context.Background(), "partner.com")
+	_, second := r.Hosts(context.Background(), "partner.com")
+	if first == nil || second == nil {
+		t.Fatal("a DNS failure was not reported")
+	}
+	if first.Error() != second.Error() {
+		t.Errorf("cached failure reads %q, fresh one reads %q", second, first)
+	}
+}
+
+// The bound closed by M11 has to keep covering both kinds, which is why failures
+// live in the same map rather than a second one.
+func TestStore_TheNegativeCacheSharesTheBound(t *testing.T) {
+	now := time.Now()
+	r := &Resolver{
+		TTL: time.Hour,
+		now: func() time.Time { return now },
+		Lookup: func(context.Context, string) ([]*net.MX, error) {
+			return nil, &net.DNSError{Err: "server misbehaving", IsTemporary: true}
+		},
+	}
+
+	for i := range maxCacheEntries * 3 {
+		if _, err := r.Hosts(context.Background(), "d"+strconv.Itoa(i)+".example"); err == nil {
+			t.Fatalf("call %d should have failed", i)
+		}
+	}
+	if got := cacheLen(r); got > maxCacheEntries {
+		t.Errorf("the negative cache grew to %d entries, want at most %d", got, maxCacheEntries)
+	}
+}
+
 // Every existing configuration has no use_mx, and must dial exactly what it says.
 func TestExpand_LeavesAnOrdinaryRelayAlone(t *testing.T) {
 	relay := relays.Relay{Name: "smarthost", Exchange: "mail.example.com", Port: 587}
@@ -253,7 +421,7 @@ func TestStore_BoundsTheCacheWhenNothingCanExpire(t *testing.T) {
 	// The answer just stored is the one the caller is about to use, so it must
 	// survive the reset.
 	last := "d" + strconv.Itoa(maxCacheEntries*3-1) + ".example"
-	if _, ok := r.cached(last); !ok {
+	if _, _, ok := r.cached(last); !ok {
 		t.Error("the most recently stored answer was evicted by its own write")
 	}
 }
