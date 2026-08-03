@@ -90,6 +90,15 @@ func Open(dir string) (*Store, error) {
 	}
 
 	path := filepath.Join(dir, DBFile)
+	// Absolute, because the DSN below is a file: URL and a relative path becomes
+	// a URI AUTHORITY rather than a path: `-data ./x` fails with "invalid uri
+	// authority: x", which names neither the flag nor the directory. The shipped
+	// node always gets an absolute /var/lib/mailgw-go, so this only ever bit
+	// someone running the binary by hand or from a harness — which is exactly who
+	// has the least context for that error.
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
 	// Create the file ourselves at 0600 before the driver can create it at
 	// 0644, so the private key is never briefly world-readable. SQLite copies
 	// the main database's mode onto the -wal and -shm files, so this covers

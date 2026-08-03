@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"sync/atomic"
 
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/adminui"
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/config"
@@ -42,6 +43,32 @@ type Node struct {
 	// display version number. Touched only from ApplyBundle, which the test
 	// control server serialises; see control.go.
 	injected int
+
+	// serveCtx bounds everything a bring-up starts — the delivery runner and
+	// the failed-events replayer — and therefore has to live as long as the
+	// process does.
+	//
+	// It exists because ApplyBundle is called from an HTTP handler, whose own
+	// context is cancelled the moment the response is written. Handing that to
+	// applyCached cancelled the runner immediately after the first injected
+	// configuration, so the gateway accepted mail and never delivered any of
+	// it. Every other caller of applyCached — boot, the poll loop, the
+	// WebSocket, SIGHUP — already passes a process-lifetime context.
+	//
+	// An atomic because Run writes it while a control request may be reading
+	// it: cmd/mailgw-go-test starts the control API before Run. Background is
+	// the right default rather than a nil check, since teardown is explicit
+	// (gateway.shutdown cancels the runner and the replayer by hand) and never
+	// relied on this context being cancelled.
+	serveCtx atomic.Pointer[context.Context]
+}
+
+// serve returns the context a bring-up should attach its goroutines to.
+func (n *Node) serve() context.Context {
+	if c := n.serveCtx.Load(); c != nil {
+		return *c
+	}
+	return context.Background()
 }
 
 // New builds a gateway process without starting anything that listens.
@@ -176,6 +203,11 @@ func (n *Node) Close() {
 // Central Management down is the entire reason the cache exists.
 func (n *Node) Run(ctx context.Context) int {
 	defer n.Close()
+
+	// Published before anything can apply a configuration, so a bring-up
+	// triggered from a control request attaches its runner to the process
+	// rather than to that request. See the field's own comment.
+	n.serveCtx.Store(&ctx)
 
 	// The UI is how an unprovisioned gateway gets provisioned, so it comes up
 	// first and a bind failure is fatal — without it this process can never

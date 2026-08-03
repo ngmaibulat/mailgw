@@ -11,22 +11,28 @@ cd mailgw-go
 gofmt -l .                     # must print nothing
 go vet ./...
 go test -race ./...
-go run ./cmd/mailgw-go check
 
-cd ../logservice && bun test tests/
+cd ../logservice && bun test ./tests/
 cd ../webui-fastify && pnpm typecheck && pnpm check && pnpm test
 ```
 
-Then, against a running stack:
+Then the end-to-end suites. The first needs only a Go toolchain:
 
 ```bash
+pnpm test:e2e:gateway          # tier B — no Docker, ~30s
+
+pnpm certs                     # once
+pnpm build:mailgw-go:test      # the engineering image
+pnpm stack:test                # up with the overlay, then provision
+pnpm test:e2e:stack
 pnpm test:e2e:smtp
 pnpm test:e2e:api
 ```
 
-::: warning CI does not run most of this
-The pipeline covers the Go module only. Nothing runs the logservice tests, the
-console checks, or either end-to-end suite — so on a release, run them yourself.
+::: warning CI does not run all of this
+`go.yml` covers the Go module and `e2e.yml` adds the two end-to-end tiers — tier
+B on every push and PR, tier A on main. Nothing runs the **logservice** tests or
+the **console** checks, so on a release run those yourself.
 :::
 
 ## Manual, by scope of change

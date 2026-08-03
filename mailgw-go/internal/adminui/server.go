@@ -49,6 +49,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/obs"
@@ -140,6 +141,28 @@ type Server struct {
 	claimMu     sync.Mutex
 	claimTokens float64
 	claimLast   time.Time
+
+	// addr is what ListenAndServe actually bound, which is not what it was
+	// asked for whenever it was asked for port 0.
+	//
+	// An atomic because ListenAndServe runs on its own goroutine while the
+	// control API answers Status from a request goroutine. Nil-safe: an unset
+	// pointer reads as "not listening", which is the truthful answer before
+	// ListenAndServe has run and after it has returned.
+	addr atomic.Pointer[string]
+}
+
+// Addr is the address the admin UI is listening on, or "" before it binds.
+//
+// It exists for the same reason node.Status reports the SMTP listeners rather
+// than the configured ones: an address may be requested as :0, and a caller
+// that cannot discover the bound port cannot reach /metrics, /readyz or
+// /healthz at all.
+func (s *Server) Addr() string {
+	if a := s.addr.Load(); a != nil {
+		return *a
+	}
+	return ""
 }
 
 func (s *Server) log() *slog.Logger {
@@ -192,6 +215,11 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	if err != nil {
 		return err
 	}
+	bound := ln.Addr().String()
+	s.addr.Store(&bound)
+	// Cleared on the way out so Addr() cannot keep pointing at a socket that is
+	// no longer accepting.
+	defer s.addr.Store(nil)
 
 	srv := &http.Server{
 		Handler: s.Handler(),
@@ -213,7 +241,9 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	s.log().Info("admin UI listening", "addr", addr)
+	// The bound address, not the requested one: they differ whenever the port
+	// was 0, and the log line naming ":0" tells an operator nothing.
+	s.log().Info("admin UI listening", "addr", bound)
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

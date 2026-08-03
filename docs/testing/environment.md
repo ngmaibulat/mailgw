@@ -67,6 +67,25 @@ are the same text.
 a stack you have NOT yet provisioned — `docker compose down -v && docker compose
 up -d`, then work through the wizard by hand instead of running `pnpm provision`.
 
+## The engineering build, for a clean start and for the suites
+
+`pnpm provision` waits for the gateway to **register itself**, and against the
+shipped image that only happens once somebody submits a Central Management URL
+in its wizard — which since M12 is behind a session behind a claim code in the
+container log. So on a fresh `mailgw_go_data` volume it times out.
+
+The engineering build closes that, and is what the automated suites drive:
+
+```bash
+pnpm build:mailgw-go:test      # ngmaibulat/mailgw-go-test — never pushed, never :latest
+pnpm stack:test                # up with the overlay, then provision
+```
+
+It adds an **unauthenticated** control API on `127.0.0.1:9090` and is bound to
+loopback for that reason. `pnpm test:e2e:stack` and `pnpm test:e2e:gateway` use
+it; the plans here do not need it, and the shipped image remains the default so
+the console path keeps its coverage.
+
 ## Changing configuration mid-plan
 
 Every "edit the config and reload" step is now: edit the profile in the console,

@@ -23,6 +23,13 @@ dsn:
     relay_group: Outbound
 ```
 
+::: tip Most of this is automated
+`tests/gw/dsn.test.ts` covers steps 3–6 and 11–18 against a scriptable relay —
+which is exactly the "small nc-scripted listener" the preconditions ask for.
+Run `pnpm test:e2e:gateway` first; what is left here is the routing and
+unroutable-notification behaviour that needs a second relay group.
+:::
+
 ## Steps
 
 ### 1. DSN is advertised
@@ -88,9 +95,16 @@ condition into permanent rejection is what this guards against.
 Make the relay reject the **notification** itself `5xx`.
 
 **Expected.**
-- The notification is buried in `dead/`.
 - **No second notification** is generated.
 - `mailgw_dsn_suppressed_total` increments.
+- The notification leaves the queue.
+
+::: warning It is completed, not buried
+This plan used to say "buried in `dead/`". It is not: `dead/` is the
+**`max_lifetime`** path, and an envelope every recipient permanently rejected is
+*done* rather than given up on — `Runner` calls `Complete`, which removes it. Look
+for the counter and for an empty queue, not for a `dead/` entry.
+:::
 
 **This is how two mail systems bounce at each other for ever.** The null sender
 exists to stop it.

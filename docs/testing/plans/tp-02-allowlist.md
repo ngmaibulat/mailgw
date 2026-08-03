@@ -18,6 +18,13 @@ collection.
   or a colleague's machine will do.
 - [TP-01](/plans/tp-01-smoke) passed.
 
+::: tip Partly automated
+`tests/gw/routing.test.ts` covers the hot-swap half: an allowlist that denies
+everything refuses **before the banner**, letting the peer back in needs no
+restart, and a malformed allowlist is refused with the old one still in force.
+What is left here is the CIDR and IPv6 matrix against real client addresses.
+:::
+
 ## Steps
 
 ### 1. A listed peer is accepted

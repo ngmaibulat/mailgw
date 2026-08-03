@@ -37,6 +37,7 @@ Every file carries its **status on line 3**, in the same shape:
 | [M17](./M17-outbound-bounds-policy.md) | Outbound bounds that need a policy first | `mailgw-go/internal/{deliver,config,obs,queue,node}` | **done** |
 | [M18](./M18-zero-config-audit.md) | Zero configuration, enforced: removing the second source | `mailgw-go`, `tests`, `deploy`, `docs`, `webui-fastify` | **done** |
 | [M19](./M19-test-only-control-api.md) | A test-only build with an unauthenticated control API | `mailgw-go/internal/{node,testctl}`, `cmd/mailgw-go-test`, `tests`, `deploy` | **done** |
+| [M20](./M20-e2e-control-api.md) | End-to-end tests driven by the control API | `tests`, `mailgw-go/internal/{testctl,node,adminui,store}`, `.github/workflows`, `docs` | **done** |
 
 **Order worked:** M9 → M4 → M5 → M6 → M7 → M8 → M10. **M1–M10 are all done.**
 M9.4 landed with M4 and M9.5 with M7, as the notes here suggested they should.
@@ -72,8 +73,20 @@ to panic the process. **The lesson worth keeping: M11's tests all construct thei
 subject directly, and three of its seven items only take effect through
 `cmd/mailgw-go`'s wiring, which had no test at all.** M16 adds one.
 
+**M20 used M19's control API and found that M19 had two defects it could not
+have found any other way.** Injecting a configuration passed the HTTP request's
+context to `applyCached`, which owns the delivery runner's lifetime — so a
+gateway accepted mail with a clean 250 and delivered none of it, visible only to
+a test that actually delivers. And an injected version id is negative, which the
+console's `/agent/report` schema refuses, so **every heartbeat 400'd for ever**
+and an enrolled node that had been injected into went permanently stale in the
+fleet view. It also found `pnpm provision` reporting success while creating no
+relay at all, and two manual test plans describing behaviour the code does not
+have. The lesson is M16's, one layer out: a green suite proves nothing about the
+paths no test drives, and M19's own new door was one of them.
+
 **Order worked from here:** **M11 → M16 → M12 → M13 → M14 → M15 → M18 → M19 →
-M17**. With M17 in, **every milestone in this directory is done.**
+M17 → M20**. With M20 in, **every milestone in this directory is done.**
 M11 was taken first because it is self-contained and touches only the gateway,
 and M16 followed immediately because it is that same code. M12 is the security
 item `mailgw-go/TODO.md` ranked first and it unblocks two things held behind it.

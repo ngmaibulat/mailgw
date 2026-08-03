@@ -41,16 +41,33 @@ and M9.5 into M7. It is numbered M9 so nothing above it moves: milestone
 | [M17 — outbound bounds that need a policy first](../plans/M17-outbound-bounds-policy.md) | **done** |
 | [M18 — zero configuration, enforced: removing the second source](../plans/M18-zero-config-audit.md) | **done** |
 | [M19 — a test-only build with an unauthenticated control API](../plans/M19-test-only-control-api.md) | **done** |
+| [M20 — end-to-end tests driven by the control API](../plans/M20-e2e-control-api.md) | **done** |
 
 Order worked: **M9 → M4 → M5 → M6 → M7 → M8 — M1–M9 are all done.** M9.4 landed
 with M4 and M9.5 with M7.
 
 **M10–M15 come from the audit of 2026-08-01**, which read the shipped code paths
 rather than this backlog. Order worked: **M10 → M11 → M16 → M12 → M13 → M14 →
-M15 → M18 → M19 → M17**, and **every milestone in `plans/` is now done.** M12 was
-the first item in this file, promoted out of it; M13–M15 are the Deferred list,
-promoted out of it. Everything below this table is what is left of the running
-backlog; a new milestone takes the next free number, which is **M20**.
+M15 → M18 → M19 → M17 → M20**, and **every milestone in `plans/` is now done.**
+M12 was the first item in this file, promoted out of it; M13–M15 are the
+Deferred list, promoted out of it. Everything below this table is what is left of
+the running backlog; a new milestone takes the next free number, which is
+**M21**.
+
+**M20 spent M19's control API and found four defects doing it**, two of them in
+M19's own code and reachable no other way. Injecting a configuration handed the
+HTTP request's context to `applyCached` — which owns the delivery runner's
+lifetime — so the gateway accepted mail with a clean `250` and **delivered none
+of it**; and an injected version id is negative, which the console's report
+schema refuses, so **every heartbeat 400'd for ever** and an injected-into node
+went permanently stale in the fleet view. It also found `pnpm provision`
+reporting success while creating no relay (`group_id` belongs in the body, and
+nothing checked a status), and a relative `-data` path failing with `invalid uri
+authority`. Two manual test plans described behaviour the code does not have:
+TP-06's quarantine rule discards rather than quarantines, and TP-07's refused
+notification is completed rather than buried. The suite is two tiers — `tests/gw`
+(a real process, a scriptable relay, no Docker) and `tests/stack` (the image, the
+console, MariaDB, MailHog) — and CI now runs both.
 
 **M17 closed the two questions M16 deferred**, and it was last precisely because
 they were *questions rather than numbers*: what a full connection pool evicts,
@@ -453,13 +470,13 @@ which are code-only. Recorded here so they are not lost:
   mentioned as backup-worthy at all**, though `/opt/mailgw-go/queue` holds
   undelivered, quarantined and dead mail. `deploy/core/upgrade.sh` re-runs
   migrations with no pre-upgrade dump.
-- **CI covers only the Go module.** `.github/workflows/go.yml` runs `gofmt`,
-  `vet`, `test -race`, `build` and two `check` invocations;
-  `.github/workflows/publish.yml` builds the **legacy Haraka** image, not
+- **CI covers the Go module and the e2e suites** — `go.yml` plus, since M20,
+  `e2e.yml` (`gw` on every push and PR, `stack` on main). Still missing:
+  `logservice`'s tests, `webui-fastify`'s checks, any lint beyond `vet`,
+  `govulncheck`, a coverage gate and an image scan.
+  `.github/workflows/publish.yml` still builds the **legacy Haraka** image, not
   mailgw-go, whose image is only ever pushed by a human running
-  `container-push.sh`. Nothing runs `logservice`'s tests, `webui-fastify`'s
-  checks, or the Bun e2e suites. No lint beyond `vet`, no `govulncheck`, no
-  coverage gate, no image scan.
+  `container-push.sh`.
 - **No alerting on the counters this code documents as alarms** —
   `mailgw_dsn_unroutable_total` ("any non-zero value is a configuration problem:
   senders are not learning their mail failed") and `mailgw_events_spilled_total`

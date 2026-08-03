@@ -616,3 +616,73 @@ func TestReport_OneReportPerPoll(t *testing.T) {
 		t.Errorf("%d polls produced %d reports, want %d", polls, got, polls)
 	}
 }
+
+// TestReport_InjectedVersionIsNotReportedToTheConsole.
+//
+// applied_version_id is a ConfigVersions.id — the console's own positive
+// autoincrement — and its schema is `positive().nullable()`. A configuration
+// injected through the test control API has no row there, and its id is
+// deliberately negative so the two spaces cannot collide.
+//
+// Reporting it anyway made the console answer 400 to EVERY heartbeat, so an
+// enrolled gateway that had ever been injected into logged "cannot reach
+// Central Management" every 15 seconds and went stale in the fleet view. Null
+// is the answer the field already documents for a node running something the
+// console did not issue.
+func TestReport_InjectedVersionIsNotReportedToTheConsole(t *testing.T) {
+	a, c, _, client, done := pullFixture(t)
+	defer done()
+
+	injected := &store.CachedConfig{
+		VersionID: -5717624045415299225, // as injectedVersionID produces
+		Version:   1,
+		SHA256:    "deadbeef",
+		Bundle:    []byte(`{"format":1}`),
+		FetchedAt: time.Now(),
+	}
+	if err := a.store.SaveConfig(injected); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	if err := a.store.MarkApplied(injected.VersionID, time.Now()); err != nil {
+		t.Fatalf("MarkApplied: %v", err)
+	}
+
+	a.report(context.Background(), client)
+
+	got, present := c.lastReport()["applied_version_id"]
+	if !present {
+		t.Fatal("applied_version_id must be sent as an explicit null, not omitted: " +
+			"the console merges on `!== undefined`, so a missing field cannot clear a stale value")
+	}
+	if got != nil {
+		t.Errorf("applied_version_id = %v, want null; the console's schema is "+
+			"positive().nullable() and an injected id is negative", got)
+	}
+}
+
+// The console's own versions are still reported, which is the whole point of
+// the field.
+func TestReport_ConsoleVersionIsReported(t *testing.T) {
+	a, c, _, client, done := pullFixture(t)
+	defer done()
+
+	deployed := &store.CachedConfig{
+		VersionID: 42,
+		Version:   7,
+		SHA256:    "cafe",
+		Bundle:    []byte(`{"format":1}`),
+		FetchedAt: time.Now(),
+	}
+	if err := a.store.SaveConfig(deployed); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	if err := a.store.MarkApplied(deployed.VersionID, time.Now()); err != nil {
+		t.Fatalf("MarkApplied: %v", err)
+	}
+
+	a.report(context.Background(), client)
+
+	if got := c.lastReport()["applied_version_id"]; got != float64(42) {
+		t.Errorf("applied_version_id = %v, want 42", got)
+	}
+}

@@ -528,7 +528,22 @@ func (a *agent) report(ctx context.Context, c *central.Client) {
 		r.Metrics = a.metrics.Snapshot()
 	}
 
-	if cfg, err := a.store.AppliedConfig(); err == nil && cfg != nil {
+	// Only a version the CONSOLE issued is reported back to it.
+	//
+	// applied_version_id is a ConfigVersions.id — the console's own positive
+	// autoincrement — and its schema says so: positive, nullable "while it is
+	// running its bundled defaults or has never successfully applied one". A
+	// configuration injected through the test control API has no row there, and
+	// its id is deliberately NEGATIVE so the two spaces cannot collide.
+	//
+	// Sending it anyway made the console answer 400 to every heartbeat, for
+	// ever: the gateway logged "cannot reach Central Management" every 15
+	// seconds and the console's last_seen froze, so an enrolled node that had
+	// ever been injected into looked stale in the fleet view. Null is the
+	// truthful answer — the console has no version for what this node is
+	// running — and it is the value the field already documents for exactly
+	// this situation.
+	if cfg, err := a.store.AppliedConfig(); err == nil && cfg != nil && cfg.VersionID > 0 {
 		r.AppliedVersionID = &cfg.VersionID
 	}
 	// The failed version's message is what an operator needs; the applied row's

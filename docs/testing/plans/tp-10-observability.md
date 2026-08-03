@@ -12,6 +12,14 @@ going away.
 - [TP-01](/plans/tp-01-smoke) passed.
 - A way to stop and start the log service.
 
+::: tip Partly automated
+`tests/gw/pipeline.test.ts` covers the audit trail end to end, including the
+spill to `failed-events/` when the log service refuses and the replayer draining
+it once it recovers, and `tests/stack/delivery.test.ts` covers the rows landing
+in MariaDB with their `gateway` and `route_rule` columns. The endpoint and
+counter steps below stay manual.
+:::
+
 ## Endpoints
 
 ### 1. healthz is liveness only

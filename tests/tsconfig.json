@@ -6,7 +6,9 @@
     "types": ["bun-types"],
     "strict": true,
     "skipLibCheck": true,
-    "lib": ["ESNext"]
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "lib": ["ESNext", "DOM"]
   },
-  "include": ["api/**/*", "smtp/**/*"]
+  "include": ["api/**/*", "smtp/**/*", "gw/**/*", "stack/**/*", "harness/**/*", "*.ts"]
 }

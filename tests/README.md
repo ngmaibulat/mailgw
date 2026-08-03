@@ -7,12 +7,47 @@ don't fight over `node_modules`.
 
 ```
 tests/
+  harness/       the tier-B harness: a real gateway process, a scriptable
+                 relay, a fake logservice, and a typed control-API client
+  gw/            TIER B — spawns cmd/mailgw-go-test. No Docker, no network.
+  stack/         TIER A — the compose stack: the real image, the console,
+                 MariaDB, logservice, MailHog
   api/           logservice HTTP API e2e     (logservice.e2e.test.ts)
-  smtp/          SMTP client + pipeline e2e  (src/, tests/, swaks.sh)
+  smtp/          SMTP contract against the running gateway
+  fixtures/      dev-profiles.json, generated from stack/baseline.ts
   provision.ts   drives the console to configure the gateway
 ```
 
-Both suites talk to a **running** stack, so bring it up first:
+## Two tiers
+
+**Tier B (`gw/`) needs only a Go toolchain.** It builds `cmd/mailgw-go-test`,
+runs it as a real process on a throwaway data directory, and points it at a fake
+relay it can break and repair on demand. This is where the delivery path lives:
+deferral, retry, quarantine, bounces, and a restart over one data directory.
+
+```bash
+pnpm test:e2e:gateway          # builds the binary, then runs tests/gw
+```
+
+**Tier A (`stack/`) needs the compose stack**, and owns what fakes cannot prove:
+that MailHog — a third-party MTA — accepts what the gateway produces, that the
+audit rows survive the real logservice, and that the bundle the **console**
+composes is one the gateway accepts.
+
+```bash
+pnpm stack:test                # up with the overlay, then provision
+pnpm test:e2e:stack
+```
+
+The rule for which tier a test belongs to — and why most things belong in Go
+rather than either — is in `docs/internal/dev/testing.md`.
+
+::: warning `bun test tests/` is a filter, not a path
+It matches every directory named `tests` in the repo, including
+`logservice/tests/`. Use `bun test ./tests/...`; the package scripts do.
+:::
+
+All of these talk to a **running** stack except tier B, so bring it up first:
 
 ```bash
 docker compose up -d
@@ -77,22 +112,15 @@ From the **repo root** (so Bun auto-loads the root `.env` for `PORT`/`DB_*`):
 
 ```bash
 pnpm test:e2e              # provision, then everything
-pnpm test:e2e:smtp         # provision, then SMTP only
-bun test tests/            # everything, assuming the stack is already provisioned
-bun test tests/api         # logservice API only (needs no gateway)
-bun test tests/smtp        # SMTP only
+pnpm test:e2e:gateway      # tier B only (no stack needed)
+pnpm test:e2e:stack        # provision, then tier A only
+pnpm test:e2e:smtp         # provision, then the SMTP contract
+bun test ./tests/          # everything, assuming the stack is provisioned
+bun test ./tests/api/      # logservice API only (needs no gateway)
 ```
 
-Or from inside `tests/`:
-
-```bash
-cd tests
-bun test            # all
-bun test api        # API only
-bun test smtp       # SMTP only
-```
-
-There are also package scripts: `bun run test:api`, `bun run test:smtp`.
+Or from inside `tests/`: `bun run test`, `test:api`, `test:smtp`, `test:gw`,
+`test:stack`, and `bun run typecheck`.
 
 ## Opt-in suites
 
@@ -104,10 +132,24 @@ an env flag:
 | `MAILGW_API_E2E=1` | `api/logservice.e2e.test.ts` | POSTs events to the logservice and reads them back via the search API |
 | `MAILGW_DB_CHECK=1` | `smtp/tests/smtp.e2e.test.ts`  | sends real mail, then confirms rows landed in the DB |
 
+**The `pnpm test:e2e*` scripts set these.** Nothing did before, so
+`pnpm test:e2e:api` ran zero tests and reported success. `tests/stack/` is
+deliberately not behind a flag: it needs no more than the stack the rest of the
+suite already needs.
+
 ```bash
-MAILGW_API_E2E=1 bun test tests/api
-MAILGW_DB_CHECK=1 bun test tests/smtp
+MAILGW_API_E2E=1 bun test ./tests/api/
+MAILGW_DB_CHECK=1 bun test ./tests/smtp/
 ```
+
+Other variables worth knowing:
+
+| var | meaning |
+|---|---|
+| `MAILGW_GO_TEST_BIN` | use this binary for tier B instead of building one |
+| `MAILGW_REQUIRE_TIER_B=1` | make a missing Go toolchain a failure, not a skip (CI sets it) |
+| `MAILGW_KEEP_DATA=1` | keep tier-B data directories after a run, for debugging |
+| `MAILGW_STACK_RESTART=1` | allow the one tier-A test that restarts the container |
 
 ## Configuration
 

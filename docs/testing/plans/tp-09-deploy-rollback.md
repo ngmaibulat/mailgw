@@ -10,10 +10,18 @@ restart-required changes are reported by name.
 
 ## Preconditions
 
-- [TP-08](/plans/tp-08-provisioning) passed: an approved gateway carrying mail,
-  which means a gateway in **managed** mode — not the development compose's
-  file-mode default.
+- [TP-08](/plans/tp-08-provisioning) passed: an approved gateway carrying mail.
+  (Every gateway is managed; the "file-mode default" this used to warn about has
+  been gone since M18.)
 - Admin access to the console.
+
+::: tip Much of this is automated
+`tests/stack/console.test.ts` covers steps 2–5 and the rollback: a changed
+profile landing within seconds, a redeploy of unchanged configuration not
+minting a version, a bundle the gateway refuses leaving it serving the old one,
+and a rollback restoring a byte-identical bundle. Run `pnpm test:e2e:stack`
+first; what is left here is what needs a browser and a person's judgement.
+:::
 
 ## Steps
 

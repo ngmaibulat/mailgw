@@ -37,6 +37,13 @@ type fakeControl struct {
 	flushErr    error
 	resetCalled bool
 	resetErr    error
+
+	// The three envelope verbs share one shape, so they share one record of
+	// what they were asked to do: which verb, and with which uuids.
+	verb    string
+	verbArg []string
+	verbN   int
+	verbErr error
 }
 
 func (f *fakeControl) ApplyBundle(_ context.Context, raw []byte) (node.Applied, error) {
@@ -57,7 +64,12 @@ func (f *fakeControl) Enroll(_ context.Context, s adminui.Settings) error {
 }
 
 func (f *fakeControl) Status() node.Status {
-	return node.Status{Build: "test-only", Serving: true, Listeners: []string{"127.0.0.1:31337"}}
+	return node.Status{
+		Build:     "test-only",
+		Serving:   true,
+		Listeners: []string{"127.0.0.1:31337"},
+		AdminAddr: "127.0.0.1:31338",
+	}
 }
 
 func (f *fakeControl) Queue() ([]node.QueueEntry, error) { return f.queue, f.queueErr }
@@ -65,6 +77,15 @@ func (f *fakeControl) Queue() ([]node.QueueEntry, error) { return f.queue, f.que
 func (f *fakeControl) Flush(uuids []string) (int, error) {
 	f.flushed = uuids
 	return f.flushN, f.flushErr
+}
+
+func (f *fakeControl) Release(uuids []string) (int, error) { return f.record("release", uuids) }
+func (f *fakeControl) Hold(uuids []string) (int, error)    { return f.record("hold", uuids) }
+func (f *fakeControl) Remove(uuids []string) (int, error)  { return f.record("remove", uuids) }
+
+func (f *fakeControl) record(verb string, uuids []string) (int, error) {
+	f.verb, f.verbArg = verb, uuids
+	return f.verbN, f.verbErr
 }
 
 func (f *fakeControl) Reset(context.Context) error {
@@ -215,6 +236,81 @@ func TestFlush_PartialFailureStillReportsTheCount(t *testing.T) {
 
 // TestEnroll_UpstreamFailureIs502 so a test can tell "I sent nonsense" from "the
 // console refused me" without reading the message.
+// TestEnvelopeVerbs_ReachTheRightControlMethod pins the routing table: three
+// verbs that share a request shape are three easy things to wire to the wrong
+// method, and the mistake would be invisible in every other test here.
+func TestEnvelopeVerbs_ReachTheRightControlMethod(t *testing.T) {
+	for _, tc := range []struct{ path, verb, countKey string }{
+		{"/testctl/queue/release", "release", "released"},
+		{"/testctl/queue/hold", "hold", "held"},
+		{"/testctl/queue/remove", "remove", "removed"},
+	} {
+		t.Run(tc.verb, func(t *testing.T) {
+			f := &fakeControl{verbN: 2}
+			srv := serve(t, f)
+
+			code, out := post(t, srv, tc.path, `{"uuids":["a","b"]}`)
+			if code != http.StatusOK {
+				t.Fatalf("status = %d, body %s", code, out)
+			}
+			if f.verb != tc.verb {
+				t.Errorf("reached Control.%s, want %s", f.verb, tc.verb)
+			}
+			if len(f.verbArg) != 2 || f.verbArg[0] != "a" {
+				t.Errorf("uuids = %v, want the request's list", f.verbArg)
+			}
+			if !strings.Contains(out, `"`+tc.countKey+`":2`) {
+				t.Errorf("response %s does not report the count under %q", out, tc.countKey)
+			}
+		})
+	}
+}
+
+// TestEnvelopeVerbs_RefuseAnEmptyList is where these deliberately differ from
+// flush.
+//
+// "Flush the queue" is a gesture an operator makes after an outage. "Release
+// everything ever quarantined" is not a gesture anybody wants to make by
+// leaving a field out, so an absent or empty list is an error rather than a
+// wildcard — and the control must not be called at all.
+func TestEnvelopeVerbs_RefuseAnEmptyList(t *testing.T) {
+	for _, path := range []string{
+		"/testctl/queue/release",
+		"/testctl/queue/hold",
+		"/testctl/queue/remove",
+	} {
+		for _, body := range []string{`{}`, `{"uuids":[]}`} {
+			f := &fakeControl{}
+			srv := serve(t, f)
+
+			code, out := post(t, srv, path, body)
+			if code != http.StatusBadRequest {
+				t.Errorf("POST %s %s = %d, want 400; body %s", path, body, code, out)
+			}
+			if f.verb != "" {
+				t.Errorf("POST %s %s reached Control.%s; it must not be called at all",
+					path, body, f.verb)
+			}
+		}
+	}
+}
+
+// TestEnvelopeVerbs_PartialFailureStillReportsTheCount mirrors flush: an
+// envelope claimed by a worker mid-call is an ordinary outcome, and a caller
+// told only "error" would not know how much of its request took effect.
+func TestEnvelopeVerbs_PartialFailureStillReportsTheCount(t *testing.T) {
+	f := &fakeControl{verbN: 1, verbErr: errors.New(`"zzz": envelope is being delivered`)}
+	srv := serve(t, f)
+
+	code, out := post(t, srv, "/testctl/queue/release", `{"uuids":["a","zzz"]}`)
+	if code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body %s", code, out)
+	}
+	if !strings.Contains(out, `"released":1`) || !strings.Contains(out, "zzz") {
+		t.Errorf("response %s should carry both the count and the reason", out)
+	}
+}
+
 func TestEnroll_UpstreamFailureIs502(t *testing.T) {
 	f := &fakeControl{enrollErr: errors.New("connection refused")}
 	srv := serve(t, f)
@@ -263,6 +359,11 @@ func TestStatus_ReportsBoundListeners(t *testing.T) {
 	}
 	if len(st.Listeners) != 1 || st.Listeners[0] != "127.0.0.1:31337" {
 		t.Errorf("listeners = %v", st.Listeners)
+	}
+	// Same reasoning as the listeners beside it: an admin listener asked for on
+	// port 0 is unreachable unless the bound address comes back out.
+	if st.AdminAddr != "127.0.0.1:31338" {
+		t.Errorf("admin_addr = %q, want the bound admin address", st.AdminAddr)
 	}
 	if st.Build != "test-only" {
 		t.Errorf("build = %q; a caller must be able to tell this is not a shipped node", st.Build)

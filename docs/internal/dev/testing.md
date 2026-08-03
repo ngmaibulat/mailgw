@@ -5,13 +5,66 @@
 | Suite | Command | Needs |
 |---|---|---|
 | Go unit + contract | `cd mailgw-go && go test -race ./...` | nothing |
-| logservice unit | `cd logservice && bun test tests/` | nothing |
+| logservice unit | `cd logservice && bun test ./tests/` | nothing |
 | Console | `cd webui-fastify && pnpm test` | nothing |
-| SMTP end-to-end | `SMTP_PORT=2525 bun test tests/smtp` | a running gateway |
+| **Gateway e2e (tier B)** | `pnpm test:e2e:gateway` | a Go toolchain |
+| **Stack e2e (tier A)** | `pnpm test:e2e:stack` | the compose stack + the engineering image |
+| SMTP end-to-end | `pnpm test:e2e:smtp` | a provisioned stack |
 | API end-to-end | `pnpm test:e2e:api` | a running stack |
 
-The database-mutating suites are opt-in: `MAILGW_API_E2E=1` and
-`MAILGW_DB_CHECK=1`.
+::: warning `bun test tests/` is a FILTER, not a path
+It matches every directory named `tests` in the repository, so it also runs
+logservice's unit suite — one of whose files sets `process.env.API_KEY`, which
+un-skips an e2e auth test that then fails against a stack with no key. Every
+script now says `./tests/`. Use the leading `./` when you run it by hand.
+:::
+
+`MAILGW_API_E2E=1` and `MAILGW_DB_CHECK=1` gate the database-mutating suites.
+The `pnpm test:e2e*` scripts set them — before, nothing did, so
+`pnpm test:e2e:api` ran zero tests and exited 0.
+
+## The two e2e tiers, and what decides which one a test belongs to
+
+`internal/smtpsrv` alone has around 130 tests, each on a real socket. A test
+outside Go earns its place only if it needs something Go cannot cheaply give:
+
+| Concern | Owner |
+|---|---|
+| Rule semantics, TLS, AUTH, DSN rendering, limits, the listener chain | Go, in process |
+| The **chain** — accept → spool → defer → flush → deliver → audit — across a **process boundary** | **Tier B**, `tests/gw/` |
+| A **restart** over one data directory, a binary's flags and exit codes | **Tier B** |
+| The real **image**, the **console**, MariaDB, logservice, MailHog | **Tier A**, `tests/stack/` |
+
+Anything a Go test already asserts appears in Tier B **once**, as part of a
+chain, never as a case of its own. A slower copy of `TestContract_*` is the
+duplication these tiers exist to avoid.
+
+**Tier B** (`tests/gw/`, harness in `tests/harness/`) spawns a real
+`cmd/mailgw-go-test` per suite on a throwaway data directory, with a scriptable
+fake relay (`harness/sink.ts`) and a fake logservice (`harness/logsink.ts`). It
+needs no Docker and no network. All three listeners are asked for port **0** and
+all three bound addresses come back — SMTP in `status.listeners[]`, the control
+API on **stdout**, the admin UI in `status.admin_addr` — so nothing reserves a
+port and nothing races.
+
+The fake relay is what makes TP-06 and TP-07 automatable at all: MailHog accepts
+everything, and TP-07's own preconditions say so ("A second MailHog will not do
+this — use a small `nc`-scripted listener").
+
+**Tier A** (`tests/stack/`) runs against the compose stack and owns what fakes
+cannot prove: that a third-party MTA accepts what this gateway produces, that
+the audit events survive the real logservice's validator and migrations, and
+that the **console's** bundle is one the gateway accepts —
+`tests/stack/bundle-contract.test.ts` is the only assertion in the repository
+that `webui-fastify/src/central/bundle.ts` and `mailgw-go/internal/config`
+agree.
+
+Tier A has **one writer**: `tests/stack/console.test.ts` is the only file that
+mutates configuration, and every other file is read-only with respect to it.
+That is the serialisation mechanism — not a mutex, which would only legitimise a
+second writer. Files converge on the baseline in `beforeAll` rather than relying
+on a predecessor's `afterAll`, because the case that matters is the one where
+the predecessor crashed.
 
 ## The SMTP contract is asserted twice
 
@@ -95,10 +148,11 @@ state; `src/central.tx.test.ts` exists because that regression recurs.
 
 Be honest about this when reviewing:
 
-- **CI runs the Go module only.** `.github/workflows/go.yml` runs gofmt, vet,
-  `test -race`, build and two `check` invocations. Nothing runs the logservice
-  tests, the console checks, or either end-to-end suite. `publish.yml` builds the
-  **legacy Haraka** image, not the gateway.
+- **CI runs the Go module and the e2e suites.** `.github/workflows/go.yml`
+  covers the Go module; `e2e.yml` adds two jobs — `gw` (tier B, no Docker, on
+  every push and PR) and `stack` (tier A, compose, on main and on demand).
+  Nothing still runs the **logservice** tests or the **console** checks, and
+  `publish.yml` builds the **legacy Haraka** image rather than the gateway.
 - **No lint beyond `go vet`**, no `govulncheck`, no coverage gate, no image scan.
 - **The manual test plans** cover what the automated suites cannot — a real
   relay, a real browser, a real network. See the

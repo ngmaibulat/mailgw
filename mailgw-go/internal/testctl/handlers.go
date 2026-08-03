@@ -201,3 +201,60 @@ func (s *Server) flush(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"flushed": n})
 }
+
+// release moves held envelopes out of quarantine and back into the queue.
+//
+// Quarantine is a decision the ruleset can make, and `mailgw-go mailq release`
+// is its only exit — a CLI this binary deliberately does not carry, so without
+// this route quarantine is a one-way door for anything automated.
+func (s *Server) release(w http.ResponseWriter, r *http.Request) {
+	s.eachEnvelope(w, r, "released", s.Control.Release)
+}
+
+// hold moves ready envelopes into quarantine, the inverse of release.
+func (s *Server) hold(w http.ResponseWriter, r *http.Request) {
+	s.eachEnvelope(w, r, "held", s.Control.Hold)
+}
+
+// remove deletes envelopes and collects their bodies.
+//
+// It is how a test drops mail it deliberately left undeliverable, so the next
+// one starts from a known queue without paying for a restart.
+func (s *Server) remove(w http.ResponseWriter, r *http.Request) {
+	s.eachEnvelope(w, r, "removed", s.Control.Remove)
+}
+
+// eachEnvelope is the shape all three of the above share: a required, non-empty
+// list of uuids in, a count out, and a 409 carrying the count when only some of
+// them moved.
+//
+// The empty list is refused rather than read as "everything", which is where
+// these differ from flush. "Flush the queue" is the gesture an operator makes
+// after an outage; "release everything ever quarantined" is not a gesture anyone
+// wants to make by leaving a field out.
+func (s *Server) eachEnvelope(
+	w http.ResponseWriter,
+	r *http.Request,
+	verb string,
+	op func([]string) (int, error),
+) {
+	var req flushRequest
+	if err := decode(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(req.UUIDs) == 0 {
+		writeErr(w, http.StatusBadRequest, "uuids is required and must not be empty")
+		return
+	}
+
+	n, err := op(req.UUIDs)
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			verb:    n,
+			"error": err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{verb: n})
+}

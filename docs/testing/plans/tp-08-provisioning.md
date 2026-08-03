@@ -10,10 +10,9 @@ every step of the path is gated where it should be.
 ## Preconditions
 
 - A running core (console, log service, database).
-- A gateway running in **managed** mode. The development compose file pins file
-  mode — delete the `command:` line from its `mailgw-go` service first, or there
-  is no claim code and `POST /register` answers `404`. See
-  [test environment](/environment).
+- A gateway. There is only one mode now — every gateway is managed, the
+  development compose file has no `command:` line to delete, and file mode has
+  been gone since M18. See [test environment](/environment).
 - A **fresh** gateway — no data directory, or one you can delete:
 
 ```bash

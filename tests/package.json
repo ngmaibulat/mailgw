@@ -5,9 +5,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "bun test",
-    "test:api": "bun test api",
-    "test:smtp": "bun test smtp",
+    "test": "bun test ./api/ ./smtp/ ./gw/ ./stack/",
+    "test:api": "bun test ./api/",
+    "test:smtp": "bun test ./smtp/",
+    "test:gw": "bun test ./gw/",
+    "test:stack": "bun test ./stack/",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "send": "bun run smtp/src/send.ts"
   },
   "devDependencies": {

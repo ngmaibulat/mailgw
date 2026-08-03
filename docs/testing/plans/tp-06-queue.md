@@ -20,6 +20,13 @@ outbound:
     delay_warning_after: 30s
 ```
 
+::: tip Steps 2–8 and 10–14 are automated
+`tests/gw/queue.test.ts` runs them against a relay it can break and repair on
+demand, which is what makes the forty minutes of waiting here unnecessary.
+Steps 17–19 — connection reuse, the pool cap and MX caching — stay manual: they
+need several relays and real DNS.
+:::
+
 ## Steps
 
 ### 1. A message with the relay up
@@ -136,14 +143,29 @@ from `dead/`; the message it describes no longer exists.
 ### 10. A quarantine rule holds mail
 
 ```yaml
-routes:
+policy:
     - name: quarantine-suspicious
       priority: 50
-      match: {field: mail.from_domain, op: eq, value: "suspicious.test"}
+      match: {field: header.subject, op: contains, value: "HOLDME"}
       then: [{action: quarantine}]
 ```
 
-Restart, then send from `x@suspicious.test`.
+::: danger Two things here are load-bearing, and this plan used to get both wrong
+It must be a **`policy`** rule, not a route. As a *route* action, `quarantine`
+resolves to no relay group — and `split()` reasons that a quarantined envelope
+still needs somewhere to go if it is ever released, so it **discards** instead.
+Nothing reaches `quarantine/`.
+
+And it must match a **data-stage** field. A quarantine whose fields are all known
+by RCPT is decided before there is a message to hold, and is likewise a drop
+("accepted and dropped" in the log). `header.*` and `msg.*` are data-stage;
+`mail.from_domain` on its own is not.
+
+A route rule must still resolve a relay group, so the envelope has somewhere to
+go when it is released.
+:::
+
+Restart, then send with `HOLDME` in the subject.
 
 **Expected.**
 - The client is told **`250`** — quarantine accepts the message.

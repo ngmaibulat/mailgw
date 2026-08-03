@@ -48,6 +48,14 @@ routes:
 default_action: {action: tempfail, code: 451, message: "4.3.0 No route found"}
 ```
 
+::: tip Steps 3–9 are automated
+`tests/gw/routing.test.ts` runs them against two real relays: recipient-stage
+timing, one refused recipient not sinking the others, the split into two
+envelopes, data-stage timing, AND semantics and the default action. Steps 1, 2
+and 10 stay manual — they drive `check` and `explain`, which the engineering
+build deliberately does not carry.
+:::
+
 ## Steps
 
 ### 1. check reports the inferred stages

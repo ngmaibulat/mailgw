@@ -1,0 +1,23 @@
+{
+    "server": "hostname: devbook.local\nlocal_domains: [devbook.local, ngm.dev]\nlisten:\n    - addr: \"0.0.0.0:2525\"\noutbound:\n    spool_dir: /opt/mailgw-go/queue\n",
+    "routing": "version: 1\nroutes:\n    - name: Default\n      match: {always: true}\n      then: [{action: relay, relay: Outbound}]\n",
+    "allowlist": {
+        "allowed": [],
+        "allow_all": true
+    },
+    "relays": {
+        "Outbound": [
+            {
+                "name": "sink",
+                "exchange": "mailhog",
+                "port": 1025,
+                "priority": 0
+            }
+        ]
+    },
+    "logging": {
+        "url_conn": "http://dev-logservice:3000/api/connection",
+        "url_queue": "http://dev-logservice:3000/api/queue",
+        "url_delivery": "http://dev-logservice:3000/api/delivery"
+    }
+}

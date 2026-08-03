@@ -29,6 +29,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -53,7 +54,7 @@ The ENGINEERING build: mailgw-go plus an unauthenticated control API.
 
   -testctl <addr>   bind the control API here (REQUIRED, no default)
   -data <dir>       data directory: SQLite store and gateway identity
-  -admin <addr>     admin UI bind address ("" disables it)
+  -admin <addr>     admin UI bind address (required; use :0 for any free port)
 
 The control API is unauthenticated. This binary must never be deployed; use
 mailgw-go for anything real.
@@ -66,6 +67,12 @@ mailgw-go for anything real.
   POST /testctl/reset             forget the cached configuration and console
   GET  /testctl/queue             the outbound spool
   POST /testctl/queue/flush       make envelopes due now and nudge the scheduler
+  POST /testctl/queue/release     quarantine -> the ready queue
+  POST /testctl/queue/hold        the ready queue -> quarantine
+  POST /testctl/queue/remove      delete envelopes and collect their bodies
+
+The bound control address is written to stdout as "testctl <addr>" once the
+listener is up, so -testctl 127.0.0.1:0 is usable from a harness.
 `
 
 func main() {
@@ -77,7 +84,7 @@ func main() {
 	// which is precisely the accident the separate binary exists to prevent.
 	fs.StringVar(&ctlAddr, "testctl", "", "control API bind address (required)")
 	fs.StringVar(&o.DataDir, "data", "/var/lib/mailgw-go", "data directory: SQLite store and gateway identity")
-	fs.StringVar(&o.AdminAddr, "admin", "0.0.0.0:8080", `admin UI bind address ("" disables it)`)
+	fs.StringVar(&o.AdminAddr, "admin", "0.0.0.0:8080", "admin UI bind address (required; :0 takes any free port)")
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	_ = fs.Parse(os.Args[1:])
@@ -97,7 +104,10 @@ func main() {
 	n, err := node.New(o)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mailgw-go-test: %v\n", err)
-		if err == node.ErrNoAdminAddr {
+		// errors.Is rather than ==, matching node.Serve. Equivalent today
+		// because New returns the sentinel unwrapped, and the two copies of this
+		// exit-code decision should not be able to drift apart.
+		if errors.Is(err, node.ErrNoAdminAddr) {
 			os.Exit(2)
 		}
 		os.Exit(1)

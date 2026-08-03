@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/adminui"
@@ -42,6 +43,9 @@ type Control interface {
 	Status() node.Status
 	Queue() ([]node.QueueEntry, error)
 	Flush(uuids []string) (int, error)
+	Release(uuids []string) (int, error)
+	Hold(uuids []string) (int, error)
+	Remove(uuids []string) (int, error)
 	Reset(ctx context.Context) error
 }
 
@@ -92,6 +96,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /testctl/reset", s.reset)
 	mux.HandleFunc("GET /testctl/queue", s.queue)
 	mux.HandleFunc("POST /testctl/queue/flush", s.flush)
+	// One route per verb rather than one route taking an action field. The table
+	// above is already shaped that way, and a discriminated action is the design
+	// you regret the first time one verb needs a different response.
+	mux.HandleFunc("POST /testctl/queue/release", s.release)
+	mux.HandleFunc("POST /testctl/queue/hold", s.hold)
+	mux.HandleFunc("POST /testctl/queue/remove", s.remove)
 	return s.recoverPanics(mux)
 }
 
@@ -106,6 +116,17 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	if err != nil {
 		return err
 	}
+
+	// The bound address on stdout, one line, before anything else is written
+	// there.
+	//
+	// -testctl 127.0.0.1:0 is the only way a harness can take a port without
+	// racing another process for it, and a port nobody can discover before the
+	// API answers is no use. stdout is otherwise unused — slog writes to stderr
+	// — so it stays a clean machine channel, which is the point: the WARN below
+	// carries the same address, and making a human-readable log line the thing
+	// a harness parses is how harnesses rot.
+	fmt.Fprintf(os.Stdout, "testctl %s\n", ln.Addr().String())
 
 	srv := &http.Server{
 		Handler:           s.Handler(),

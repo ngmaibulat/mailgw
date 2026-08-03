@@ -41,25 +41,29 @@ type Applied struct {
 
 // Status is what a test needs to know about a running node.
 type Status struct {
-	Build           string   `json:"build"`
-	Version         string   `json:"version"`
-	Commit          string   `json:"commit"`
-	Fingerprint     string   `json:"fingerprint"`
-	GatewayUID      string   `json:"gateway_uid"`
-	CentralURL      string   `json:"central_url"`
-	Approval        string   `json:"approval"`
-	Provisioned     bool     `json:"provisioned"`
-	Serving         bool     `json:"serving"`
-	AppliedVersion  *int     `json:"applied_version"`
-	AppliedVersonID int64    `json:"applied_version_id"`
-	ApplyError      string   `json:"apply_error"`
-	LastError       string   `json:"last_error"`
-	RestartRequired []string `json:"restart_required"`
+	Build            string   `json:"build"`
+	Version          string   `json:"version"`
+	Commit           string   `json:"commit"`
+	Fingerprint      string   `json:"fingerprint"`
+	GatewayUID       string   `json:"gateway_uid"`
+	CentralURL       string   `json:"central_url"`
+	Approval         string   `json:"approval"`
+	Provisioned      bool     `json:"provisioned"`
+	Serving          bool     `json:"serving"`
+	AppliedVersion   *int     `json:"applied_version"`
+	AppliedVersionID int64    `json:"applied_version_id"`
+	ApplyError       string   `json:"apply_error"`
+	LastError        string   `json:"last_error"`
+	RestartRequired  []string `json:"restart_required"`
 	// Listeners are the addresses SMTP is actually bound to, which is not what
 	// the configuration asked for whenever it asked for port 0. This is the
 	// field that lets a test bind an ephemeral port and still find it.
 	Listeners []string `json:"listeners"`
-	SpoolDir  string   `json:"spool_dir"`
+	// AdminAddr is the same answer for the admin listener, and exists for the
+	// same reason: /metrics, /readyz and /healthz live there, and a harness that
+	// asked for :0 has no other way to reach them.
+	AdminAddr string `json:"admin_addr"`
+	SpoolDir  string `json:"spool_dir"`
 }
 
 // QueueEntry is one envelope in the spool.
@@ -87,6 +91,15 @@ type QueueEntry struct {
 // for a WebSocket notification or a 15s poll and then reading a log to find out
 // whether it took; here the compiler's error is the HTTP response.
 //
+// ctx bounds THIS CALL. It is deliberately not the context the bring-up
+// attaches its goroutines to: applyCached's context governs the lifetime of the
+// delivery runner and the failed-events replayer, and every other caller — boot,
+// the poll loop, the WebSocket, SIGHUP — passes one that lives as long as the
+// process. This one comes from an HTTP handler and dies with the response, so
+// passing it through cancelled the runner the instant the first configuration
+// was injected: the gateway accepted mail and delivered none of it. n.serve()
+// is the process-lifetime context instead.
+//
 // The version id is derived from the bundle's own digest and made negative.
 // Negative because console version ids are a positive autoincrement, so the two
 // spaces can never collide and bootConfig keeps working across a restart.
@@ -94,6 +107,12 @@ type QueueEntry struct {
 // idempotent — the same row is upserted rather than a new one piled on — which
 // is the behaviour the console already has for redeploying unchanged config.
 func (n *Node) ApplyBundle(ctx context.Context, raw []byte) (Applied, error) {
+	// The caller's context still decides whether this call happens at all — a
+	// harness that gave up waiting should not have its configuration land a
+	// second later.
+	if err := ctx.Err(); err != nil {
+		return Applied{}, err
+	}
 	if len(raw) == 0 {
 		return Applied{}, errors.New("empty bundle")
 	}
@@ -118,7 +137,7 @@ func (n *Node) ApplyBundle(ctx context.Context, raw []byte) (Applied, error) {
 	if err := n.store.SaveConfig(cached); err != nil {
 		return Applied{}, fmt.Errorf("cache the injected bundle: %w", err)
 	}
-	restart, err := n.agent.applyCached(ctx, cached)
+	restart, err := n.agent.applyCached(n.serve(), cached)
 	if err != nil {
 		return Applied{}, err
 	}
@@ -270,8 +289,11 @@ func (n *Node) Status() Status {
 		RestartRequired: st.RestartRequired,
 		Listeners:       n.gw.listeners.addrs(),
 	}
+	if n.ui != nil {
+		out.AdminAddr = n.ui.Addr()
+	}
 	if c, err := n.store.AppliedConfig(); err == nil && c != nil {
-		out.AppliedVersonID = c.VersionID
+		out.AppliedVersionID = c.VersionID
 	}
 	if sp := n.gw.Spool(); sp != nil {
 		out.SpoolDir = sp.Root()
@@ -364,6 +386,69 @@ func (n *Node) Flush(uuids []string) (int, error) {
 		n.gw.runner.Nudge()
 	}
 	return n_ok, firstErr
+}
+
+// Release moves held envelopes out of quarantine and back into the ready queue.
+//
+// Quarantine is a decision the ruleset can make and `mailgw-go mailq release` is
+// its only exit — a CLI this binary deliberately does not carry. Without this a
+// test would have to reach into the spool directory itself, which would make the
+// on-disk filename format a contract QueueEntry's own comment refuses to make.
+func (n *Node) Release(uuids []string) (int, error) {
+	return n.eachEnvelope(uuids, (*queue.Spool).Release, true)
+}
+
+// Hold moves ready envelopes into quarantine, the inverse of Release.
+func (n *Node) Hold(uuids []string) (int, error) {
+	return n.eachEnvelope(uuids, (*queue.Spool).Hold, false)
+}
+
+// Remove deletes envelopes and collects their bodies.
+//
+// This is how a test drops mail it deliberately left undeliverable so the next
+// one starts from a known queue. The alternative is a restart per test, which is
+// an order of magnitude more expensive for a call that already exists.
+func (n *Node) Remove(uuids []string) (int, error) {
+	return n.eachEnvelope(uuids, (*queue.Spool).Remove, false)
+}
+
+// eachEnvelope applies one spool operation to each uuid, reporting how many
+// succeeded alongside the first failure.
+//
+// Partial success is real and is reported rather than collapsed: some uuids may
+// have moved before one was found in flight, and a caller told only "error" would
+// have no idea what state the queue is in.
+//
+// An empty list is an error here, where Flush treats it as "everything ready".
+// The asymmetry is deliberate: "flush the queue" is a gesture an operator makes
+// after an outage, and "release everything ever quarantined" is not a gesture
+// anybody wants to make by accident.
+func (n *Node) eachEnvelope(uuids []string, op func(*queue.Spool, string) error, nudge bool) (int, error) {
+	sp := n.gw.Spool()
+	if sp == nil {
+		return 0, errors.New("no spool: no configuration has been applied yet")
+	}
+	if len(uuids) == 0 {
+		return 0, errors.New("uuids is required and must not be empty")
+	}
+
+	ok := 0
+	var firstErr error
+	for _, u := range uuids {
+		if err := op(sp, u); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		ok++
+	}
+	// Nudged even when some failed, for the same reason Flush is: what did move
+	// is due now, and there is no reason to make it wait for the poll ceiling.
+	if nudge && ok > 0 && n.gw.runner != nil {
+		n.gw.runner.Nudge()
+	}
+	return ok, firstErr
 }
 
 // Reset returns this node to the state a fresh data volume would give it:

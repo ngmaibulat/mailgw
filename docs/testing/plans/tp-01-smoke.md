@@ -14,6 +14,13 @@ whether the other plans are worth starting.
 - MailHog reachable and its inbox **empty**.
 - The gateway's allowlist includes the address you will connect from.
 
+::: tip Much of this is automated
+`tests/stack/delivery.test.ts` covers steps 4–7: the message is accepted with a
+scrapeable id, MailHog holds it with `X-NGM-Gateway: go` and a `Received:` line,
+and all three audit rows land in MariaDB under one uuid prefix. Run
+`pnpm test:e2e:stack` first — this plan then confirms what a person should see.
+:::
+
 ## Steps
 
 ### 1. The gateway answers

@@ -1,0 +1,134 @@
+name: e2e
+
+# The gap docs/testing/release-checklist.md warns about in a box — "CI does not
+# run most of this" — closed for the part that can be made deterministic.
+#
+# Two jobs, split by cost:
+#
+#   gw     the Tier-B suite. A real mailgw-go-test process, a scriptable relay
+#          and a fake logservice, all in one runner. No Docker, no database, no
+#          network. ~1 minute. This is the one that should gate a merge.
+#   stack  the Tier-A suite. The real image, the console, MariaDB, logservice
+#          and MailHog. Slower and with more moving parts, so it runs on main
+#          and on demand rather than on every push.
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - "mailgw-go/**"
+            - "tests/**"
+            - "webui-fastify/**"
+            - "logservice/**"
+            - "docker-compose*.yaml"
+            - ".github/workflows/e2e.yml"
+    pull_request:
+        paths:
+            - "mailgw-go/**"
+            - "tests/**"
+            - ".github/workflows/e2e.yml"
+    workflow_dispatch:
+
+jobs:
+    gw:
+        name: gateway (tier B, no docker)
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-go@v5
+              with:
+                  go-version: "1.26"
+                  cache-dependency-path: mailgw-go/go.sum
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            # Built once, here, rather than by the harness on first use: a
+            # compile error should fail this step and read as a compile error,
+            # not as a gateway that would not start mid-suite.
+            - name: Build the engineering binary
+              run: go build -trimpath -o "$RUNNER_TEMP/mailgw-go-test" ./cmd/mailgw-go-test
+              working-directory: mailgw-go
+
+            - name: Install test dependencies
+              run: bun install --frozen-lockfile
+              working-directory: tests
+
+            - name: Typecheck
+              run: bunx tsc --noEmit -p tsconfig.json
+              working-directory: tests
+
+            - name: Tier B
+              env:
+                  MAILGW_GO_TEST_BIN: ${{ runner.temp }}/mailgw-go-test
+                  # A tier that can silently skip itself in CI is a tier that
+                  # will one day be skipped entirely and nobody will notice.
+                  MAILGW_REQUIRE_TIER_B: "1"
+              run: bun test ./tests/gw/
+
+    stack:
+        name: stack (tier A, docker compose)
+        runs-on: ubuntu-latest
+        # Only where the extra minutes are worth it. A PR gets the gw job.
+        if: github.event_name != 'pull_request'
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - uses: pnpm/action-setup@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "26"
+                  cache: pnpm
+
+            - run: pnpm install --frozen-lockfile
+
+            # The console serves HTTP/2 over TLS and will not boot without a
+            # keypair. This is the step people forget by hand, too.
+            - name: Generate the console's TLS pair
+              run: pnpm certs
+
+            - name: Build the engineering image
+              run: bash mailgw-go/container-build-test.sh
+
+            - name: Bring the stack up
+              run: |
+                  MAILGW_GO_TEST_VERSION=$(cat mailgw-go/VERSION) \
+                    docker compose -f docker-compose.yaml -f docker-compose.test.yaml up -d
+
+            - name: Install test dependencies
+              run: bun install --frozen-lockfile
+              working-directory: tests
+
+            # From a genuinely clean volume, which is the regression M19 fixed
+            # and the reason the control API exists at all.
+            - name: Provision
+              run: bun tests/provision.ts
+
+            - name: Tier A
+              env:
+                  SMTP_PORT: "2525"
+                  MAILGW_API_E2E: "1"
+                  MAILGW_DB_CHECK: "1"
+                  # The one destructive case, run only here: it changes a
+                  # restart-required key and restarts the container.
+                  MAILGW_STACK_RESTART: "1"
+              run: bun test ./tests/stack/ ./tests/smtp/ ./tests/api/
+
+            # Without this a stack failure in CI is unreadable: the assertion
+            # says "no message arrived" and the reason is in a container log
+            # that no longer exists.
+            - name: Compose logs
+              if: failure()
+              run: docker compose -f docker-compose.yaml -f docker-compose.test.yaml logs --no-color > compose-logs.txt
+
+            - uses: actions/upload-artifact@v4
+              if: failure()
+              with:
+                  name: compose-logs
+                  path: compose-logs.txt

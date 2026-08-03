@@ -458,3 +458,32 @@ func TestStore_PruneKeepsAppliedAndRecent(t *testing.T) {
 		t.Errorf("the applied version was pruned: %+v", applied)
 	}
 }
+
+// TestOpen_AcceptsARelativeDataDirectory.
+//
+// The DSN is a file: URL, and url.URL turns a relative path into a URI
+// AUTHORITY — so `-data ./x` used to fail with "invalid uri authority: x",
+// which names neither the flag nor the directory. The shipped node always gets
+// an absolute /var/lib/mailgw-go, so this only ever bit somebody running the
+// binary by hand or from a test harness, who has the least context for it.
+func TestOpen_AcceptsARelativeDataDirectory(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	st, err := Open("./data")
+	if err != nil {
+		t.Fatalf("Open with a relative data dir: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	// It must be a working store, not merely one that opened.
+	if _, err := st.Identity(); err != nil {
+		t.Errorf("Identity on a store opened relatively: %v", err)
+	}
+}

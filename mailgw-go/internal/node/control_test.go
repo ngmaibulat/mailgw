@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ngmaibulat/mailgw/mailgw-go/internal/config"
+	"github.com/ngmaibulat/mailgw/mailgw-go/internal/queue"
 )
 
 // These are the tests that could not be written before M19 moved this package
@@ -201,9 +203,9 @@ func TestControl_BadBundleKeepsTheRunningConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AppliedBundle: %v", err)
 	}
-	if cached.VersionID != before.AppliedVersonID {
+	if cached.VersionID != before.AppliedVersionID {
 		t.Errorf("applied version moved to %d on a failed apply, want %d",
-			cached.VersionID, before.AppliedVersonID)
+			cached.VersionID, before.AppliedVersionID)
 	}
 }
 
@@ -333,4 +335,268 @@ func TestControl_AppliedCarriesAnEmptyRestartList(t *testing.T) {
 	if applied.RestartRequired == nil {
 		t.Error("restart_required is nil; it must marshal as [] rather than null")
 	}
+}
+
+// spoolEnvelope puts a minimal, valid envelope into the running gateway's
+// spool, in the given queue.
+//
+// The three verbs below act on a spool a real gateway owns, so the fixture goes
+// in through queue.Spool rather than by writing files: an envelope this package
+// hand-wrote could fail validate() in a way the gateway never would, and the
+// test would then be asserting on a shape nothing produces.
+func spoolEnvelope(t *testing.T, n *Node, conn string, quarantined bool) string {
+	t.Helper()
+
+	sp := n.gw.Spool()
+	if sp == nil {
+		t.Fatal("no spool: apply a configuration first")
+	}
+
+	txn := conn + ".1"
+	env := &queue.Envelope{
+		UUID:     txn + ".1",
+		TxnUUID:  txn,
+		ConnUUID: conn,
+		// Named for an ancestor, which is what Envelope.validate allows and what
+		// lets gcBody rule out a referrer from its filename alone.
+		Body:     txn + ".eml",
+		MailFrom: "sender@example.test",
+		Rcpts:    []queue.Recipient{{Addr: "rcpt@partner.test"}},
+		RelayGrp: "Outbound",
+		QueuedAt: time.Now().UnixMilli(),
+		// Due in an hour, so the delivery runner these tests brought up leaves a
+		// queued fixture alone. The fixture's relay group resolves to a real
+		// internet host, and a unit test that let the runner claim its subject
+		// would be racing a DNS lookup.
+		NextAt: time.Now().Add(time.Hour).UnixMilli(),
+	}
+	name, size, err := sp.WriteBody(txn, strings.NewReader("Subject: fixture\r\n\r\nbody\r\n"))
+	if err != nil {
+		t.Fatalf("write the body: %v", err)
+	}
+	env.Body, env.BodySize = name, size
+
+	if quarantined {
+		err = sp.Quarantine(env)
+	} else {
+		err = sp.Enqueue(env)
+	}
+	if err != nil {
+		t.Fatalf("spool the envelope: %v", err)
+	}
+	return env.UUID
+}
+
+// queueOf returns the queue directory an envelope is currently in.
+func queueOf(t *testing.T, n *Node, uuid string) string {
+	t.Helper()
+	entries, err := n.Queue()
+	if err != nil {
+		t.Fatalf("Queue: %v", err)
+	}
+	for _, e := range entries {
+		if e.UUID == uuid {
+			return e.Queue
+		}
+	}
+	return ""
+}
+
+// TestControl_EnvelopeVerbsReachTheSpool wires the three verbs to the queue a
+// running gateway owns.
+//
+// What each verb DOES is already pinned next door — Release rebuilding the ready
+// filename, Hold being its inverse, Remove collecting the body
+// (internal/queue/inspect_test.go). This is the adapter: that Release, Hold and
+// Remove reach the live spool at all, and report a count for what moved.
+//
+// It matters because quarantine is a decision the ruleset can make and its only
+// exit was `mailgw-go mailq release` — a CLI this binary deliberately does not
+// carry, which made quarantine a one-way door for anything automated.
+func TestControl_EnvelopeVerbsReachTheSpool(t *testing.T) {
+	n := nodeForTest(t)
+	if _, err := n.ApplyBundle(context.Background(), bundleListeningOn(t, "127.0.0.1:0")); err != nil {
+		t.Fatalf("ApplyBundle: %v", err)
+	}
+
+	held := spoolEnvelope(t, n, "AAAAAAAA-0000-0000-0000-000000000001", true)
+	if got := queueOf(t, n, held); got != queue.QueueQuarantine {
+		t.Fatalf("fixture landed in %q, want quarantine", got)
+	}
+	if got, err := n.Release([]string{held}); err != nil || got != 1 {
+		t.Fatalf("Release = %d, %v; want 1, nil", got, err)
+	}
+	// Released mail is due immediately and Release nudges the scheduler, so by
+	// now the runner may already have claimed it. Anything other than quarantine
+	// is the assertion: it left, and the scheduler could see it.
+	if got := queueOf(t, n, held); got == queue.QueueQuarantine {
+		t.Errorf("after Release the envelope is still quarantined")
+	}
+
+	// Hold works on an envelope that is not due for an hour, so the runner is
+	// not competing for it and the outcome is exact.
+	ready := spoolEnvelope(t, n, "AAAAAAAA-0000-0000-0000-000000000002", false)
+	if got, err := n.Hold([]string{ready}); err != nil || got != 1 {
+		t.Fatalf("Hold = %d, %v; want 1, nil", got, err)
+	}
+	if got := queueOf(t, n, ready); got != queue.QueueQuarantine {
+		t.Errorf("after Hold the envelope is in %q, want quarantine", got)
+	}
+
+	// And Remove takes it out of the listing entirely.
+	if got, err := n.Remove([]string{ready}); err != nil || got != 1 {
+		t.Fatalf("Remove = %d, %v; want 1, nil", got, err)
+	}
+	if got := queueOf(t, n, ready); got != "" {
+		t.Errorf("the envelope is still in %q after Remove", got)
+	}
+}
+
+// TestControl_EnvelopeVerbsRefuseAnEmptyList is where these differ from Flush,
+// on purpose.
+//
+// Flush with no uuids means "the whole ready queue", which is the gesture an
+// operator makes after an outage. "Release everything ever quarantined" is not a
+// gesture anybody wants to make by leaving a field out.
+func TestControl_EnvelopeVerbsRefuseAnEmptyList(t *testing.T) {
+	n := nodeForTest(t)
+	if _, err := n.ApplyBundle(context.Background(), bundleListeningOn(t, "127.0.0.1:0")); err != nil {
+		t.Fatalf("ApplyBundle: %v", err)
+	}
+
+	for name, op := range map[string]func([]string) (int, error){
+		"Release": n.Release,
+		"Hold":    n.Hold,
+		"Remove":  n.Remove,
+	} {
+		if got, err := op(nil); err == nil {
+			t.Errorf("%s(nil) = %d, nil; an empty list must be refused, not read as everything",
+				name, got)
+		}
+	}
+}
+
+// TestControl_EnvelopeVerbsNeedASpool: before the first apply there is no spool,
+// and the answer has to name that rather than surface as a nil dereference.
+func TestControl_EnvelopeVerbsNeedASpool(t *testing.T) {
+	n := nodeForTest(t)
+
+	for name, op := range map[string]func([]string) (int, error){
+		"Release": n.Release,
+		"Hold":    n.Hold,
+		"Remove":  n.Remove,
+	} {
+		got, err := op([]string{"whatever"})
+		if err == nil {
+			t.Errorf("%s before any configuration = %d, nil; want an error naming the missing spool",
+				name, got)
+			continue
+		}
+		if !strings.Contains(err.Error(), "no spool") {
+			t.Errorf("%s error = %q, want it to name the missing spool", name, err)
+		}
+	}
+}
+
+// TestControl_PartialFailureReportsWhatMoved: an envelope claimed by a worker
+// mid-call is an ordinary outcome, and a caller told only "error" would not know
+// how much of its request took effect.
+func TestControl_PartialFailureReportsWhatMoved(t *testing.T) {
+	n := nodeForTest(t)
+	if _, err := n.ApplyBundle(context.Background(), bundleListeningOn(t, "127.0.0.1:0")); err != nil {
+		t.Fatalf("ApplyBundle: %v", err)
+	}
+
+	uuid := spoolEnvelope(t, n, "AAAAAAAA-0000-0000-0000-000000000004", true)
+
+	got, err := n.Release([]string{uuid, "no-such-envelope"})
+	if err == nil {
+		t.Fatal("Release of a missing uuid returned no error")
+	}
+	if got != 1 {
+		t.Errorf("Release = %d, want 1 — the one that moved must still be counted", got)
+	}
+}
+
+// TestControl_StatusReportsTheBoundAdminAddress, for exactly the reason
+// Listeners does: an admin listener asked for on port 0 is unreachable unless
+// the bound address comes back out, and /metrics, /readyz and /healthz all live
+// there.
+func TestControl_StatusReportsTheBoundAdminAddress(t *testing.T) {
+	n := nodeForTest(t)
+
+	// New binds nothing, so there is no address yet — and the honest answer is
+	// empty rather than the address that was requested.
+	if got := n.Status().AdminAddr; got != "" {
+		t.Errorf("admin_addr before Run = %q, want empty", got)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = n.ui.ListenAndServe(ctx, "127.0.0.1:0") }()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for n.Status().AdminAddr == "" && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	addr := n.Status().AdminAddr
+	if addr == "" {
+		t.Fatal("admin_addr is still empty after the admin UI started listening")
+	}
+	if strings.HasSuffix(addr, ":0") {
+		t.Fatalf("admin_addr = %q is the requested port, not the bound one", addr)
+	}
+
+	// Reported is not enough: it has to answer.
+	resp, err := http.Get("http://" + addr + "/healthz")
+	if err != nil {
+		t.Fatalf("GET /healthz on the reported admin address: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("/healthz = %d, want 200", resp.StatusCode)
+	}
+}
+
+// TestControl_ApplyBundleDoesNotTieTheGatewayToTheRequest is the defect the
+// Tier-B delivery suite found on its first run.
+//
+// applyCached's context governs the lifetime of everything bringUp starts — the
+// delivery runner and the failed-events replayer. Every other caller passes a
+// process-lifetime context: boot, the poll loop, the WebSocket, SIGHUP. This one
+// is reached from an HTTP handler, and passing r.Context() through cancelled the
+// runner the instant the response was written, so the gateway accepted mail and
+// delivered none of it — visible only to a test that actually delivers.
+func TestControl_ApplyBundleDoesNotTieTheGatewayToTheRequest(t *testing.T) {
+	n := nodeForTest(t)
+
+	// A context that is already finished, standing in for a request whose
+	// response has been written.
+	reqCtx, cancel := context.WithCancel(context.Background())
+	if _, err := n.ApplyBundle(reqCtx, bundleListeningOn(t, "127.0.0.1:0")); err != nil {
+		t.Fatalf("ApplyBundle: %v", err)
+	}
+	cancel()
+
+	// Give a cancellation the chance to propagate, had one been wired up.
+	time.Sleep(50 * time.Millisecond)
+
+	// The runner is the thing that would have died. Nudging a dead one is
+	// silent, so the observable proof is that it still claims work: an envelope
+	// that is due must leave the ready queue.
+	uuid := spoolEnvelope(t, n, "AAAAAAAA-0000-0000-0000-00000000000A", false)
+	if _, err := n.Flush([]string{uuid}); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if queueOf(t, n, uuid) != queue.QueueReady {
+			return // Claimed: the runner is alive.
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Error("the envelope was never claimed; the delivery runner was cancelled with the request " +
+		"that applied the configuration")
 }
