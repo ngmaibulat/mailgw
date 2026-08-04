@@ -20,9 +20,12 @@ services:
         # external DB access.
 
     db-migrator:
-        image: ngmaibulat/logservice:latest
+        image: ngmaibulat/logservice-go:latest
         container_name: core-db-migrator
-        command: ["bun", "src/dbmigrate.ts"]
+        # Migrate and exit. logservice migrates on start too, so this service
+        # exists for the CONSOLE: the webui gates on it completing and never
+        # talks to logservice at boot.
+        command: ["migrate"]
         restart: "no"
         # logservice owns the SQL schema for the whole stack, including the
         # tables the webui reads (users, relays, gateways, config profiles).
@@ -35,7 +38,7 @@ services:
             - mariadb
 
     logservice:
-        image: ngmaibulat/logservice:latest
+        image: ngmaibulat/logservice-go:latest
         container_name: core-logservice
         restart: unless-stopped
         ports:

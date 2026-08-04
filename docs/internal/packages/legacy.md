@@ -1,6 +1,7 @@
 # legacy/
 
-The Haraka implementation this project replaced, and its Express console. Frozen.
+The Haraka implementation this project replaced, its Express console, and the Bun
+log service. All frozen.
 
 **Prefer changing the modern stack. Touch `legacy/` only to keep it building.**
 
@@ -8,13 +9,15 @@ The Haraka implementation this project replaced, and its Express console. Frozen
 legacy/
 ├── mailgw/            the Haraka SMTP server and its plugins
 ├── webui-express/     the Express console
+├── logservice/        the Bun log service, superseded by logservice-go (M21)
 ├── deploy/            its production compose
 ├── docs/              its notes
 └── archive/
 ```
 
-Neither package is a pnpm workspace member, so a root `pnpm install` ignores
-them. Install one standalone:
+None of these is a pnpm workspace member, so a root `pnpm install` ignores them.
+`legacy/logservice/` is a standalone **Bun** package with its own `bun.lock` and
+is still wired into `pnpm test`. Install one standalone:
 
 ```bash
 cd legacy/mailgw && pnpm install

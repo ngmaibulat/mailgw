@@ -1,7 +1,7 @@
 # certs
 
 Generates self-signed TLS certificates from a JSON config. Bun project (own
-`bun.lock`), standalone like `logservice/` and `tests/` — not a pnpm workspace
+`bun.lock`), standalone like `tests/` — not a pnpm workspace
 member. Uses `node-forge` (pure JS), so no `openssl` binary is required.
 
 ## Usage

@@ -1,6 +1,6 @@
 packages:
   # webui-fastify is the only pnpm workspace member that ships anything.
-  # logservice/, tests/ and certs/ are Bun projects (own bun.lock) and are
+  # tests/ and certs/ are Bun projects (own bun.lock) and are
   # intentionally excluded so pnpm and Bun don't fight over their
   # node_modules; mailgw-go/ is a Go module. legacy/mailgw (Haraka) and
   # legacy/webui-express are frozen — they are deliberately NOT members, so a

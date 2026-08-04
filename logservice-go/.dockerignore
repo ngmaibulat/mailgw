@@ -1,0 +1,9 @@
+bin/
+dist/
+*.test
+coverage.out
+README.md
+TODO.md
+container-build.sh
+container-push.sh
+bump.sh

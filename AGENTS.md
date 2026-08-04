@@ -25,7 +25,7 @@ Web UI specific
 - Sessions are database-backed (`Sessions` table). The first admin is created via the one-time `/setup` page or `node create_user.ts` in the webui directory.
 
 logservice and DB
-- logservice is a Bun server using Bun.SQL (MySQL). Migrations live in `logservice/migrations/` and are run with `bun run db:migrate` (or via the db-migrator container). Use the db-migrator or `bun run start:migrate` to apply migrations.
+- logservice is a **Go** server (`logservice-go/`) over MariaDB via `database/sql`. Migrations live in `logservice-go/migrations/` as `.sql` files embedded with `go:embed`, and are applied **automatically on start**; `logservice migrate` applies them and exits, which is what the db-migrator container runs. The Bun original is frozen at `legacy/logservice/`.
 - Tests that mutate DB or depend on a running stack are opt-in via env vars described in CLAUDE.md (`MAILGW_API_E2E`, `MAILGW_DB_CHECK`). Don't run DB-mutating e2e tests unless you intend to (they require a running MariaDB from docker-compose).
 
 Haraka / mailgw runtime gotchas
@@ -42,12 +42,12 @@ Docker / containers
 
 Tests and CI
 - e2e tests live in `tests/` (Bun) and talk to a running stack (use `docker compose up -d`). Run them from repo root so Bun picks up the root .env.
-- Unit tests for logservice live under `logservice/tests` and are run with `cd logservice && bun test tests/`.
+- Unit tests for logservice live under `logservice-go/internal/**/*_test.go` and are run with `cd logservice-go && go test -race ./...`. The frozen Bun suite is `cd legacy/logservice && bun test tests/`.
 
 Where to look first when you are confused
 - CLAUDE.md (authoritative project overview). Then:
   - docs/internal/ for architecture and conventions, docs/public/ for what the gateway does, docs/testing/ for manual test plans,
   - root package.json (scripts and pnpm intent), pnpm-workspace.yaml (package boundaries),
-  - mailgw-go/ (the gateway), logservice/ (Bun server + migrations), webui-fastify/ (active UI), deploy/ (production compose), legacy/ (frozen Haraka stack).
+  - mailgw-go/ (the gateway), logservice-go/ (log API + migrations), webui-fastify/ (active UI), deploy/ (production compose), legacy/ (frozen Haraka stack + the Bun logservice).
 
 If uncertain, ask a one-line question instead of guessing (e.g. "Should I run DB migrations for this change?").

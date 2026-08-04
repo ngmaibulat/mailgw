@@ -1,0 +1,85 @@
+name: logservice-go
+
+# A workflow of its own rather than a second job in go.yml, deliberately.
+# go.yml carries two architectural assertions that belong to the GATEWAY and
+# would fail here or, worse, pass for the wrong reason:
+#
+#   - "the shipped binary does not link internal/testctl" — there is no such
+#     package in this module;
+#   - "no configuration can come from this host" — logservice is configured
+#     ENTIRELY by its environment. It is a core-node service running beside the
+#     database whose credentials it needs, not a zero-configuration edge node.
+#     Copying that grep here would fail the build on the DB_* lookups that are
+#     the whole point.
+
+on:
+    push:
+        paths:
+            - "logservice-go/**"
+            - ".github/workflows/logservice-go.yml"
+    pull_request:
+        paths:
+            - "logservice-go/**"
+            - ".github/workflows/logservice-go.yml"
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: logservice-go
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-go@v5
+              with:
+                  go-version: "1.26"
+                  cache-dependency-path: logservice-go/go.sum
+
+            - name: Verify formatting
+              run: |
+                  unformatted=$(gofmt -l ./cmd ./internal ./migrations)
+                  if [ -n "$unformatted" ]; then
+                      echo "These files need gofmt:"
+                      echo "$unformatted"
+                      exit 1
+                  fi
+
+            - name: Vet
+              run: go vet ./...
+
+            - name: Test
+              run: go test -race ./...
+
+            - name: Build
+              run: go build ./...
+
+            # The migrations are copies of legacy/logservice/migrations/*.sql and
+            # their FILENAMES are the upgrade contract: _migrations records an applied
+            # migration by name, so a production database migrated by the frozen
+            # Bun runner must see all of these as already applied. A rename or an
+            # edit to a shipped file would silently re-run it, and six of them
+            # contain non-idempotent DDL.
+            #
+            # New migrations (027+) are authored in logservice-go only, so a file
+            # present here and absent there is expected and not an error.
+            - name: Assert the copied migrations still match the frozen originals
+              working-directory: .
+              run: |
+                  status=0
+                  for f in legacy/logservice/migrations/*.sql; do
+                      name=$(basename "$f")
+                      if [ ! -f "logservice-go/migrations/$name" ]; then
+                          echo "MISSING: logservice-go/migrations/$name"
+                          echo "  A migration the Bun service applied is not embedded here."
+                          status=1
+                      elif ! cmp -s "$f" "logservice-go/migrations/$name"; then
+                          echo "CHANGED: $name differs from the frozen original"
+                          echo "  _migrations keys on filename, so an existing database will NOT"
+                          echo "  re-apply this file. Editing it changes nothing in production and"
+                          echo "  everything on a fresh install. Add a new migration instead."
+                          status=1
+                      fi
+                  done
+                  exit $status

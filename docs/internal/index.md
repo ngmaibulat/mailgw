@@ -31,7 +31,7 @@ that other files cross-reference by path:
 | Console backlog | `webui-fastify/TODO.md` | the same, for the admin console |
 | Project overview | `CLAUDE.md` | the curated summary, kept current with the code |
 | Deployment | `deploy/README.md` | production topology and procedure |
-| Log service API | `logservice/docs/api.md` | endpoint reference |
+| Log service API | `legacy/logservice/docs/api.md` | endpoint reference (still accurate; the Go service is wire-compatible) |
 
 Copying them here would give two versions that drift. Read them in the repository;
 this site covers what they do not — the shape of the whole thing.

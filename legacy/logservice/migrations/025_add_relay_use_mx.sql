@@ -1,0 +1,21 @@
+-- Resolve this relay's `host` as a DOMAIN rather than dialling it directly.
+--
+-- mailgw-go grew `use_mx` on a relay (internal/relays/relays.go): when set, the
+-- exchange is a domain whose MX records are looked up at delivery time and tried
+-- in preference order, each inheriting this relay's port, credentials and TLS
+-- policy. It is the same reasoning as migration 022 — a zero-config gateway can
+-- only be told what the console can describe, so a transport setting mailgw-go
+-- understands needs a column here or it is unreachable in practice.
+--
+-- Note what this is NOT: it does not deliver to the recipient's own domain. An
+-- envelope groups recipients by relay GROUP, so direct-to-MX would additionally
+-- need the SMTP session to bucket by recipient domain — a different delivery
+-- mode with its own TLS and reputation story. This is "smarthost named by
+-- domain", which is what a relay with several MX hosts needs.
+--
+-- Defaults to 0, so every existing relay keeps dialling exactly the host it
+-- names and no deployed bundle changes shape. src/central/bundle.ts omits the
+-- field when false for the same reason: an unchanged configuration must keep
+-- hashing identically, or every gateway in the fleet would see a new version.
+ALTER TABLE `Relays`
+    ADD COLUMN `use_mx` TINYINT(1) NOT NULL DEFAULT 0;

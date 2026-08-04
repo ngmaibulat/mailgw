@@ -38,6 +38,7 @@ Every file carries its **status on line 3**, in the same shape:
 | [M18](./M18-zero-config-audit.md) | Zero configuration, enforced: removing the second source | `mailgw-go`, `tests`, `deploy`, `docs`, `webui-fastify` | **done** |
 | [M19](./M19-test-only-control-api.md) | A test-only build with an unauthenticated control API | `mailgw-go/internal/{node,testctl}`, `cmd/mailgw-go-test`, `tests`, `deploy` | **done** |
 | [M20](./M20-e2e-control-api.md) | End-to-end tests driven by the control API | `tests`, `mailgw-go/internal/{testctl,node,adminui,store}`, `.github/workflows`, `docs` | **done** |
+| [M21](./M21-logservice-go.md) | logservice in Go, migrating itself on start | `logservice-go` (new), `legacy/logservice` (frozen, moved), `deploy`, `.github/workflows`, `docs` | **done** |
 
 **Order worked:** M9 → M4 → M5 → M6 → M7 → M8 → M10. **M1–M10 are all done.**
 M9.4 landed with M4 and M9.5 with M7, as the notes here suggested they should.
@@ -86,7 +87,8 @@ have. The lesson is M16's, one layer out: a green suite proves nothing about the
 paths no test drives, and M19's own new door was one of them.
 
 **Order worked from here:** **M11 → M16 → M12 → M13 → M14 → M15 → M18 → M19 →
-M17 → M20**. With M20 in, **every milestone in this directory is done.**
+M17 → M20 → M21**. **Every milestone in this directory is done.** M21 is the
+first that is not about the gateway.
 M11 was taken first because it is self-contained and touches only the gateway,
 and M16 followed immediately because it is that same code. M12 is the security
 item `mailgw-go/TODO.md` ranked first and it unblocks two things held behind it.
@@ -94,6 +96,32 @@ M13 precedes M14 because authenticated submission changes what the
 message-authentication policy should say. Once again the numbers are identity:
 M11 and M16 being worked before M12 does not renumber anything, exactly as M9 was
 worked first without moving.
+
+**M21 is the first milestone here that is not about the gateway, and it went
+almost exactly as planned** — the rare one whose "What was built differently"
+section is six small corrections rather than a reversal. The two risks its plan
+named up front both landed as designed, and the verification turned three
+predictions into measurements: the Go-migrated schema is `diff`-identical to the
+Bun-migrated one (204 columns, 47 indexes); the Go runner applies **zero**
+migrations to an already-migrated database; and all four search endpoints return
+byte-identical JSON to the Bun service once datetime punctuation is normalised,
+types included. The plan error worth remembering is the smallest: `go:embed`
+cannot reach outside its own package directory, so the SQL files carry their own
+`embed.go` rather than being embedded from `internal/migrate`. It rewrites
+`logservice` in Go, in a new `logservice-go/` module, wire-compatible to the byte
+so that `mailgw-go/internal/events`, `mailgw-go/internal/attach`,
+`webui-fastify/src/logservice.ts` and `tests/api/logservice.e2e.test.ts` all work
+unchanged and a rollback is an image-tag edit. Two things make it more than a
+transliteration. The service **migrates on start**, which the Bun one never did —
+hence the separate `db-migrator` container in both compose files, which survives
+only because the *console* gates on it for schema readiness. And it is the only
+thing that migrates the shared MariaDB, including the fifteen tables only the
+console touches, so the 26 `.sql` files are copied **byte-identically** under
+their existing names: `_migrations` keys on filename, and a production database
+must see all 26 as already applied. The two risks are named in the plan rather
+than discovered later — reproducing Bun's `SELECT *` JSON typing (a naive `[]byte`
+scan turns every number into a string), and running a multi-statement migration
+file, which `go-sql-driver/mysql` refuses without `multiStatements=true`.
 
 **M17 was the last one open, and it was open because it was two questions rather
 than two numbers.** M11 could add `max.connections` because "how many" is a

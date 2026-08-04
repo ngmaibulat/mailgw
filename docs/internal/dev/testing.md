@@ -5,7 +5,8 @@
 | Suite | Command | Needs |
 |---|---|---|
 | Go unit + contract | `cd mailgw-go && go test -race ./...` | nothing |
-| logservice unit | `cd logservice && bun test ./tests/` | nothing |
+| logservice-go unit | `cd logservice-go && go test -race ./...` | nothing |
+| logservice unit (frozen Bun) | `cd logservice && bun test ./tests/` | nothing |
 | Console | `cd webui-fastify && pnpm test` | nothing |
 | **Gateway e2e (tier B)** | `pnpm test:e2e:gateway` | a Go toolchain |
 | **Stack e2e (tier A)** | `pnpm test:e2e:stack` | the compose stack + the engineering image |

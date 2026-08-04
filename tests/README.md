@@ -44,7 +44,7 @@ rather than either — is in `docs/internal/dev/testing.md`.
 
 ::: warning `bun test tests/` is a filter, not a path
 It matches every directory named `tests` in the repo, including
-`logservice/tests/`. Use `bun test ./tests/...`; the package scripts do.
+`legacy/logservice/tests/`. Use `bun test ./tests/...`; the package scripts do.
 :::
 
 All of these talk to a **running** stack except tier B, so bring it up first:

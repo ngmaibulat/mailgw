@@ -46,6 +46,62 @@ Things deliberately **not** taken:
   [the mail path](/architecture/mail-path#inbound).
 - **`gobwas/glob`** — two dialects are needed and neither is quite what it does.
 
+### logservice-go has its own, separate budget
+
+`logservice-go/` is a second Go module and its dependency list is counted apart
+from the gateway's. It has **one** direct dependency:
+
+| Dependency | Why |
+|---|---|
+| `github.com/go-sql-driver/mysql` | the only pure-Go MariaDB driver |
+
+Everything else is stdlib, and each omission was a decision rather than an
+oversight:
+
+- **No router.** The route set is nine entries and `net/http.ServeMux` has had
+  method patterns since Go 1.22.
+- **No validation library.** Only one endpoint validates, and its schema is four
+  regexes and a dozen type checks — smaller than the dependency would be.
+- **No migration library.** The runner is about 120 lines and its contract is not
+  negotiable anyway: `_migrations` keys on filename, and a production database
+  already holds 26 rows in that shape.
+
+The two modules do **not** share a `go.mod`, deliberately: the gateway runs as
+root on internet-facing hosts and logservice does not, so they should not be able
+to pull each other's dependencies in by accident.
+
+### The gateway's "no environment variables" rule does not apply to logservice
+
+`.github/workflows/go.yml` fails the build on any non-test `os.Getenv` in
+`mailgw-go`. That is a property of a **zero-configuration edge node**: it runs on
+a host its operator does not otherwise touch, so Central Management must be the
+only thing that can configure it.
+
+logservice-go is the opposite kind of service — it runs on the core node, beside
+the database whose credentials it needs — and reads `PORT`, `API_KEY`, `DB_*`,
+`LOG_LEVEL` and `LOG_FORMAT`. Its CI is a **separate workflow file** partly for
+this reason; copying the gateway's grep across would fail the build on the very
+lookups that make the service work.
+
+### logservice-go returns DATETIME as MySQL's own text, not RFC 3339
+
+`"2026-08-03 18:34:37"`, not `"2026-08-03T18:34:37.000Z"`. The DSN does not set
+`parseTime`.
+
+The Bun service produced the second form because its driver returned a JavaScript
+`Date`. Both render identically in the console, whose formatter is
+`String(p.value).slice(0,19).replace("T"," ")`, and nothing else reads a date out
+of that API. Setting `parseTime` would attach a timezone the stored value does
+not have — a MariaDB `DATETIME` carries none — so Go would stamp it with the
+connection's location and the API would begin reporting a different instant from
+the one an operator sees running the same `SELECT` in `mysql`. For an audit
+trail, the API and the database agreeing is worth more than matching the old
+punctuation.
+
+This is the **only** intended difference between the two implementations; it is
+pinned by a manual diff step in the milestone's verification and anything else
+that differs is a bug.
+
 **`modernc.org/sqlite` costs about 6 MiB.** Measured: the stripped binary went
 7.8 → 13.6 MiB and `go.sum` 11 → 30 lines. Accepted because it is pure Go and
 keeps `CGO_ENABLED=0` with a `distroless/static` base; a cgo driver would mean a

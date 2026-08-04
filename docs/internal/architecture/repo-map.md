@@ -6,7 +6,7 @@ matter — getting them wrong is the most common way to waste an afternoon here.
 ```
 mailgw/
 ├── mailgw-go/          Go module      the gateway
-├── logservice/         Bun            audit API over MariaDB
+├── logservice-go/      Go module      audit API over MariaDB, owns the schema
 ├── webui-fastify/      pnpm  ★        admin console + Central Management
 ├── tests/              Bun            cross-cutting end-to-end tests
 ├── certs/              Bun            self-signed cert generator
@@ -16,7 +16,8 @@ mailgw/
 │   └── testing/
 ├── deploy/             shell          production compose, split by role
 ├── plans/              markdown       milestone plans
-└── legacy/             frozen         Haraka era
+└── legacy/             frozen
+    ├── logservice/         Bun, NOT a member  (superseded by logservice-go)
     ├── mailgw/             pnpm, NOT a member
     ├── webui-express/      pnpm, NOT a member
     ├── deploy/
@@ -29,9 +30,12 @@ mailgw/
 
 **Only `webui-fastify` and `docs/*` are pnpm workspace members.**
 
-`logservice/`, `tests/` and `certs/` are Bun projects with their own `bun.lock`,
-deliberately excluded so pnpm and Bun do not fight over `node_modules`.
-`mailgw-go/` is a Go module. `legacy/mailgw` and `legacy/webui-express` are pnpm
+`tests/`, `certs/` and the frozen `legacy/logservice/` are Bun projects with
+their own `bun.lock`, deliberately excluded so pnpm and Bun do not fight over
+`node_modules`. **`mailgw-go/` and `logservice-go/` are two separate Go
+modules** — not one, because the gateway runs as root on internet-facing hosts
+and the log API does not, so they should not be able to pull each other's
+dependencies in by accident. `legacy/mailgw` and `legacy/webui-express` are pnpm
 projects that are **not** members, so a root `pnpm install` ignores them —
 install one standalone with `cd legacy/mailgw && pnpm install`.
 
@@ -52,7 +56,7 @@ now. Haraka keeps explicit `legacy:*` names.
 pnpm start          # run mailgw-go against mailgw-go/config
 pnpm dev            # check the config first, then run
 pnpm check          # validate, non-zero on error
-pnpm test           # go test ./... plus the logservice Bun suite
+pnpm test           # both Go suites plus the frozen logservice Bun suite
 pnpm test:e2e       # end-to-end, needs a running stack
 pnpm docs:public:dev
 ```
@@ -74,11 +78,11 @@ Each Node/Bun service has `container-build.sh` (local) and `container-push.sh`
 (build and push), tagging `ngmaibulat/<name>:v<ver>` and `:latest`.
 
 The console and the two legacy images build from the **repository-root context**
-via `-f <path>/Dockerfile`; `logservice` and `mailgw-go` build from their own
+via `-f <path>/Dockerfile`; `logservice-go` and `mailgw-go` build from their own
 directories. The four legacy scripts `cd` two levels up to reach that context.
 
 ```bash
-pnpm run docker:push       # the modern stack: mailgw-go + logservice + webui-fastify
+pnpm run docker:push       # the modern stack: mailgw-go + logservice-go + webui-fastify
 pnpm build:containers      # that, plus the legacy Haraka image
 ```
 

@@ -33,7 +33,7 @@ High-level architecture (big picture)
 
 - legacy/mailgw: the frozen Haraka-based SMTP router. Custom plugins live in legacy/mailgw/plugins and are loaded via legacy/mailgw/config/plugins. Plugins use Haraka hooks to produce events and route mail via RoutingTable.
 
-- logservice: Bun HTTP API (logservice/) — receives JSON events (connection/queue/delivery), stores them in MariaDB via Bun.SQL, exposes search endpoints and an attachment MD5 filter endpoint (/filter/md5). Uses migrations in logservice/migrations/.
+- logservice: Go HTTP API (logservice-go/) — receives JSON events (connection/queue/delivery), stores them in MariaDB via database/sql, exposes search endpoints and an attachment MD5 filter endpoint (/filter/md5). Uses migrations in logservice-go/migrations/, embedded with go:embed and applied on start. The Bun original is frozen at legacy/logservice/.
 
 - webui-fastify: Active admin UI (webui-fastify/) — TypeScript run directly on Node 26 (no build). It is a read-only frontend for logs: GET /api/* routes are proxied to logservice (the webui does not query log tables directly). It also manages relay config (Drizzle) for the UI's owned tables.
 
@@ -64,9 +64,9 @@ Where to look first for common tasks
 - plugins and routing: legacy/mailgw/plugins/ and legacy/mailgw/config/
 - gateway routing/policy rules: mailgw-go/internal/ruleset/ and mailgw-go/config/
 - production deployment: deploy/ (core/ + gateway/); the frozen Haraka one is legacy/deploy/
-- log API and migrations: logservice/src/ and logservice/migrations/
+- log API and migrations: logservice-go/internal/ and logservice-go/migrations/
 - web UI: webui-fastify/src/, especially src/logservice.ts (proxy logic) and src/routes/
-- e2e tests: tests/ and logservice tests under logservice/tests/
+- e2e tests: tests/ and logservice unit tests under logservice-go/internal/
 
 AI assistant files to incorporate
 

@@ -19,7 +19,7 @@ on:
             - "mailgw-go/**"
             - "tests/**"
             - "webui-fastify/**"
-            - "logservice/**"
+            - "logservice-go/**"
             - "docker-compose*.yaml"
             - ".github/workflows/e2e.yml"
     pull_request:
