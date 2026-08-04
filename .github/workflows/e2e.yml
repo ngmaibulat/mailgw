@@ -34,9 +34,9 @@ jobs:
         name: gateway (tier B, no docker)
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
-            - uses: actions/setup-go@v5
+            - uses: actions/setup-go@v7
               with:
                   go-version: "1.26"
                   cache-dependency-path: mailgw-go/go.sum
@@ -74,28 +74,31 @@ jobs:
         # Only where the extra minutes are worth it. A PR gets the gw job.
         if: github.event_name != 'pull_request'
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
             - uses: oven-sh/setup-bun@v2
               with:
                   bun-version: latest
 
-            - uses: pnpm/action-setup@v4
-            - uses: actions/setup-node@v4
+            - uses: pnpm/action-setup@v6
+            - uses: actions/setup-node@v7
               with:
                   node-version: "26"
                   cache: pnpm
 
             - run: pnpm install --frozen-lockfile
 
-            # The console serves HTTP/2 over TLS and will not boot without a
-            # keypair. This is the step people forget by hand, too.
-            - name: Generate the console's TLS pair
-              run: pnpm certs
-
             - name: Build the engineering image
               run: bash mailgw-go/container-build-test.sh
 
+            # Deliberately no `pnpm certs` step. The console serves HTTP/2 over
+            # TLS and mints its own self-signed pair into the mounted
+            # certs/generated/webui when that directory holds none
+            # (webui-fastify/src/tls.ts ensureTlsPair, M22), so this exercises
+            # the unattended path a real core node comes up on. Note certs/ is a
+            # standalone Bun package outside the pnpm workspace, so the root
+            # `pnpm install` above would not have installed its node-forge
+            # anyway.
             - name: Bring the stack up
               run: |
                   MAILGW_GO_TEST_VERSION=$(cat mailgw-go/VERSION) \
@@ -127,7 +130,7 @@ jobs:
               if: failure()
               run: docker compose -f docker-compose.yaml -f docker-compose.test.yaml logs --no-color > compose-logs.txt
 
-            - uses: actions/upload-artifact@v4
+            - uses: actions/upload-artifact@v7
               if: failure()
               with:
                   name: compose-logs
