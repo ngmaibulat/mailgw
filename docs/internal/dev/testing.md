@@ -67,6 +67,27 @@ second writer. Files converge on the baseline in `beforeAll` rather than relying
 on a predecessor's `afterAll`, because the case that matters is the one where
 the predecessor crashed.
 
+Tier A also has **one definition of ready**: `tests/stack/ready.ts`, gated on by
+`tests/provision.ts` and by every Tier-A `beforeAll`. Ready means approved,
+holding a console-issued configuration, SMTP bound, and answering 220.
+
+The thing to carry away from it is what does **not** count. A TCP connect to the
+published SMTP port is not a readiness signal: compose publishes 2525 from the
+moment the *container* starts, and Docker's userland proxy accepts on the host
+side whether or not the process inside has bound anything. That was the
+provisioning gate, and it made `pnpm provision` report success a millisecond
+after the deploy, while the gateway was still `pending` — which is legitimate,
+because its poll loop waits a jittered 15s before its first `/agent/status` and
+registration does not wake it. The whole Tier-A job failed on it for as long as
+that job existed. `serving` is not one either: `internal/node/gateway.go` sets
+`g.live` before it binds and a bind failure does not unset it, which is why
+`/readyz` — which reads `serving` — is checked *and* then followed by a real
+SMTP greeting.
+
+`MAILGW_REQUIRE_TIER_A=1` turns an unusable stack into a failure rather than a
+skip, for the same reason `MAILGW_REQUIRE_TIER_B` exists: a tier that can
+silently skip itself in CI is one that will eventually be skipped entirely.
+
 ## The SMTP contract is asserted twice
 
 `internal/smtpsrv/contract_test.go` ports every assertion from

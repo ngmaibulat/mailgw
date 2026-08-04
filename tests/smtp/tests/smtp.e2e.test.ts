@@ -11,11 +11,15 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { SQL } from "bun";
 import { SmtpClient } from "../src/smtp";
+import { SMTP_HOST, SMTP_PORT } from "../../stack/baseline.ts";
+import { waitForGatewayReady } from "../../stack/ready.ts";
 
 const ENABLED = process.env.MAILGW_DB_CHECK === "1";
 
-const HOST = process.env.SMTP_HOST ?? "127.0.0.1";
-const PORT = Number(process.env.SMTP_PORT ?? "25");
+const HOST = SMTP_HOST;
+// 2525, not 25. Both are published by docker-compose.yaml, so a default of 25
+// did not fail — it silently tested the other mapping.
+const PORT = SMTP_PORT;
 const FROM = process.env.SMTP_FROM ?? "me@ngm.dev";
 const TO = process.env.SMTP_TO ?? "test@ngm.dev";
 
@@ -49,13 +53,20 @@ let like = "";
 
 beforeAll(async () => {
     if (!ENABLED) return;
+    // The published port answers a TCP connect whether or not the gateway has
+    // bound anything behind it, so without this the first failure is
+    // "connection closed by peer" from inside a beforeAll.
+    await waitForGatewayReady();
     const c = await SmtpClient.open(HOST, PORT);
     await c.greeting();
     const { uuid } = await c.sendMail({ from: FROM, to: TO, subject: "Bun e2e" });
     await c.quit();
     expect(uuid).toBeTruthy();
     like = uuid + "%";
-});
+    // 240s, not Bun's default 5s: sendMail alone is allowed 30s for the DATA
+    // reply, so the default budget guaranteed a generic timeout in place of
+    // whatever actually went wrong.
+}, 240_000);
 
 afterAll(async () => {
     // db.end() can throw on Bun's MySQL adapter; swallow it.
@@ -71,7 +82,9 @@ describe.skipIf(!ENABLED)("event persistence", () => {
         );
         expect(row).not.toBeNull();
         expect(row.remoteAddr).toBeTruthy();
-    });
+        // 45s: the poll above is allowed 20s, which is already four times
+        // Bun's default per-test budget.
+    }, 45_000);
 
     test("Transaction row is recorded with the sender", async () => {
         const row = await waitFor(
@@ -79,7 +92,7 @@ describe.skipIf(!ENABLED)("event persistence", () => {
         );
         expect(row).not.toBeNull();
         expect(row.sender).toBe(FROM);
-    });
+    }, 45_000);
 
     test("Delivery row is recorded as queued", async () => {
         const row = await waitFor(
@@ -88,5 +101,5 @@ describe.skipIf(!ENABLED)("event persistence", () => {
         expect(row).not.toBeNull();
         expect(row.rcpt_accepted).toBe(TO);
         expect(row.response).toMatch(/queued|ok/i);
-    });
+    }, 45_000);
 });

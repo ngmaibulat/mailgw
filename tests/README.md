@@ -64,11 +64,36 @@ and holding no configuration.
 `tests/provision.ts` walks it the rest of the way, exactly as an operator would
 on a real edge node: create the first admin, a relay group pointing at mailhog
 and the three config profiles; wait for the gateway to register itself and
-approve its fingerprint; assign and deploy; then wait until it answers on SMTP.
+approve its fingerprint; assign and deploy; then wait until it is **ready**.
 
 ```bash
 pnpm provision          # or: bun tests/provision.ts
 ```
+
+### "Ready" has one definition, and it is not a TCP connect
+
+`tests/stack/ready.ts` owns it, and `provision.ts` and every Tier-A file gate on
+it: **approved, holding a console-issued configuration, SMTP bound, and
+answering 220 on it.**
+
+That file exists because the weaker version of the question was being asked.
+Provisioning used to open a TCP connection to `127.0.0.1:2525` and call the
+stack ready — but compose publishes that port from the moment the *container*
+starts, so with Docker's userland proxy the connect succeeds whether or not the
+gateway process has bound anything, and nothing read the 220. Provisioning
+therefore reported success roughly a millisecond after the deploy, and the tests
+raced a gateway that was still `pending`. The gateway needs real time here by
+design: its poll loop waits a jittered 15s before its first `/agent/status` and
+registration does not wake it.
+
+Two routes, so it works without the engineering image too: the control API on
+9090 when it answers (it is the only source that can tell a console-issued
+version from an injected one, and the only one that reports which addresses
+actually bound), otherwise the gateway's own `/readyz` on `:8080`, which is open
+because the dev stack deploys no `admin.metrics_token`. **Both** then have to
+pass the SMTP greeting check — `/readyz` reads `serving`, which is set before
+the listeners bind. A failure names the reason rather than surfacing three files
+later as `connection closed by peer`.
 
 It is idempotent, so running it against an already-provisioned stack is a no-op.
 The `pnpm test:e2e*` scripts run it for you; only the bare `bun test` forms below
@@ -149,7 +174,7 @@ Other variables worth knowing:
 | `MAILGW_GO_TEST_BIN` | use this binary for tier B instead of building one |
 | `MAILGW_REQUIRE_TIER_B=1` | make a missing Go toolchain a failure, not a skip (CI sets it) |
 | `MAILGW_KEEP_DATA=1` | keep tier-B data directories after a run, for debugging |
-| `MAILGW_STACK_RESTART=1` | allow the one tier-A test that restarts the container |
+| `MAILGW_REQUIRE_TIER_A=1` | make an unusable stack a failure, not a skip (CI sets it) |
 
 ## Configuration
 
@@ -168,9 +193,10 @@ The API e2e suite reads connection settings from the repo-root `.env`
 |---|---|---|
 | `CONSOLE_URL` | `https://localhost:4000` | the console to drive |
 | `TESTCTL_URL` | `http://127.0.0.1:9090` | the engineering build's control API; probed, optional |
+| `GATEWAY_ADMIN_URL` | `http://127.0.0.1:8080` | the gateway's own admin listener, where `/readyz` is the fallback readiness signal |
 | `GATEWAY_CENTRAL_URL` | `https://webui:4000` | the console **as the gateway sees it**, for enroll |
 | `CONSOLE_EMAIL` / `CONSOLE_PASSWORD` | `admin@lab.example` / `labpassword1` | the first admin it creates and signs in as |
-| `SMTP_PORT` | `2525` | the port it waits for the gateway to answer on |
+| `SMTP_PORT` | `2525` | the port it waits for the gateway to answer 220 on |
 | `RELAY_HOST` / `RELAY_PORT` | `mailhog` / `1025` | where deployed mail is relayed |
 
 SMTP settings (`SMTP_HOST`/`_PORT`/`_FROM`/`_TO`) and the SMTP-e2e DB settings

@@ -18,7 +18,14 @@
  *   3. create the three config profiles (ruleset, allowlist, server)
  *   4. wait for the gateway to register itself and approve its fingerprint
  *   5. assign the profiles and the relay group, then deploy
- *   6. wait until it is actually answering on SMTP
+ *   6. wait until it has APPLIED that configuration and is answering on SMTP
+ *
+ * Step 6 is `tests/stack/ready.ts`, and it is shared with the Tier-A suites so
+ * that "ready" has exactly one definition. It used to be a bare TCP connect to
+ * the published SMTP port, which succeeds through docker-proxy whether or not
+ * the gateway has bound anything — so this script reported success roughly a
+ * millisecond after the deploy, and the tests raced a gateway that was still
+ * pending and held no bundle. See that file.
  *
  * Every step is idempotent, so re-running against an already-provisioned stack
  * is a no-op and safe.
@@ -41,10 +48,10 @@ import {
     RELAY_PORT,
     RULESET,
     SERVER,
-    SMTP_PORT,
     TESTCTL_URL,
 } from "./stack/baseline.ts";
-import { Console, enrollGateway, waitFor } from "./stack/console.ts";
+import { Console, enrollGateway } from "./stack/console.ts";
+import { describeReady, waitForGatewayReady } from "./stack/ready.ts";
 
 async function main(): Promise<void> {
     console.log(`console:  ${CONSOLE_URL}`);
@@ -75,18 +82,13 @@ async function main(): Promise<void> {
 
     await con.assign(gatewayId, { ruleset, allowlist, server, relayGroups: [groupId] });
     await con.deploy(gatewayId);
-    console.log("deployed; waiting for the gateway to serve SMTP");
+    console.log("deployed; waiting for the gateway to apply it and bind SMTP");
 
-    await waitFor(`SMTP on :${SMTP_PORT}`, async () => {
-        const sock = await Bun.connect({
-            hostname: "127.0.0.1",
-            port: SMTP_PORT,
-            socket: { data() {}, error() {} },
-        });
-        sock.end();
-        return true;
-    });
-    console.log("gateway is serving; the stack is ready");
+    // Tens of seconds, not milliseconds: the gateway's poll loop waits a
+    // jittered 15s before its first /agent/status and registration does not
+    // wake it, so this is the wait that used to be skipped.
+    const ready = await waitForGatewayReady();
+    console.log(`gateway is serving; the stack is ready (${describeReady(ready)})`);
 }
 
 await main();

@@ -203,13 +203,11 @@ export class Console {
 
     /** Replace a profile's body, which is how a Tier-A test changes config. */
     async updateProfile(id: number, kind: string, name: string, body: string): Promise<void> {
-        const res = await this.req(`/config/profiles/edit/${id}`, {
-            method: "POST",
-            form: { kind, name, description: "updated by the e2e suite", body },
-        });
-        if (res.status >= 400) {
-            throw new Error(`updating profile ${id} failed: ${res.status} ${await res.text()}`);
-        }
+        await this.mutate(
+            `/config/profiles/edit/${id}`,
+            { kind, name, description: "updated by the e2e suite", body },
+            `updating profile ${id}`,
+        );
     }
 
     /** The gateway registers itself, so this waits rather than creating one. */
@@ -225,30 +223,55 @@ export class Console {
         return id;
     }
 
+    /**
+     * A console mutation that must succeed.
+     *
+     * Every one of these answers 302 on success and renders an HTML error view
+     * on failure — `CtrlGateway.deploy` returns 400 with the compiler's
+     * complaint, `adminOnly` returns 403 — so checking the status is the only
+     * thing separating "it worked" from "it did not". `approve`, `assign` and
+     * `deploy` checked nothing, which is the same omission that once let
+     * `pnpm provision` report success while creating no relay at all; see
+     * ensureRelayGroup. `rollback` deliberately does not come through here:
+     * console.test.ts asserts on its status.
+     */
+    private async mutate(
+        path: string,
+        form: Record<string, string | string[]>,
+        what: string,
+    ): Promise<void> {
+        const res = await this.req(path, { method: "POST", form });
+        if (res.status >= 400) {
+            throw new Error(`${what} failed: ${res.status} ${stripTags(await res.text())}`);
+        }
+    }
+
     async approve(id: number): Promise<void> {
-        await this.req(`/gateways/${id}/status`, {
-            method: "POST",
-            form: { status: "approved" },
-        });
+        await this.mutate(
+            `/gateways/${id}/status`,
+            { status: "approved" },
+            `approving gateway ${id}`,
+        );
     }
 
     async assign(
         id: number,
         p: { ruleset: number; allowlist: number; server: number; relayGroups: number[] },
     ): Promise<void> {
-        await this.req(`/gateways/${id}/assignments`, {
-            method: "POST",
-            form: {
+        await this.mutate(
+            `/gateways/${id}/assignments`,
+            {
                 profile_ruleset: String(p.ruleset),
                 profile_allowlist: String(p.allowlist),
                 profile_server: String(p.server),
                 relay_groups: p.relayGroups.map(String),
             },
-        });
+            `assigning profiles to gateway ${id}`,
+        );
     }
 
     async deploy(id: number, note = "e2e"): Promise<void> {
-        await this.req(`/gateways/${id}/deploy`, { method: "POST", form: { note } });
+        await this.mutate(`/gateways/${id}/deploy`, { note }, `deploying to gateway ${id}`);
     }
 
     async rollback(id: number, versionId: number): Promise<Response> {
@@ -297,21 +320,37 @@ export function sharedConsole(): Promise<Console> {
  * provisioned by hand still works.
  */
 export async function enrollGateway(): Promise<boolean> {
-    let status: Response;
-    try {
-        status = await fetch(`${TESTCTL_URL}/testctl/status`, {
-            signal: AbortSignal.timeout(2000),
-        });
-    } catch {
-        return false; // Not a test build, or not up yet.
+    // Retried, not probed once. `docker compose up -d` returns before the
+    // gateway has opened its store and bound 9090, so a single two-second
+    // attempt degrades silently into "waiting for a human to walk the wizard" —
+    // which in CI means waiting 120s for something that is never going to
+    // happen, and then failing somewhere else entirely.
+    let status: Response | null = null;
+    for (let i = 0; i < 15 && status === null; i++) {
+        if (i > 0) await Bun.sleep(1000);
+        try {
+            const res = await fetch(`${TESTCTL_URL}/testctl/status`, {
+                signal: AbortSignal.timeout(2000),
+            });
+            if (res.ok) status = res;
+        } catch {
+            // Not a test build, or not up yet. Try again.
+        }
     }
-    if (!status.ok) return false;
+    if (status === null) return false;
 
+    // Enrolled unconditionally, rather than only when the status says it is not.
+    //
+    // Registration is idempotent per fingerprint on the console and can never
+    // reset an approval, so re-enrolling costs one request. Skipping it on the
+    // strength of the reported state does NOT cost nothing: Status is a cached
+    // snapshot refreshed on a successful poll, and a gateway that cannot poll
+    // is exactly the one that needs enrolling — after `POST /testctl/reset`,
+    // for instance, it still reports the console URL it no longer has. The
+    // check that looked like a saving was the thing that made the state
+    // unrecoverable.
     const before = (await status.json()) as { gateway_uid?: string };
-    if (before.gateway_uid) {
-        console.log("gateway is already enrolled");
-        return true;
-    }
+    if (before.gateway_uid) console.log("gateway is already registered; re-enrolling is a no-op");
 
     const resp = await fetch(`${TESTCTL_URL}/testctl/enroll`, {
         method: "POST",
@@ -330,16 +369,27 @@ export async function enrollGateway(): Promise<boolean> {
     return true;
 }
 
-/** True when the engineering build's control API is answering. */
+/**
+ * True when the engineering build's control API is answering.
+ *
+ * Retried for the same reason `enrollGateway` is: this decides at IMPORT time
+ * whether a whole Tier-A file runs, and Bun imports every file before running
+ * any of them — so one slow answer during that burst used to skip the entire
+ * configuration story while the job still exited 0.
+ */
 export async function haveTestctl(): Promise<boolean> {
-    try {
-        const res = await fetch(`${TESTCTL_URL}/testctl/status`, {
-            signal: AbortSignal.timeout(2000),
-        });
-        return res.ok;
-    } catch {
-        return false;
+    for (let i = 0; i < 5; i++) {
+        if (i > 0) await Bun.sleep(1000);
+        try {
+            const res = await fetch(`${TESTCTL_URL}/testctl/status`, {
+                signal: AbortSignal.timeout(2000),
+            });
+            if (res.ok) return true;
+        } catch {
+            // Not a test build, or not up yet.
+        }
     }
+    return false;
 }
 
 /** Enough of the HTML stripped that a console error is readable in a throw. */

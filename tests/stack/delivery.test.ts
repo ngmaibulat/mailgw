@@ -15,30 +15,33 @@
  * Between the gateway's JSON and a row in MariaDB sits a schema the gateway
  * knows nothing about. This is the only test that crosses it.
  *
- * Replaces tests/smtp/tests/smtp.e2e.test.ts, and is NOT behind a flag: it
- * needs no more than the stack the rest of tests/ already needs, and
- * MAILGW_DB_CHECK meant "this never runs".
+ * Supersedes tests/smtp/tests/smtp.e2e.test.ts, which still exists and which CI
+ * still collects — it asserts a strict subset of this file, so deleting it is a
+ * decision worth making on purpose rather than a side effect. This one is NOT
+ * behind a flag: it needs no more than the stack the rest of tests/ already
+ * needs, and MAILGW_DB_CHECK meant "this never runs".
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { SmtpClient } from "../harness/smtp.ts";
-import { SMTP_PORT } from "./baseline.ts";
+import { SMTP_HOST, SMTP_PORT } from "./baseline.ts";
 import { close, conn, reachable as dbReachable, waitForRow } from "./db.ts";
 import { header, reachable as mailhogReachable, waitForMessage } from "./mailhog.ts";
+import { skipTierA, waitForGatewayReady } from "./ready.ts";
 
-const HOST = process.env.SMTP_HOST ?? "127.0.0.1";
+const HOST = SMTP_HOST;
 const FROM = process.env.SMTP_FROM ?? "me@ngm.dev";
 const TO = process.env.SMTP_TO ?? "test@ngm.dev";
 
 /** Skip rather than fail when the stack is not up: `bun test tests/` must work. */
-const stackUp = (await mailhogReachable()) && (await dbReachable());
-if (!stackUp) {
-    console.error(
-        "\n[stack] skipping tests/stack/delivery.test.ts: MailHog or MariaDB is not reachable.\n" +
-            "  docker compose up -d && pnpm provision\n",
+const stackUp =
+    ((await mailhogReachable()) && (await dbReachable())) ||
+    !skipTierA(
+        "tests/stack/delivery.test.ts",
+        "MailHog or MariaDB is not reachable",
+        "docker compose up -d && pnpm provision",
     );
-}
 
 // One message, sent once, asserted from three directions.
 let subject = "";
@@ -46,6 +49,12 @@ let uuid = "";
 
 describe.skipIf(!stackUp)("a message through the whole stack", () => {
     beforeAll(async () => {
+        // Neither MailHog nor MariaDB says anything about the GATEWAY, and the
+        // published SMTP port answers a TCP connect whether or not anything is
+        // bound behind it — so without this the first assertion is
+        // "connection closed by peer", which names nothing.
+        await waitForGatewayReady();
+
         subject = `stack-e2e-${crypto.randomUUID()}`;
 
         const c = await SmtpClient.open(HOST, SMTP_PORT);
@@ -55,7 +64,7 @@ describe.skipIf(!stackUp)("a message through the whole stack", () => {
 
         expect(sent.uuid).toBeTruthy();
         uuid = sent.uuid!;
-    }, 60_000);
+    }, 240_000);
 
     afterAll(async () => {
         await close();

@@ -31,15 +31,15 @@ import {
     TESTCTL_URL,
 } from "./baseline.ts";
 import { haveTestctl, sharedConsole, type Console } from "./console.ts";
+import { skipTierA, waitForGatewayReady } from "./ready.ts";
 
-const enabled = await haveTestctl();
-if (!enabled) {
-    console.error(
-        "\n[stack] skipping tests/stack/console.test.ts: no control API at " +
-            TESTCTL_URL +
-            ".\n  pnpm build:mailgw-go:test && pnpm stack:test\n",
+const enabled =
+    (await haveTestctl()) ||
+    !skipTierA(
+        "tests/stack/console.test.ts",
+        `no control API at ${TESTCTL_URL}`,
+        "pnpm build:mailgw-go:test && pnpm stack:test",
     );
-}
 
 const ctl = new Testctl(TESTCTL_URL);
 
@@ -65,17 +65,47 @@ let rulesetId = 0;
  * predecessor crashed — cannot be relied on, and that is precisely the case
  * that matters. Re-running the idempotent provisioning path costs a second.
  */
-async function converge(): Promise<void> {
+async function converge(timeoutMs = 90_000): Promise<void> {
     await con.updateProfile(rulesetId, "ruleset", PROFILE_RULESET, RULESET);
     await con.deploy(gatewayId, "converge");
-    await waitForAppliedVersion();
+
+    // Deliberately NOT waitForAppliedVersion: the baseline may already be what
+    // is running, and the console repoints rather than minting on an unchanged
+    // configuration (the test below asserts exactly that), so "wait for the id
+    // to change" would hang for the whole timeout on the common path. What
+    // converging means is a state, not a transition — the baseline ruleset is
+    // applied, cleanly, and SMTP is bound.
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+        const st = await ctl.status().catch(() => null);
+        // apply_error is the discriminator that matters here: it is what
+        // distinguishes "converged" from "still refusing the BROKEN bundle
+        // while serving the old good one", which is the state this is called
+        // to recover from.
+        if (st && st.applied_version_id > 0 && st.apply_error === "" && st.listeners.length > 0) {
+            const cfg = await ctl.config().catch(() => null);
+            const routing = (cfg?.bundle as { routing?: string } | undefined)?.routing ?? "";
+            if (routing.includes("name: Default")) return;
+        }
+        if (Date.now() > deadline) {
+            throw new Error(
+                `never converged on the baseline: applied=${st?.applied_version_id} ` +
+                    `apply_error=${st?.apply_error} last_error=${st?.last_error} ` +
+                    `listeners=${JSON.stringify(st?.listeners)}`,
+            );
+        }
+        await Bun.sleep(500);
+    }
 }
 
-/** Wait for the gateway to report a new applied version. */
-async function waitForAppliedVersion(
-    previous?: number,
-    timeoutMs = 45_000,
-): Promise<number> {
+/**
+ * Wait for the gateway to report a NEW applied version.
+ *
+ * `previous` is required, not optional. It was optional, `converge()` called it
+ * with no argument, and `v !== undefined` is true of every version — so it
+ * returned on whatever was already applied and waited for nothing at all.
+ */
+async function waitForAppliedVersion(previous: number, timeoutMs = 45_000): Promise<number> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
         const st = await ctl.status().catch(() => null);
@@ -92,6 +122,11 @@ async function waitForAppliedVersion(
 
 describe.skipIf(!enabled)("deploying from the console", () => {
     beforeAll(async () => {
+        // The gateway has to be past its first poll before any of this means
+        // anything — see tests/stack/ready.ts. `pnpm provision` waits for the
+        // same condition, so on the ordinary path this returns immediately.
+        await waitForGatewayReady();
+
         con = await sharedConsole();
 
         const groupId = await con.ensureRelayGroup(RELAY_GROUP);
@@ -108,7 +143,7 @@ describe.skipIf(!enabled)("deploying from the console", () => {
             relayGroups: [groupId],
         });
         await converge();
-    }, 120_000);
+    }, 240_000);
 
     afterAll(async () => {
         // Best effort. The entry convergence above is what actually protects

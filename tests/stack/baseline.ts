@@ -23,6 +23,19 @@ export const CONSOLE_PASSWORD = process.env.CONSOLE_PASSWORD ?? "labpassword1";
 export const TESTCTL_URL = process.env.TESTCTL_URL ?? "http://127.0.0.1:9090";
 
 /**
+ * The gateway's own admin listener, where /readyz lives.
+ *
+ * This is the readiness signal the SHIPPED image has: /readyz is open when
+ * `admin.metrics_token` is empty, which is what the dev stack deploys, and it
+ * answers 200 only when the node is provisioned, approved, holding a config and
+ * serving. tests/stack/ready.ts falls back to it when the control API is absent.
+ */
+export const GATEWAY_ADMIN_URL = process.env.GATEWAY_ADMIN_URL ?? "http://127.0.0.1:8080";
+
+/** Where a test dials SMTP. The gateway is published on the host loopback. */
+export const SMTP_HOST = process.env.SMTP_HOST ?? "127.0.0.1";
+
+/**
  * The console as the GATEWAY sees it, which is not the one a test uses: the
  * gateway dials from inside the compose network, where "localhost" is itself.
  */

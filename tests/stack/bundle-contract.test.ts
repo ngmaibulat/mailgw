@@ -15,44 +15,35 @@
  * does.
  */
 
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 
 import { Testctl } from "../harness/testctl.ts";
 import { RELAY_GROUP, RELAY_HOST, RELAY_PORT, TESTCTL_URL } from "./baseline.ts";
 import { haveTestctl, sharedConsole } from "./console.ts";
+import { skipTierA, waitForGatewayReady } from "./ready.ts";
 
-const enabled = await haveTestctl();
-if (!enabled) {
-    console.error(
-        "\n[stack] skipping tests/stack/bundle-contract.test.ts: no control API at " +
-            TESTCTL_URL +
-            ".\n  pnpm build:mailgw-go:test && pnpm stack:test\n",
+const enabled =
+    (await haveTestctl()) ||
+    !skipTierA(
+        "tests/stack/bundle-contract.test.ts",
+        `no control API at ${TESTCTL_URL}`,
+        "pnpm build:mailgw-go:test && pnpm stack:test",
     );
-}
 
 const ctl = new Testctl(TESTCTL_URL);
 
-/** Poll until the gateway has heard back from the console at least once. */
-async function waitForApproval(timeoutMs = 45_000) {
-    const deadline = Date.now() + timeoutMs;
-    for (;;) {
-        const st = await ctl.status();
-        if (st.approval) return st;
-        if (Date.now() > deadline) {
-            throw new Error(
-                `the gateway never reported an approval state; last_error=${st.last_error}`,
-            );
-        }
-        await Bun.sleep(500);
-    }
-}
-
 describe.skipIf(!enabled)("the console's bundle, as the gateway sees it", () => {
+    // The gateway's poll loop waits a jittered 15s before its first
+    // /agent/status, and registration does not wake it — so a suite that starts
+    // the moment `pnpm provision` returns is asserting against a gateway that is
+    // still `pending` and holds nothing. This is that wait, and it is the same
+    // one provisioning uses.
+    beforeAll(async () => {
+        await waitForGatewayReady();
+    }, 120_000);
+
     test("it came from the console, not from an injection", async () => {
-        // Waited for: State.Approval is empty until the FIRST successful poll,
-        // so a suite that starts within fifteen seconds of a gateway restart
-        // reads "" and fails for a reason that has nothing to do with it.
-        const st = await waitForApproval();
+        const st = await ctl.status();
         expect(st.provisioned).toBe(true);
         expect(st.approval).toBe("approved");
         // Console version ids are a positive autoincrement; injected ones are
@@ -60,7 +51,7 @@ describe.skipIf(!enabled)("the console's bundle, as the gateway sees it", () => 
         // mean this suite was asserting on a configuration some other test
         // pushed in, which would prove nothing about the console at all.
         expect(st.applied_version_id).toBeGreaterThan(0);
-    });
+    }, 45_000);
 
     test("every key the gateway needs is present and the right shape", async () => {
         const { bundle } = (await ctl.config()) as { bundle: any };
@@ -82,7 +73,11 @@ describe.skipIf(!enabled)("the console's bundle, as the gateway sees it", () => 
         expect(bundle.logging.url_conn).toContain("/api/connection");
         expect(bundle.logging.url_queue).toContain("/api/queue");
         expect(bundle.logging.url_delivery).toContain("/api/delivery");
-    });
+        // 45s, not Bun's default 5s: Testctl.raw carries its own 30s abort, so
+        // a shorter budget replaces the gateway's own message — which is the
+        // single most useful thing the control API returns — with a generic
+        // "timed out". The same applies to every test in this file.
+    }, 45_000);
 
     test("the relay group survives bundle.ts's three shape changes", async () => {
         const { bundle } = (await ctl.config()) as { bundle: any };
@@ -99,7 +94,7 @@ describe.skipIf(!enabled)("the console's bundle, as the gateway sees it", () => 
         // 3. The port is a NUMBER, from an INT column. Go accepts a string too,
         //    so a regression here would not fail the gateway — only this.
         expect(group[0].port).toBe(Number(RELAY_PORT));
-    });
+    }, 45_000);
 
     test("optional keys are omitted when empty, so an unchanged config re-hashes", async () => {
         const { bundle } = (await ctl.config()) as { bundle: any };
@@ -112,7 +107,7 @@ describe.skipIf(!enabled)("the console's bundle, as the gateway sees it", () => 
                 expect(Object.keys(bundle[key]).length).toBeGreaterThan(0);
             }
         }
-    });
+    }, 45_000);
 
     test("the gateway's digest is the one the console recorded", async () => {
         const con = await sharedConsole();

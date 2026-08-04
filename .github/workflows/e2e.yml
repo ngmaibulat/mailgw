@@ -73,6 +73,9 @@ jobs:
         runs-on: ubuntu-latest
         # Only where the extra minutes are worth it. A PR gets the gw job.
         if: github.event_name != 'pull_request'
+        # Every wait in this job is bounded, but a runner held for six hours by
+        # one that is not would be worse than a red build.
+        timeout-minutes: 25
         steps:
             - uses: actions/checkout@v7
 
@@ -108,8 +111,21 @@ jobs:
               run: bun install --frozen-lockfile
               working-directory: tests
 
+            # tests/stack/ready.ts is imported by five files across two
+            # directories; nothing else in this job would catch a broken import.
+            - name: Typecheck
+              run: bunx tsc --noEmit -p tsconfig.json
+              working-directory: tests
+
             # From a genuinely clean volume, which is the regression M19 fixed
             # and the reason the control API exists at all.
+            #
+            # This step BLOCKS until the gateway has applied a console-issued
+            # configuration and is answering 220 — see tests/stack/ready.ts. It
+            # used to return on a bare TCP connect to the published SMTP port,
+            # which succeeds through docker-proxy whether or not anything is
+            # bound behind it, so it reported success a millisecond after the
+            # deploy and Tier A raced a gateway that was still pending.
             - name: Provision
               run: bun tests/provision.ts
 
@@ -118,10 +134,23 @@ jobs:
                   SMTP_PORT: "2525"
                   MAILGW_API_E2E: "1"
                   MAILGW_DB_CHECK: "1"
-                  # The one destructive case, run only here: it changes a
-                  # restart-required key and restarts the container.
-                  MAILGW_STACK_RESTART: "1"
+                  # A tier that can silently skip itself in CI is a tier that
+                  # will one day be skipped entirely and nobody will notice —
+                  # the same reasoning as MAILGW_REQUIRE_TIER_B above. Without
+                  # it, a slow answer from the control API during Bun's import
+                  # pass skips the whole configuration story and exits 0.
+                  MAILGW_REQUIRE_TIER_A: "1"
               run: bun test ./tests/stack/ ./tests/smtp/ ./tests/api/
+
+            # Asked of the gateway itself, before the logs: when Tier A fails it
+            # is nearly always because the node is not in the state the suite
+            # needs, and these two answers say which state it IS in.
+            - name: Gateway state
+              if: failure()
+              run: |
+                  curl -sS http://127.0.0.1:9090/testctl/status || true
+                  echo
+                  curl -sS -i http://127.0.0.1:8080/readyz || true
 
             # Without this a stack failure in CI is unreadable: the assertion
             # says "no message arrived" and the reason is in a container log
