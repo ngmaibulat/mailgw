@@ -26,9 +26,19 @@ import (
 // listener during the window would get a 500 per audit event, and mailgw-go
 // retries a 5xx a few times and then spills the event to the gateway's disk.
 //
+// Since M22 this is the ONLY thing that migrates the shared schema — the
+// db-migrator service is gone, and the console waits at boot for the tables it
+// reads rather than for a sibling container to exit 0. Binding last is what
+// makes that safe: anything that can reach this port is talking to a migrated
+// database.
+//
 // A failed migration is fatal. A logservice serving against a half-migrated
 // schema answers 500 to some endpoints and 200 to others, which is harder to
-// diagnose than a container that will not start.
+// diagnose than a container that will not start. Note what that now costs:
+// under `restart: unless-stopped` a bad migration is a restart loop repeating
+// the same error, where it used to stop `docker compose up` once and clearly.
+// deploy/core/upgrade.sh buys that back by running `migrate` first, before
+// anything is recreated.
 func runServe(ctx context.Context, log *slog.Logger) error {
 	// Checked before anything touches the network: an empty embedded set means
 	// this binary would report "schema up to date" against an empty database.

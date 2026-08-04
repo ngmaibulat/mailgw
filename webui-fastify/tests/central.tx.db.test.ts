@@ -21,7 +21,7 @@ import {
 // Opt-in via MAILGW_DB_CHECK, following the convention in tests/README.md:
 // `node --test` has to stay runnable without a database.
 //
-//   docker compose up -d mariadb db-migrator
+//   docker compose up -d mariadb logservice   # logservice migrates on start
 //   MAILGW_DB_CHECK=1 node --test tests/central.tx.db.test.ts
 //
 // It also catches a failure mode no stub can: GatewayAssignments being MyISAM

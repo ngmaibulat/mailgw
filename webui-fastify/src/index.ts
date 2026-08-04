@@ -1,9 +1,9 @@
 import "./checkenv.ts"; // validates required env vars; must run before the DB-connecting imports below
 import "./errhandler.ts";
-import fs from "node:fs";
 
 import { build } from "./app.ts";
-import { assertDbConnection, closeDb } from "../db/index.ts";
+import { ensureTlsPair } from "./tls.ts";
+import { assertDbConnection, closeDb, waitForSchema } from "../db/index.ts";
 import { purgeOldLogs } from "./middleware/logger.ts";
 import { countUsers } from "./auth/users.ts";
 
@@ -35,6 +35,17 @@ try {
     process.exit(1);
 }
 
+// ...and then wait for logservice to have migrated the tables this console
+// reads. Reachable is not the same as ready on a fresh volume: MariaDB answers
+// as soon as it is up, while the schema arrives when logservice starts. This is
+// the gate the `db-migrator` compose service used to be (M22).
+try {
+    await waitForSchema();
+} catch (err) {
+    console.error("Schema: FAIL —", (err as Error).message);
+    process.exit(1);
+}
+
 // First-run hint: if there are no accounts, the UI is unusable until one is
 // created. Point the operator at the one-time /setup page (or the CLI).
 try {
@@ -50,13 +61,19 @@ try {
 // Fastify supports HTTP/2 natively (unlike Express). `allowHTTP1: true` lets
 // the same TLS port also serve plain HTTP/1.1 clients — ALPN negotiates h2
 // when the client supports it and falls back to http/1.1 otherwise.
+// Reads ./certs/server.{key,crt}, or mints a self-signed pair there if the
+// directory holds none — so a fresh `docker compose up` serves TLS with no
+// preparatory step, while a mounted pair is used exactly as given. TLS_DIR
+// moves the directory; TLS_HOSTS adds SANs to a generated certificate.
+const tls = ensureTlsPair(process.env.TLS_DIR || "./certs");
+
 const app = await build({
     logger,
     http2: true,
     https: {
         allowHTTP1: true,
-        key: fs.readFileSync("./certs/server.key"),
-        cert: fs.readFileSync("./certs/server.crt"),
+        key: tls.key,
+        cert: tls.cert,
     },
 });
 

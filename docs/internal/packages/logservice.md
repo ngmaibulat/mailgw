@@ -41,8 +41,15 @@ Plain numbered `.sql` files in `logservice-go/migrations/`, embedded with
 
 Migrations run **automatically on start**, before the listener binds — the Bun
 service did not do this, which is why a separate `db-migrator` container existed.
-It still exists, because the *console* gates on it completing and never talks to
-logservice at boot.
+**M22 deleted that container**: this is now the only thing that migrates the
+shared schema, and the console waits at boot for the tables it reads
+(`webui-fastify` `db/index.ts` `waitForSchema`) instead of gating on a sibling
+service exiting 0.
+
+`logservice migrate` still exists and still migrates-and-exits. Nothing in
+compose runs it; `deploy/core/upgrade.sh` does, **before** recreating services,
+so a bad migration aborts the upgrade with the old stack still serving. Left to
+`serve` alone, a fatal migration is a restart loop.
 
 ::: danger The filenames are the upgrade contract
 `_migrations` records a migration by filename — no checksum, no ordinal. Files

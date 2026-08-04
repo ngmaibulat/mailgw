@@ -71,6 +71,9 @@ importers:
       mysql2:
         specifier: ^3.22.5
         version: 3.22.5(@types/node@25.9.2)
+      node-forge:
+        specifier: ^1.4.0
+        version: 1.4.0
       pug:
         specifier: ^3.0.4
         version: 3.0.4
@@ -87,6 +90,9 @@ importers:
       '@types/node':
         specifier: ^25.9.2
         version: 25.9.2
+      '@types/node-forge':
+        specifier: ^1.3.14
+        version: 1.3.14
       '@types/pug':
         specifier: ^2.0.10
         version: 2.0.10
@@ -660,6 +666,9 @@ packages:
 
   '@types/mdurl@2.0.0':
     resolution: {integrity: sha512-RGdgjQUZba5p6QEFAVx2OGb8rQDL/cPRG7GiedRzMcJ1tYnUANBncjbSB1NRGwbvjcPeikRABz2nshyPk1bhWg==}
+
+  '@types/node-forge@1.3.14':
+    resolution: {integrity: sha512-mhVF2BnD4BO+jtOp7z1CdzaK4mbuK0LLQYAvdOLqHTavxFNq4zA1EmYkpnFjP8HOUzedfQkRnp0E2ulSAYSzAw==}
 
   '@types/node@25.9.2':
     resolution: {integrity: sha512-G05zqtJhcDLb8uslf5EjCxXg9G1KQxiV8OS0R26IC//Eoyitzqe8z37I7cqvnZlrlSfgocQRfSn/AHBZJJFyGw==}
@@ -1342,6 +1351,10 @@ packages:
     resolution: {integrity: sha512-bzlKTyNJ7+LdGIIwy8ijFpIqEQIvafahV7eYykJ8Cvh42EdJeODoJ6gUJXpQJvej1BddH8OqTXZNE/KfbWAu8Q==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
+
+  node-forge@1.4.0:
+    resolution: {integrity: sha512-LarFH0+6VfriEhqMMcLX2F7SwSXeWwnEAJEsYm5QKWchiVYVvJyV9v7UDvUv+w5HO23ZpQTXDv/GxdDdMyOuoQ==}
+    engines: {node: '>= 6.13.0'}
 
   nodemon@3.1.14:
     resolution: {integrity: sha512-jakjZi93UtB3jHMWsXL68FXSAosbLfY0In5gtKq3niLSkrWznrVBzXFNOEMJUfc9+Ke7SHWoAZsiMkNP3vq6Jw==}
@@ -2261,6 +2274,10 @@ snapshots:
 
   '@types/mdurl@2.0.0': {}
 
+  '@types/node-forge@1.3.14':
+    dependencies:
+      '@types/node': 25.9.2
+
   '@types/node@25.9.2':
     dependencies:
       undici-types: 7.24.6
@@ -2904,6 +2921,8 @@ snapshots:
       lru.min: 1.1.4
 
   nanoid@3.3.16: {}
+
+  node-forge@1.4.0: {}
 
   nodemon@3.1.14:
     dependencies:

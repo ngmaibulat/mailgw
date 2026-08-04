@@ -6,7 +6,7 @@
 one gateway.
 
 ```bash
-pnpm certs          # the console will not boot without these
+pnpm certs          # optional: the console self-signs a pair if you skip it
 docker compose up -d
 ```
 
@@ -44,7 +44,7 @@ Management — no environment, no arguments, no config files — so **every plan
 starts from a stack you have provisioned**, and there is no shortcut past it.
 
 ```bash
-pnpm certs                   # once: the console's TLS pair
+pnpm certs                   # optional: the console's TLS pair (it self-signs otherwise)
 docker compose up -d
 pnpm provision               # profiles, approval, deploy — idempotent
 ```

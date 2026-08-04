@@ -45,8 +45,13 @@ it empty stores passwords in the clear, exactly as before — nothing breaks, bu
 a database backup then carries somebody else's credentials. Rotating it makes
 existing passwords unreadable: re-enter them in the UI, or keep the old key.
 
-The webui serves HTTP/2 over TLS and will not boot without `certs/server.key`
-and `certs/server.crt`. For a self-signed pair, from the repo root:
+The webui serves HTTP/2 over TLS. Drop a real pair in `deploy/core/certs/` as
+`server.key` and `server.crt` — it is used exactly as given, and a certificate
+renewed in place is picked up on the next `docker compose restart webui`. If the
+directory is empty the console **self-signs a placeholder** so a new node comes
+up rather than crash-looping; that certificate authenticates nothing and is
+worth replacing before anybody signs in. A self-signed pair from the repo, if
+that is what you want:
 
 ```bash
 pnpm certs && cp certs/generated/webui/server.{key,crt} deploy/core/certs/

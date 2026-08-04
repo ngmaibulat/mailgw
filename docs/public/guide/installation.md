@@ -9,7 +9,7 @@ A gateway cannot be configured from the machine it runs on, so "try it locally"
 means bringing up the console too. From a checkout:
 
 ```bash
-pnpm certs                   # the TLS pair the console needs
+pnpm certs                   # optional: give the console a TLS pair (it self-signs otherwise)
 docker compose up -d         # mariadb, log service, gateway, console, MailHog
 pnpm provision               # create profiles, approve the node, deploy
 ```

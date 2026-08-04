@@ -16,7 +16,7 @@
 pnpm install                 # webui-fastify + docs/*
 cd logservice && bun install && cd ..
 cd certs && bun install && cd ..
-pnpm certs                   # the console will not boot without these
+pnpm certs                   # optional: the console self-signs a pair if you skip it
 ```
 
 Then the gateway on its own:

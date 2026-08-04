@@ -108,11 +108,19 @@ Configured entirely by the environment:
 
 // runMigrate applies pending migrations and exits.
 //
-// This subcommand exists even though `serve` now migrates on start, and it is
-// not redundant: both compose files gate the CONSOLE on
-// `db-migrator: service_completed_successfully`, and the console never talks to
-// logservice at boot. Without a one-shot migrator the console could start
-// against a database with no Users table.
+// Nothing in compose runs this any more — M22 deleted the db-migrator service,
+// and `serve` migrates on start — but it is not redundant. It keeps two jobs,
+// both of them about the failure case:
+//
+//   - deploy/core/upgrade.sh runs it BEFORE recreating services, so a bad
+//     migration aborts the upgrade with the old stack still serving. Left to
+//     `serve`, the same migration is fatal and the container restart-loops.
+//   - it is the foreground way to reproduce that failure once, with a clean
+//     exit code, instead of reading it out of a restart loop's logs.
+//
+// It is not a second way to configure anything (M18's argument against the
+// gateway's `-config` does not transfer): this is the same migrate.Run that
+// serve calls, without binding a port.
 func runMigrate(ctx context.Context, log *slog.Logger) error {
 	if err := migrate.Check(); err != nil {
 		return err

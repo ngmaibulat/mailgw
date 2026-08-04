@@ -52,7 +52,11 @@ there is nothing to copy.
 
 ## Ordering, and the trap
 
-Run **migrations before** the services that need them. `upgrade.sh` does this.
+Run **migrations before** the services that need them. `upgrade.sh` does this —
+`docker compose run --rm logservice migrate`, then `up -d`. logservice would
+apply them on start anyway; running them first is what keeps a bad migration
+from taking the stack down, since it aborts the upgrade with the old containers
+still serving. (There is no `db-migrator` service any more; M22 removed it.)
 
 ::: danger An image rollback after a store schema bump bricks a gateway
 `internal/store` migrations are forward-only and `store.Open` refuses a database

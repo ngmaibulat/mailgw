@@ -3,6 +3,21 @@
 # node's logservice and pull their configuration from this node's webui
 # (Central Management). See deploy/gateway for the edge side.
 # Secrets come from deploy/core/.env (copy from .env.example).
+#
+# WHAT HAS A DEFAULT AND WHAT DOES NOT
+#
+# Everything with an obvious right answer defaults, so a .env only has to carry
+# what is actually site-specific: DB_NAME/DB_USER (mailgw), CORE_HOST
+# (localhost, correct for a single-host install), and the image tags.
+#
+# The SECRETS deliberately have none — DB_PASS, DB_ROOT_PASS, API_KEY,
+# SIGN_COOKIE. A default password is a password that reaches production, and a
+# defaulted-to-empty API_KEY would silently turn OFF authentication on the
+# endpoint every edge node posts to. Compose warns and substitutes empty, the
+# service refuses to start, and that is the intended failure. CONFIG_SECRET_KEY
+# and GATEWAY_METRICS_TOKEN default to empty because empty is a documented,
+# meaningful state for both (store relay passwords in the clear; leave gateway
+# /metrics open), not because it is safe to forget them.
 services:
     mariadb:
         image: mariadb:12
@@ -10,8 +25,8 @@ services:
         restart: unless-stopped
         environment:
             MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASS}
-            MARIADB_DATABASE: ${DB_NAME}
-            MARIADB_USER: ${DB_USER}
+            MARIADB_DATABASE: ${DB_NAME:-mailgw}
+            MARIADB_USER: ${DB_USER:-mailgw}
             MARIADB_PASSWORD: ${DB_PASS}
         volumes:
             - mariadb_data:/var/lib/mysql
@@ -19,24 +34,9 @@ services:
         # (same compose network) need it. Add a ports mapping only if you need
         # external DB access.
 
-    db-migrator:
-        image: ngmaibulat/logservice-go:latest
-        container_name: core-db-migrator
-        # Migrate and exit. logservice migrates on start too, so this service
-        # exists for the CONSOLE: the webui gates on it completing and never
-        # talks to logservice at boot.
-        command: ["migrate"]
-        restart: "no"
-        # logservice owns the SQL schema for the whole stack, including the
-        # tables the webui reads (users, relays, gateways, config profiles).
-        environment:
-            DB_HOST: core-mariadb
-            DB_NAME: ${DB_NAME}
-            DB_USER: ${DB_USER}
-            DB_PASS: ${DB_PASS}
-        depends_on:
-            - mariadb
-
+    # Owns the SQL schema for the whole stack, including the tables only the
+    # webui reads (Users, Relays, Gateways, ConfigProfiles). It applies pending
+    # migrations on start, before it binds, so it is the only migrator here.
     logservice:
         image: ngmaibulat/logservice-go:latest
         container_name: core-logservice
@@ -49,12 +49,13 @@ services:
             # Edge gateways must send the same value.
             API_KEY: ${API_KEY}
             DB_HOST: core-mariadb
-            DB_NAME: ${DB_NAME}
-            DB_USER: ${DB_USER}
+            DB_NAME: ${DB_NAME:-mailgw}
+            DB_USER: ${DB_USER:-mailgw}
             DB_PASS: ${DB_PASS}
+        # Ordering, not readiness: this service retries the connection itself
+        # while MariaDB is still starting (10 x 2s), then migrates, then binds.
         depends_on:
-            db-migrator:
-                condition: service_completed_successfully
+            - mariadb
 
     webui:
         image: ngmaibulat/mailgw-webui-fastify:latest
@@ -69,8 +70,8 @@ services:
             SIGN_COOKIE: ${SIGN_COOKIE}
             DB_DRIVER: mysql
             DB_HOST: core-mariadb
-            DB_NAME: ${DB_NAME}
-            DB_USER: ${DB_USER}
+            DB_NAME: ${DB_NAME:-mailgw}
+            DB_USER: ${DB_USER:-mailgw}
             DB_PASS: ${DB_PASS}
             # The webui proxies its log-viewer reads to logservice.
             LOGSERVICE_URL: http://core-logservice:3000
@@ -78,7 +79,11 @@ services:
             # The logservice URL written INTO gateway config bundles by Central
             # Management. It must be resolvable FROM THE EDGE NODES, so unlike
             # LOGSERVICE_URL above it cannot be the container-internal name.
-            GATEWAY_LOGSERVICE_URL: http://${CORE_HOST}:3000
+            # Defaults to localhost, which is right ONLY on a single-host
+            # install. Set CORE_HOST to this node's routable address the moment
+            # a gateway runs somewhere else — a bundle carrying "localhost"
+            # points every edge node at itself.
+            GATEWAY_LOGSERVICE_URL: http://${CORE_HOST:-localhost}:3000
             # ...and the key they send with it. Edge nodes are zero-config: they
             # have no environment of their own, so this travels in the bundle.
             # Same split as the URL above — falls back to LOGSERVICE_API_KEY.
@@ -96,16 +101,20 @@ services:
             # Set if a reverse proxy terminates TLS in front of this service.
             # TRUSTED_PROXIES: "10.0.0.0/8"
         volumes:
-            # Serves HTTP/2 over TLS and reads ./certs/server.{key,crt} on boot;
-            # it will not start without them. Generate with the certs project:
-            #   pnpm certs   (repo root)
-            # and copy certs/generated/webui here, or drop a real cert pair in.
-            - ./certs:/app/certs:ro
+            # Serves HTTP/2 over TLS and reads ./certs/server.{key,crt} on boot.
+            # DROP A REAL PAIR IN HERE — it is used exactly as given, and a
+            # certificate renewed in place is picked up on the next restart.
+            # If the directory is empty the console mints a self-signed pair so
+            # a new node comes up rather than crash-looping; that certificate
+            # authenticates nothing and is a placeholder, not an answer. NOT
+            # read-only, or generating would be a crash.
+            - ./certs:/app/certs
+        # Start ordering only. The schema gate is INSIDE the console: it blocks
+        # at boot until every table it reads exists (db/index.ts waitForSchema),
+        # which is what the one-shot db-migrator service used to do from here.
         depends_on:
-            db-migrator:
-                condition: service_completed_successfully
-            logservice:
-                condition: service_started
+            - mariadb
+            - logservice
 
 volumes:
     mariadb_data:

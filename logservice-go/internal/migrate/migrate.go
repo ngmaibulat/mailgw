@@ -38,10 +38,16 @@ import (
 // creates (logservice/src/dbmigrate.ts).
 //
 // The UNIQUE on `name` is load-bearing and not decoration: it is what stops two
-// runners started at the same moment — the `db-migrator` compose service and a
-// `logservice` that now also migrates on start — from both recording the same
-// file. The loser gets a duplicate-key error on the INSERT rather than a second
-// application of the DDL. Keep it.
+// runners started at the same moment from both recording the same file. The
+// loser gets a duplicate-key error on the INSERT rather than a second
+// application of the DDL — which matters, because six of the shipped files are
+// non-idempotent ALTER TABLE / CREATE INDEX.
+//
+// It used to guard the `db-migrator` compose service against a `logservice` that
+// also migrates on start; M22 deleted that service, so nothing in the shipped
+// stack races any more — no compose file scales this service and no script runs
+// two of it. What is left to guard is a deployment that adds replicas, and an
+// upgrade that briefly overlaps an old container and a new one. Keep it.
 const createTable = `
 CREATE TABLE IF NOT EXISTS _migrations (
     id        INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,

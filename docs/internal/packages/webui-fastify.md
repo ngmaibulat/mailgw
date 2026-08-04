@@ -11,10 +11,16 @@ pnpm --filter mailgw-webui-fastify check:fix
 pnpm --filter mailgw-webui-fastify test         # node --test
 ```
 
-::: warning It will not start without TLS certificates
-It reads `./certs/server.{key,crt}` relative to its working directory at boot.
-Run `pnpm certs` first. Locally a `certs` symlink points at
-`certs/generated/webui`; in Docker the same directory is mounted.
+::: tip It serves TLS only, and provides its own certificate if you do not
+It reads `./certs/server.{key,crt}` relative to its working directory at boot
+(`TLS_DIR` moves it) and mints a **self-signed** pair there if the directory
+holds none, so nothing has to be generated first — the same call the gateway
+makes for itself (`tlsx.EnsureSelfSigned`). A pair that is already there is used
+verbatim and **never overwritten**, which is what keeps a real certificate on a
+real deployment; half a pair is refused rather than half-replaced. `TLS_HOSTS`
+adds SANs to a generated one. `pnpm certs` is how you hand it the repo's own
+pair instead. Locally a `certs` symlink points at `certs/generated/webui`; in
+Docker the same directory is mounted.
 :::
 
 ## No build step
@@ -64,6 +70,17 @@ migrations create them.
 
 `db/index.ts` exports a lazy `mysql2` pool with no import-time connect, plus
 `assertDbConnection()` which `src/index.ts` pings at startup.
+
+Beside it, `waitForSchema()` — the console blocks at boot until every table
+`db/schema.ts` declares exists, polling `information_schema` once a second up to
+`SCHEMA_WAIT_TIMEOUT_MS` (default 90 000; `0` disables), then exits 1 naming
+what is missing. Reachable is not ready on a fresh volume: MariaDB answers as
+soon as it is up, while the schema arrives when logservice starts. This is the
+gate the `db-migrator` compose service used to be (M22); keeping it in the app
+means it also holds for a console run by hand. The expected table list is
+**derived** from the Drizzle tables (`expectedTables()`, `getTableName` +
+`is(v, Table)`), not hardcoded, so it cannot go stale as the schema grows —
+pinned by `tests/schema.tables.test.ts`.
 
 ## Validation
 

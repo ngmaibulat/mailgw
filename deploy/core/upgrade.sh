@@ -11,9 +11,16 @@ if [ ! -f .env ]; then
 fi
 
 docker compose pull
-# Re-run schema migrations, then recreate services on the new images. The webui
-# reads this schema but does not own it, so the migrator must run first.
-docker compose run --rm db-migrator
+# Apply the new image's migrations BEFORE recreating anything.
+#
+# logservice migrates on start too, so this is not needed for correctness — it
+# is needed for the failure case. Run this way, a bad migration aborts the
+# script here (set -e) with the old stack still serving. Skip it, and the same
+# migration takes logservice down into a restart loop, and the console with it.
+#
+# `run` starts mariadb via depends_on and publishes no ports, so it cannot
+# collide with the logservice already listening on 3000.
+docker compose run --rm logservice migrate
 docker compose up -d
 
 echo "Core node upgraded."

@@ -30,9 +30,10 @@ EXPOSE 3000
 ENTRYPOINT ["/usr/local/bin/logservice"]
 
 # No CMD: the default subcommand is `serve`, which applies any pending
-# migrations and then binds. The db-migrator service overrides this with
-# ["migrate"], which migrates and exits — the console depends on that
-# service completing, and the console never talks to logservice at boot.
+# migrations and then binds — so a container from this image is the whole
+# schema story, and no compose file needs a one-shot migrator beside it.
+# `docker compose run --rm logservice migrate` still migrates and exits, which
+# is what deploy/core/upgrade.sh runs before it recreates anything.
 #
 # Unlike mailgw-go, this image IS configured by its environment: PORT, API_KEY
 # and the DB_* variables. That is not a lapse from the zero-configuration rule,

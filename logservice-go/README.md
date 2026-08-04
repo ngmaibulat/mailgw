@@ -57,9 +57,17 @@ Constraints on writing one, unchanged from the Bun service:
   `ALTER TABLE ... ADD COLUMN` / `CREATE INDEX`, and the failure message says so.
 - No down migrations.
 
-Migrations run **automatically on `serve`**, before the listener binds. The
-`migrate` subcommand still exists because both compose files gate the *console*
-on `db-migrator` completing, and the console never talks to logservice at boot.
+Migrations run **automatically on `serve`**, before the listener binds, and
+since M22 this is the **only** thing that migrates the shared schema — the
+one-shot `db-migrator` service is gone from both compose files, and the console
+waits at boot for the tables it reads instead of waiting for a sibling container
+to exit 0.
+
+The `migrate` subcommand still exists, for the failure case rather than the
+normal one. `deploy/core/upgrade.sh` runs it **before** recreating services, so
+a bad migration aborts the upgrade with the old stack still serving; left to
+`serve`, the same migration is fatal and the container restart-loops. It is also
+the foreground way to reproduce that failure once, with a clean exit code.
 
 ## This binary IS configured by its environment
 
@@ -151,6 +159,14 @@ The runtime image is `distroless/static`: no shell, no `curl`. A compose
 `HEALTHCHECK` cannot be written the usual way. If one is wanted, add a
 `logservice healthcheck` subcommand that self-dials `/readyz` and use that as
 the test — do not add a shell to the image.
+
+M22 is where that would have been built and was not. Deleting `db-migrator`
+needed *something* to tell the console the schema existed, and this — plus
+`webui: {condition: service_healthy}` — was the obvious candidate. The console
+waits for its own tables instead, so the gate holds for a console started by
+hand against a fresh database, with no compose file anywhere near it. Nothing
+here needs a healthcheck to bring the stack up; one would still be worth having
+for an orchestrator that restarts on it.
 
 ## Dependencies: one
 

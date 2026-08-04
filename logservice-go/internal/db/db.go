@@ -131,6 +131,9 @@ func OpenForMigrations(c Config) (*sql.DB, error) {
 // compose starting MariaDB and this service in the same second. Neither compose
 // file has a working MariaDB healthcheck (the one in docker-compose.yaml is
 // commented out), so this retry IS the readiness gate for the whole stack.
+// The console's own boot wait (webui-fastify db/index.ts waitForSchema, 90s) is
+// sized to sit outside this schedule plus the migrations that follow it: this
+// can burn 20s before the first file is applied.
 //
 // It logs on each failed attempt rather than only at the end, because the
 // interesting case is an operator watching `docker compose logs` wondering

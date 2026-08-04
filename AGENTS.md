@@ -21,11 +21,11 @@ Monorepo and package-manager gotchas (agents often miss this)
 Web UI specific
 - Prefer modifying webui-fastify (active). legacy/webui-express is frozen and kept for reference only.
 - webui-fastify is TypeScript ESM but has no build step — Node 26 runs the .ts files directly. `pnpm --filter mailgw-webui-fastify typecheck` runs tsc if you need static checks.
-- webui requires `./certs/server.{key,crt}` (by default under `certs/generated/webui`) on startup and will crash without them. Always run `pnpm certs` before `docker compose up` or before starting the webui locally.
+- webui serves TLS from `./certs/server.{key,crt}` (by default under `certs/generated/webui`) and **self-signs a pair there if the directory is empty**, so `docker compose up` works with no preparation. `pnpm certs` is optional and gives it the repo's pair instead; an existing pair is never overwritten.
 - Sessions are database-backed (`Sessions` table). The first admin is created via the one-time `/setup` page or `node create_user.ts` in the webui directory.
 
 logservice and DB
-- logservice is a **Go** server (`logservice-go/`) over MariaDB via `database/sql`. Migrations live in `logservice-go/migrations/` as `.sql` files embedded with `go:embed`, and are applied **automatically on start**; `logservice migrate` applies them and exits, which is what the db-migrator container runs. The Bun original is frozen at `legacy/logservice/`.
+- logservice is a **Go** server (`logservice-go/`) over MariaDB via `database/sql`. Migrations live in `logservice-go/migrations/` as `.sql` files embedded with `go:embed`, and are applied **automatically on start** — the only thing that migrates the shared schema since M22 deleted the `db-migrator` service. `logservice migrate` applies them and exits; nothing in compose runs it, `deploy/core/upgrade.sh` does. The console waits for its own tables at boot (`webui-fastify` `db/index.ts` `waitForSchema`). The Bun original is frozen at `legacy/logservice/`.
 - Tests that mutate DB or depend on a running stack are opt-in via env vars described in CLAUDE.md (`MAILGW_API_E2E`, `MAILGW_DB_CHECK`). Don't run DB-mutating e2e tests unless you intend to (they require a running MariaDB from docker-compose).
 
 Haraka / mailgw runtime gotchas

@@ -122,7 +122,10 @@ lost:
 - **No log rotation anywhere**, and Docker's default driver is unbounded.
 - **No healthchecks in compose**, despite the endpoints existing. The runtime
   image has no shell and no `curl`; a `healthcheck` subcommand on the binary is
-  the cheap fix.
+  the cheap fix. M22 considered exactly that and did not need it — the console
+  waits for its own tables at boot rather than for logservice to report healthy
+  — so nothing depends on this to come up; it is still worth having for an
+  orchestrator that restarts on it.
 - **No resource limits** in any compose file.
 - **Both compose files pin `:latest`**, so an upgrade is not repeatable — which
   interacts badly with the forward-only store migrations.

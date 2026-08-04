@@ -39,6 +39,7 @@ Every file carries its **status on line 3**, in the same shape:
 | [M19](./M19-test-only-control-api.md) | A test-only build with an unauthenticated control API | `mailgw-go/internal/{node,testctl}`, `cmd/mailgw-go-test`, `tests`, `deploy` | **done** |
 | [M20](./M20-e2e-control-api.md) | End-to-end tests driven by the control API | `tests`, `mailgw-go/internal/{testctl,node,adminui,store}`, `.github/workflows`, `docs` | **done** |
 | [M21](./M21-logservice-go.md) | logservice in Go, migrating itself on start | `logservice-go` (new), `legacy/logservice` (frozen, moved), `deploy`, `.github/workflows`, `docs` | **done** |
+| [M22](./M22-drop-db-migrator.md) | Dropping `db-migrator`: the console waits for the schema itself | `webui-fastify`, `logservice-go` (comments), `deploy`, `docs` | **done** |
 
 **Order worked:** M9 → M4 → M5 → M6 → M7 → M8 → M10. **M1–M10 are all done.**
 M9.4 landed with M4 and M9.5 with M7, as the notes here suggested they should.
@@ -87,8 +88,9 @@ have. The lesson is M16's, one layer out: a green suite proves nothing about the
 paths no test drives, and M19's own new door was one of them.
 
 **Order worked from here:** **M11 → M16 → M12 → M13 → M14 → M15 → M18 → M19 →
-M17 → M20 → M21**. **Every milestone in this directory is done.** M21 is the
-first that is not about the gateway.
+M17 → M20 → M21 → M22**. **Every milestone in this directory is done.** M21 is
+the first that is not about the gateway, and M22 is the subtraction it made
+possible.
 M11 was taken first because it is self-contained and touches only the gateway,
 and M16 followed immediately because it is that same code. M12 is the security
 item `mailgw-go/TODO.md` ranked first and it unblocks two things held behind it.
@@ -113,8 +115,9 @@ so that `mailgw-go/internal/events`, `mailgw-go/internal/attach`,
 `webui-fastify/src/logservice.ts` and `tests/api/logservice.e2e.test.ts` all work
 unchanged and a rollback is an image-tag edit. Two things make it more than a
 transliteration. The service **migrates on start**, which the Bun one never did —
-hence the separate `db-migrator` container in both compose files, which survives
-only because the *console* gates on it for schema readiness. And it is the only
+hence the separate `db-migrator` container in both compose files, which survived
+only because the *console* gated on it for schema readiness (**M22 deleted it**:
+the console now waits for its own tables at boot). And it is the only
 thing that migrates the shared MariaDB, including the fifteen tables only the
 console touches, so the 26 `.sql` files are copied **byte-identically** under
 their existing names: `_migrations` keys on filename, and a production database

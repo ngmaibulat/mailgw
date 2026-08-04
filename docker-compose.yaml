@@ -36,6 +36,10 @@ services:
             # stranger to the console, and it must be approved again.
             - mailgw_go_data:/var/lib/mailgw-go
         depends_on:
+            # Deliberately start-ordering and nothing stronger. The gateway must
+            # not have SMTP availability gated on the audit service: events
+            # retry and then spill to the gateway's own disk, so a slow
+            # logservice costs audit latency, never mail.
             logservice:
                 condition: service_started
 
@@ -72,9 +76,10 @@ services:
             # Docker-managed named volume only — no host bind mounts.
             - mariadb_data:/var/lib/mysql
             - /run/mysqld:/run/mysqld
-        # healthcheck (commented): gates dependents on real DB readiness. The
-        # migrator now retries the connection itself, so this is optional —
-        # uncomment (and the service_healthy depends_on below) to re-enable.
+        # healthcheck (commented): gates dependents on real DB readiness.
+        # logservice retries the connection itself (10 x 2s) before it migrates,
+        # so this is optional — uncomment (and the service_healthy depends_on
+        # below) to re-enable.
         # healthcheck:
         #     test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
         #     interval: 5s
@@ -97,13 +102,14 @@ services:
             DB_USER: mailgw
             DB_PASS: P@ssw0rd
         depends_on:
-            # This service now applies pending migrations itself before it
-            # binds, so the dependency below is about ORDERING, not readiness:
-            # it stops logservice and the migrator racing to apply the same file
-            # on a fresh volume. (They cannot both record one — _migrations.name
-            # is UNIQUE — but one of them would fail and restart.)
-            db-migrator:
-                condition: service_completed_successfully
+            # Ordering, not readiness: this service applies pending migrations
+            # itself before it binds, and retries the connection while MariaDB
+            # is still starting. It is here so `docker compose up -d logservice`
+            # brings the database with it, and so the logs read in order.
+            # Re-enable the strict gate alongside the healthcheck above:
+            #   mariadb:
+            #       condition: service_healthy
+            - mariadb
 
     webui:
         image: ngmaibulat/mailgw-webui-fastify:latest
@@ -151,35 +157,20 @@ services:
             CONFIG_SECRET_KEY: ${CONFIG_SECRET_KEY:-}
         volumes:
             # The server serves HTTP/2 over TLS and reads ./certs/server.{key,crt}
-            # on boot. Generate them first with the `certs` project:
-            #   cd certs && bun install && bun run generate
-            - ./certs/generated/webui:/app/certs:ro
-        depends_on:
-            db-migrator:
-                condition: service_completed_successfully
-            logservice:
-                condition: service_started
-
-    db-migrator:
-        image: ngmaibulat/logservice-go:latest
-        container_name: dev-mailgw-db-migrator
-        # Migrate and exit. logservice migrates on start too, so this service
-        # exists for the CONSOLE: the webui gates on it completing and never
-        # talks to logservice at boot, so without it the console could start
-        # against a database with no Users table.
-        command: ["migrate"]
-        environment:
-            DB_HOST: dev-mailgw-db
-            DB_NAME: mailgw
-            DB_USER: mailgw
-            DB_PASS: P@ssw0rd
+            # on boot — and mints a self-signed pair here if the directory holds
+            # none, so `docker compose up` needs no preparatory step. Run
+            # `pnpm certs` first if you want the repo's own pair instead; it is
+            # used as-is when present. NOT read-only: that is what would turn
+            # generating into a crash.
+            - ./certs/generated/webui:/app/certs
+        # Start ordering only. The schema gate is INSIDE the console now: it
+        # blocks at boot until every table it reads exists (db/index.ts
+        # waitForSchema), which is what the one-shot db-migrator service used to
+        # do from out here. Keeping it in the app means it also holds for a
+        # console run by hand against a fresh database.
         depends_on:
             - mariadb
-            # With the healthcheck above commented out, this falls back to plain
-            # start ordering; the migrator's own connection retry handles
-            # readiness. Re-enable alongside the healthcheck to gate strictly:
-            # mariadb:
-            #     condition: service_healthy
+            - logservice
 
     mailhog:
         image: mailhog/mailhog
