@@ -37,8 +37,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ngmaibulat/mailgw/logservice-go/internal/query"
-	"github.com/ngmaibulat/mailgw/logservice-go/internal/store"
+	"github.com/ngmaibulat/mailgw/logservice-go/query"
+	"github.com/ngmaibulat/mailgw/logservice-go/store"
 )
 
 // Timeouts. The Bun service set none of these; Bun.serve has its own defaults
@@ -62,7 +62,7 @@ const (
 // Server answers the HTTP API.
 type Server struct {
 	// DB is the request-serving pool. Multi-statement support is deliberately
-	// off on it; see internal/db.
+	// off on it; see package db.
 	DB *sql.DB
 
 	// APIKey is compared against X-API-Key. EMPTY MEANS OPEN — every request is
@@ -121,7 +121,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Ingest. Only /api/delivery validates; the other two default every absent
 	// field. That asymmetry is the contract every deployed gateway was built
-	// against — see internal/validate.
+	// against — see package validate.
 	mux.HandleFunc("POST /api/connection", s.auth(s.handlePostConnection))
 	mux.HandleFunc("POST /api/queue", s.auth(s.handlePostQueue))
 	mux.HandleFunc("POST /api/delivery", s.auth(s.handlePostDelivery))

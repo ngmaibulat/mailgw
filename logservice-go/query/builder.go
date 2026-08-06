@@ -20,7 +20,20 @@
 // written from the allowlist's own key, and the direction and joiner are
 // normalised to literals. Values only ever reach SQL as placeholders. The
 // connection this runs on has multi-statement support switched OFF (see
-// internal/db) so even a hypothetical escape cannot become a second statement.
+// package db) so even a hypothetical escape cannot become a second statement.
+//
+// # Exported, not internal, because logservice-fiber shares it
+//
+// M23 put a second implementation beside this one. The two differ in their HTTP
+// layer and in nothing else, which is the only reason comparing them means
+// anything — so everything below HTTP lives here and is imported by both.
+// internal/api is what stays internal. Do not add an HTTP type to this package.
+//
+// This package in particular is shared rather than copied, and the reason is
+// the silent skip documented above: a field missing from an allowlist in one
+// copy would yield a filter that appears to work and returns every row, and no
+// test can see the difference. There is one allowlist because there can only
+// safely be one.
 package query
 
 import (

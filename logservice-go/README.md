@@ -124,7 +124,7 @@ mail — so that endpoint answers `allow` for anything it can decide.
 ```
 
 A malformed `q` yields the defaults — never a 400. Fields are checked against
-per-table allowlists in `internal/query/fields.go`.
+per-table allowlists in `query/fields.go`.
 
 > **`BuildWhere` silently skips a field it does not recognise.** A column added
 > to a table and to a grid but forgotten in the allowlist yields a filter that
@@ -150,7 +150,7 @@ carries none — so the API would start reporting a different instant from the o
 an operator sees running the same `SELECT` in `mysql`.
 
 Everything else is byte-identical, including the JSON *types*: integers are
-numbers, doubles are numbers, NULL is `null`. That is what `internal/rows`
+numbers, doubles are numbers, NULL is `null`. That is what `rows`
 exists for — a naive `[]byte` scan would have made every value a string.
 
 ## No healthcheck in compose, and why
@@ -175,3 +175,42 @@ route set is nine entries and `net/http.ServeMux` has method patterns), no
 validation library (the schema is four regexes), no migration library (the
 runner is ~120 lines and its contract is fixed by an existing production
 database).
+
+**This is still true after M23**, which put a second implementation beside this
+one (`logservice-fiber/`, Fiber v3). Fiber is a dependency of *that* module's
+`go.mod` and never of this one — a separate module is the whole reason it was
+built as one rather than as a second `cmd/` in here.
+
+## What is exported, and why
+
+`db`, `query`, `rows`, `store`, `validate` and `migrate` sit at the top level
+rather than under `internal/`, because `logservice-fiber` imports them. **Only
+`internal/api` is internal**, and that boundary is the point: the two
+implementations differ in their HTTP layer and in nothing else, which is what
+makes comparing them mean anything. Everything below HTTP is one copy of the
+source, not two.
+
+Copying those packages into the sibling module was the alternative, and it is
+worse in a way no test would catch. `query/fields.go` skips an unrecognised
+field **silently**, so an allowlist entry forgotten in one copy yields a filter
+that appears to work and returns every row; and `rows` exists solely to keep the
+JSON *types* identical. Two copies of the two files whose job is preventing
+invisible divergence is the wrong shape.
+
+Do not add an HTTP type to any of the six.
+
+## Two binaries migrate now
+
+`migrate.Run` takes a named MariaDB advisory lock (`logservice_migrate`) for the
+whole run and re-reads the applied set after acquiring it. That is not defensive
+tidiness: the runner reads the applied set once up front and records a file only
+*after* executing it, so two runners starting together on a fresh volume both
+see an empty set and both execute all 26 files — and six of them are
+non-idempotent `ALTER TABLE ADD COLUMN` / `CREATE INDEX`, so the loser dies
+inside its `Exec` rather than on the tracking table's `UNIQUE`. Under
+`restart: unless-stopped` that is a restart loop.
+
+The lock is session-scoped, so a killed migrator releases it with its
+connection and cannot wedge an upgrade. It also covers the case that predates
+M23: `deploy/core/upgrade.sh` running a one-off `logservice migrate` while a
+container is still up.

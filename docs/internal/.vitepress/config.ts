@@ -50,6 +50,7 @@ export default defineConfig({
                 items: [
                     { text: "mailgw-go", link: "/packages/mailgw-go" },
                     { text: "logservice", link: "/packages/logservice" },
+                    { text: "logservice-fiber", link: "/packages/logservice-fiber" },
                     { text: "webui-fastify", link: "/packages/webui-fastify" },
                     { text: "legacy/", link: "/packages/legacy" },
                 ],

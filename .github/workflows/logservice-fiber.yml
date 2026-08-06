@@ -1,0 +1,86 @@
+name: logservice-fiber
+
+# The second logservice implementation, on Fiber v3 (M23). logservice-go is what
+# production runs; this exists so the two can be compared rather than argued
+# about, and the contract suite they share is what the comparison rests on.
+#
+# It triggers on logservice-go/** as well, deliberately: go.mod replaces that
+# module with the sibling directory, so a change there is a change to THIS
+# module's dependencies and can break this build without touching a file here.
+# The shared contract suite lives there too, so a case added there must be
+# satisfied here on the same push.
+
+on:
+    push:
+        paths:
+            - "logservice-fiber/**"
+            - "logservice-go/**"
+            - ".github/workflows/logservice-fiber.yml"
+    pull_request:
+        paths:
+            - "logservice-fiber/**"
+            - "logservice-go/**"
+            - ".github/workflows/logservice-fiber.yml"
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: logservice-fiber
+
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: actions/setup-go@v7
+              with:
+                  go-version: "1.26"
+                  cache-dependency-path: logservice-fiber/go.sum
+
+            - name: Verify formatting
+              run: |
+                  unformatted=$(gofmt -l .)
+                  if [ -n "$unformatted" ]; then
+                      echo "These files need gofmt:"
+                      echo "$unformatted"
+                      exit 1
+                  fi
+
+            - name: Vet
+              run: go vet ./...
+
+            # This runs logservice-go/apitest — the same cases logservice-go runs
+            # against net/http. A case that passes there and fails here is the
+            # whole reason this module exists.
+            - name: Test
+              run: go test -race ./...
+
+            - name: Build
+              run: go build ./...
+
+            # The wire bytes come from encoding/json and must keep coming from
+            # it. A drop-in encoder changes the HTML escaping of < > and &, which
+            # appear in `response` strings and subject lines — so every search
+            # response would differ from logservice-go's, silently, in a way the
+            # console renders identically. See internal/api/middleware.go's
+            # writeJSON, which is also why c.JSON is never called.
+            - name: Assert no third-party JSON encoder is linked
+              run: |
+                  if go list -deps ./cmd/logservice-fiber |
+                      grep -E 'goccy/go-json|bytedance/sonic|json-iterator|segmentio/encoding'; then
+                      echo "A third-party JSON encoder reached the shipped binary."
+                      echo "  The two implementations' bodies must be byte-identical, and"
+                      echo "  encoding/json's HTML escaping is part of that."
+                      exit 1
+                  fi
+
+            # apitest imports `testing`, which registers flags and pulls test
+            # machinery into anything that links it. It is a specification for
+            # tests to run, never something a server imports.
+            - name: Assert the shipped binary does not link apitest
+              run: |
+                  if go list -deps ./cmd/logservice-fiber | grep -n 'logservice-go/apitest'; then
+                      echo "apitest reached the shipped binary — something imported it from"
+                      echo "  non-test code. It imports `testing`; it belongs in _test.go only."
+                      exit 1
+                  fi

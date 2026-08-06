@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/ngmaibulat/mailgw/logservice-go/internal/rows"
+	"github.com/ngmaibulat/mailgw/logservice-go/rows"
 )
 
 // Result is the response envelope every search endpoint returns.

@@ -40,6 +40,7 @@ Every file carries its **status on line 3**, in the same shape:
 | [M20](./M20-e2e-control-api.md) | End-to-end tests driven by the control API | `tests`, `mailgw-go/internal/{testctl,node,adminui,store}`, `.github/workflows`, `docs` | **done** |
 | [M21](./M21-logservice-go.md) | logservice in Go, migrating itself on start | `logservice-go` (new), `legacy/logservice` (frozen, moved), `deploy`, `.github/workflows`, `docs` | **done** |
 | [M22](./M22-drop-db-migrator.md) | Dropping `db-migrator`: the console waits for the schema itself | `webui-fastify`, `logservice-go` (comments), `deploy`, `docs` | **done** |
+| [M23](./M23-logservice-fiber.md) | `logservice-fiber`: a second logservice on Fiber v3, judged against the first | `logservice-go` (packages promoted, `migrate`, `apitest`), `logservice-fiber` (new), `tests`, `.github/workflows`, `docs` | **done** |
 
 **Order worked:** M9 → M4 → M5 → M6 → M7 → M8 → M10. **M1–M10 are all done.**
 M9.4 landed with M4 and M9.5 with M7, as the notes here suggested they should.
@@ -88,9 +89,14 @@ have. The lesson is M16's, one layer out: a green suite proves nothing about the
 paths no test drives, and M19's own new door was one of them.
 
 **Order worked from here:** **M11 → M16 → M12 → M13 → M14 → M15 → M18 → M19 →
-M17 → M20 → M21 → M22**. **Every milestone in this directory is done.** M21 is
-the first that is not about the gateway, and M22 is the subtraction it made
-possible.
+M17 → M20 → M21 → M22 → M23**. **Every milestone in this directory is done.** M21
+is the first that is not about the gateway, M22 is the subtraction it made
+possible, and M23 is the first that is an experiment rather than a change —
+a second logservice on Fiber v3, built beside the one that works so the two can
+be compared instead of argued about. It paid for itself twice before it was
+finished: the shared contract suite caught a connection-corrupting defect in its
+own new code, and asking whether both binaries could migrate exposed that
+`migrate.Run` had never actually been safe against two runners.
 M11 was taken first because it is self-contained and touches only the gateway,
 and M16 followed immediately because it is that same code. M12 is the security
 item `mailgw-go/TODO.md` ranked first and it unblocks two things held behind it.

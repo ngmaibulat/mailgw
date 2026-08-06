@@ -111,6 +111,40 @@ services:
             #       condition: service_healthy
             - mariadb
 
+    # The Fiber v3 implementation (M23), running BESIDE logservice rather than
+    # instead of it. Same database, same wire contract, different HTTP layer.
+    #
+    # Published on 3001 because logservice owns 3000; INSIDE the container both
+    # listen on 3000, so nothing about either image differs between an A/B run
+    # and a cutover — swapping them is an image-tag edit and a port edit, not a
+    # configuration change.
+    #
+    # Dev only. deploy/core/ does not run this, and promoting it there is a
+    # separate decision to be made from differential evidence.
+    #
+    #   pnpm test:e2e:api:fiber   the unmodified e2e suite against this one
+    #   pnpm test:ab:logservice   both, compared byte for byte
+    logservice-fiber:
+        image: ngmaibulat/logservice-fiber:latest
+        container_name: dev-logservice-fiber
+        restart: unless-stopped
+        ports:
+            - "3001:3000"
+        environment:
+            PORT: 3000
+            API_KEY: ${API_KEY:-}
+            DB_HOST: dev-mailgw-db
+            DB_NAME: mailgw
+            DB_USER: mailgw
+            DB_PASS: P@ssw0rd
+        depends_on:
+            # Ordering only. Both services migrate on start, and that is safe
+            # because migrate.Run holds a named advisory lock for the length of
+            # its run — whichever gets in second finds the work recorded and
+            # applies nothing. Without the lock, two runners on a fresh volume
+            # both execute all 26 files and the loser dies on non-idempotent DDL.
+            - mariadb
+
     webui:
         image: ngmaibulat/mailgw-webui-fastify:latest
         container_name: dev-webui

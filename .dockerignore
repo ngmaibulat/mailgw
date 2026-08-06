@@ -1,0 +1,28 @@
+# The repo root is a build context for three images now — webui-fastify,
+# logservice-fiber, and the two legacy ones — and without this file every one of
+# them uploads node_modules and the whole git history before doing anything.
+#
+# Keep this conservative: a path excluded here that a Dockerfile needs fails as
+# "file not found" at COPY time, which is a clear error, but only at build time.
+.git/
+.github/
+node_modules/
+**/node_modules/
+**/bin/
+**/dist/
+
+# Generated or local-only.
+certs/generated/
+**/*.log
+.env
+.env.*
+!.env.example
+
+# Documentation sites and plans: large, and nothing in an image reads them.
+docs/
+plans/
+notes/
+
+# Test output and scratch.
+coverage/
+**/.DS_Store

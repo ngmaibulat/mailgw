@@ -12,10 +12,17 @@
 //
 // # Reads are not here
 //
-// The search path lives in internal/query, because it builds its SQL from
+// The search path lives in package query, because it builds its SQL from
 // caller-supplied JSON and that construction is the thing worth keeping in one
 // reviewable place. This package only ever issues statements that are compile-
 // time constants.
+//
+// # Exported, not internal, because logservice-fiber shares it
+//
+// M23 put a second implementation beside this one. The two differ in their HTTP
+// layer and in nothing else, which is the only reason comparing them means
+// anything — so everything below HTTP lives here and is imported by both.
+// internal/api is what stays internal. Do not add an HTTP type to this package.
 package store
 
 import (
@@ -25,7 +32,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ngmaibulat/mailgw/logservice-go/internal/validate"
+	"github.com/ngmaibulat/mailgw/logservice-go/validate"
 )
 
 // Store writes to the log tables.

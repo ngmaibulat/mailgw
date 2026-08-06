@@ -12,9 +12,16 @@
 // multi-statement support. OpenForMigrations returns a separate, short-lived
 // connection that does. The split is the point: multi-statement support turns
 // any SQL injection from a one-statement problem into an arbitrary-script one,
-// and the search path (internal/query) is exactly where caller-supplied input
+// and the search path (package query) is exactly where caller-supplied input
 // reaches SQL. The migration runner needs it because a migration file is
 // executed whole; a request handler never does.
+//
+// # Exported, not internal, because logservice-fiber shares it
+//
+// M23 put a second implementation beside this one. The two differ in their HTTP
+// layer and in nothing else, which is the only reason comparing them means
+// anything — so everything below HTTP lives here and is imported by both.
+// internal/api is what stays internal. Do not add an HTTP type to this package.
 package db
 
 import (
@@ -59,7 +66,7 @@ func (c Config) Addr() string {
 // password a generated secret is — cannot corrupt the DSN. FormatDSN escapes
 // what needs escaping.
 //
-// parseTime is deliberately LEFT OFF. See internal/rows for the whole argument;
+// parseTime is deliberately LEFT OFF. See package rows for the whole argument;
 // the short version is that a MariaDB DATETIME carries no timezone, so
 // parseTime would stamp one on and the API would start disagreeing with what
 // the same operator sees in `mysql`. The audit trail is worth more when the two

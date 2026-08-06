@@ -36,6 +36,17 @@
 //
 // This is the ONLY intended difference between the two services' JSON. Anything
 // else that differs is a bug — see the plan's verification section.
+//
+// # Exported, not internal, because logservice-fiber shares it
+//
+// M23 put a second implementation beside this one. The two differ in their HTTP
+// layer and in nothing else, which is the only reason comparing them means
+// anything — so everything below HTTP lives here and is imported by both.
+// internal/api is what stays internal. Do not add an HTTP type to this package.
+//
+// This package in particular is shared rather than copied: its whole job is
+// keeping the JSON types identical, so two copies of it would be two chances to
+// disagree about the one thing it exists to pin.
 package rows
 
 import (

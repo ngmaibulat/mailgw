@@ -1,22 +1,34 @@
-// Command logservice is the audit-trail API for the mail gateway fleet, and the
-// owner of the shared database's schema.
+// Command logservice-fiber serves the logservice HTTP API on Fiber v3.
 //
 // Usage:
 //
-//	logservice            serve (migrate first, then bind)
-//	logservice serve      the same thing, said out loud
-//	logservice migrate    apply pending migrations and exit
-//	logservice version    print the version and exit
+//	logservice-fiber            serve (migrate first, then bind)
+//	logservice-fiber serve      the same thing, said out loud
+//	logservice-fiber migrate    apply pending migrations and exit
+//	logservice-fiber version    print the version and exit
+//
+// # It is the second implementation of a service that already works
+//
+// logservice-go serves the same routes over net/http and remains what
+// production runs. This exists so the two can be compared rather than argued
+// about, and it is judged by whether logservice-go/apitest passes against both
+// and whether the differential test finds any difference on the wire.
+//
+// Everything below HTTP is IMPORTED from logservice-go, not copied: the pool,
+// the query builder and its allowlists, the row scanner, the store, the
+// delivery validator and the 26 migrations are one source. The HTTP layer is
+// the only thing the two implementations do not have in common, which is what
+// makes comparing them mean anything.
 //
 // # This binary IS configured by its environment
 //
-// mailgw-go is not, and its CI asserts as much: a zero-configuration edge node
-// takes everything from Central Management, because it runs on a host its
-// operator does not otherwise touch. This is the opposite kind of service — it
-// runs on the core node, beside the database whose credentials it needs. It
-// reads PORT, API_KEY, DB_HOST, DB_PORT, DB_USER, DB_PASS, DB_NAME, plus
-// LOG_LEVEL and LOG_FORMAT. Do not copy mailgw-go's os.Getenv ban into this
-// module.
+// Identically to logservice-go, and that is a requirement rather than an
+// accident: an operator swapping one image for the other must not have to
+// change anything but the tag. It reads PORT, API_KEY, DB_HOST, DB_PORT,
+// DB_USER, DB_PASS, DB_NAME, plus LOG_LEVEL and LOG_FORMAT. Do not copy
+// mailgw-go's os.Getenv ban into this module — that rule is about a
+// zero-configuration edge node, and this runs on the core node beside the
+// database whose credentials it needs.
 package main
 
 import (
@@ -62,7 +74,7 @@ func main() {
 	case "migrate":
 		err = runMigrate(ctx, log)
 	case "version":
-		fmt.Printf("logservice %s (%s)\n", version, commit)
+		fmt.Printf("logservice-fiber %s (%s)\n", version, commit)
 		return
 	case "-h", "--help", "help":
 		usage()
@@ -86,14 +98,14 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `logservice — audit API and schema owner for the mail gateway fleet
+	fmt.Fprint(os.Stderr, `logservice-fiber — the logservice API on Fiber v3, beside logservice-go
 
-  logservice           serve (applies pending migrations first)
-  logservice serve     the same
-  logservice migrate   apply pending migrations and exit
-  logservice version   print the version
+  logservice-fiber           serve (applies pending migrations first)
+  logservice-fiber serve     the same
+  logservice-fiber migrate   apply pending migrations and exit
+  logservice-fiber version   print the version
 
-Configured entirely by the environment:
+Configured entirely by the environment, identically to logservice-go:
   PORT       listen port                       (default 3000)
   API_KEY    required in X-API-Key when set    (unset = every request accepted)
   DB_HOST    MariaDB host                      (default 127.0.0.1)
@@ -108,19 +120,9 @@ Configured entirely by the environment:
 
 // runMigrate applies pending migrations and exits.
 //
-// Nothing in compose runs this any more — M22 deleted the db-migrator service,
-// and `serve` migrates on start — but it is not redundant. It keeps two jobs,
-// both of them about the failure case:
-//
-//   - deploy/core/upgrade.sh runs it BEFORE recreating services, so a bad
-//     migration aborts the upgrade with the old stack still serving. Left to
-//     `serve`, the same migration is fatal and the container restart-loops.
-//   - it is the foreground way to reproduce that failure once, with a clean
-//     exit code, instead of reading it out of a restart loop's logs.
-//
-// It is not a second way to configure anything (M18's argument against the
-// gateway's `-config` does not transfer): this is the same migrate.Run that
-// serve calls, without binding a port.
+// The same migrate.Run logservice-go calls, on the same embedded files, under
+// the same advisory lock — there is one copy of all three. Two services
+// migrating one database is safe only because of that lock; see migrate.Run.
 func runMigrate(ctx context.Context, log *slog.Logger) error {
 	if err := migrate.Check(); err != nil {
 		return err
@@ -141,10 +143,9 @@ func runMigrate(ctx context.Context, log *slog.Logger) error {
 
 // dbConfigFromEnv reads the DB_* variables.
 //
-// The defaults match logservice/example.env. DB_USER, DB_PASS and DB_NAME have
-// none deliberately: a default database name is how you end up writing an audit
-// trail into the wrong schema and only finding out when somebody goes looking
-// for it.
+// The defaults match logservice-go's. DB_USER, DB_PASS and DB_NAME have none
+// deliberately: a default database name is how you end up writing an audit trail
+// into the wrong schema and only finding out when somebody goes looking for it.
 func dbConfigFromEnv() db.Config {
 	return db.Config{
 		Host: envOr("DB_HOST", "127.0.0.1"),
@@ -180,9 +181,10 @@ func envInt(key string, fallback int) int {
 	return n
 }
 
-// newLogger mirrors mailgw-go's internal/node.newLogger: JSON to stderr by
-// default, text opt-in, so the two services' output can be shipped by the same
-// collector without a per-service parser.
+// newLogger mirrors logservice-go's: JSON to stderr by default, text opt-in, so
+// the two services' output can be shipped by the same collector without a
+// per-service parser — which matters more here than usual, since the whole point
+// is running them side by side.
 func newLogger() *slog.Logger {
 	level := slog.LevelInfo
 	switch os.Getenv("LOG_LEVEL") {

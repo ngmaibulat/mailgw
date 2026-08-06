@@ -20,6 +20,13 @@
 // that the row is unrepresentable, not a "try again". Never widen a 4xx to cover
 // a transient condition, and never narrow the schema without knowing which
 // gateways currently satisfy it.
+//
+// # Exported, not internal, because logservice-fiber shares it
+//
+// M23 put a second implementation beside this one. The two differ in their HTTP
+// layer and in nothing else, which is the only reason comparing them means
+// anything — so everything below HTTP lives here and is imported by both.
+// internal/api is what stays internal. Do not add an HTTP type to this package.
 package validate
 
 import (

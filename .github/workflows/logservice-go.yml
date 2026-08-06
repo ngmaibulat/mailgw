@@ -39,7 +39,7 @@ jobs:
 
             - name: Verify formatting
               run: |
-                  unformatted=$(gofmt -l ./cmd ./internal ./migrations)
+                  unformatted=$(gofmt -l .)
                   if [ -n "$unformatted" ]; then
                       echo "These files need gofmt:"
                       echo "$unformatted"
@@ -54,6 +54,18 @@ jobs:
 
             - name: Build
               run: go build ./...
+
+            # apitest is the wire contract this module shares with
+            # logservice-fiber (M23). It imports `testing`, which registers flags
+            # and pulls test machinery into anything that links it, so it belongs
+            # in _test.go files only.
+            - name: Assert the shipped binary does not link apitest
+              run: |
+                  if go list -deps ./cmd/logservice | grep -n 'logservice-go/apitest'; then
+                      echo "apitest reached the shipped binary — something imported it from"
+                      echo "  non-test code."
+                      exit 1
+                  fi
 
             # The migrations are copies of legacy/logservice/migrations/*.sql and
             # their FILENAMES are the upgrade contract: _migrations records an applied

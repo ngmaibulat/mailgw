@@ -1,11 +1,11 @@
 // Package migrations holds the SQL schema migrations for the whole shared
 // database, and nothing else.
 //
-// # Why the .sql files are here rather than in internal/migrate
+// # Why the .sql files are here rather than in package migrate
 //
 // go:embed cannot reach outside the directory of the package that declares it,
-// so embedding `migrations/*.sql` from `internal/migrate` is impossible. The
-// alternative was to move the files under `internal/migrate/migrations/`, which
+// so embedding `migrations/*.sql` from `migrate` is impossible. The
+// alternative was to move the files under `migrate/migrations/`, which
 // would work and would bury them three directories deep. They stay at the top
 // level of the module on purpose: a migration is the artefact an operator reads
 // before an upgrade and the thing a reviewer diffs, and `logservice-go/migrations/`

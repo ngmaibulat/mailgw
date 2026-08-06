@@ -10,35 +10,38 @@ import (
 	"strconv"
 
 	"github.com/ngmaibulat/mailgw/logservice-go/db"
-	"github.com/ngmaibulat/mailgw/logservice-go/internal/api"
 	"github.com/ngmaibulat/mailgw/logservice-go/migrate"
 	"github.com/ngmaibulat/mailgw/logservice-go/query"
+
+	"github.com/ngmaibulat/mailgw/logservice-fiber/internal/api"
 )
 
 // runServe applies pending migrations and then serves.
 //
+// Step for step logservice-go's runServe, and deliberately so: the two are the
+// same service with a different HTTP layer, and a difference in the boot
+// sequence would show up as a difference in behaviour that had nothing to do
+// with the framework being evaluated.
+//
 // # Migrate before binding, not after
 //
-// The Bun service did not migrate on start at all — that is what the separate
-// db-migrator container was for. Doing it here means a fresh volume comes up
-// working with no ordering to get right. Binding first and migrating in the
-// background would be worse than not migrating: every gateway that reached the
-// listener during the window would get a 500 per audit event, and mailgw-go
-// retries a 5xx a few times and then spills the event to the gateway's disk.
+// Binding first and migrating in the background would be worse than not
+// migrating: every gateway that reached the listener during the window would get
+// a 500 per audit event, and mailgw-go retries a 5xx a few times and then spills
+// the event to the gateway's disk.
 //
-// Since M22 this is the ONLY thing that migrates the shared schema — the
-// db-migrator service is gone, and the console waits at boot for the tables it
-// reads rather than for a sibling container to exit 0. Binding last is what
-// makes that safe: anything that can reach this port is talking to a migrated
-// database.
+// # Two services migrate now, and that is safe because of the lock
 //
-// A failed migration is fatal. A logservice serving against a half-migrated
-// schema answers 500 to some endpoints and 200 to others, which is harder to
-// diagnose than a container that will not start. Note what that now costs:
-// under `restart: unless-stopped` a bad migration is a restart loop repeating
-// the same error, where it used to stop `docker compose up` once and clearly.
-// deploy/core/upgrade.sh buys that back by running `migrate` first, before
-// anything is recreated.
+// M22 left exactly one process migrating the shared schema. M23 adds this one,
+// which is why migrate.Run takes a named advisory lock for the length of its
+// run: without it, two migrators starting in the same second — which is what
+// `docker compose up` on a fresh volume does — both read an empty applied set
+// and both execute all 26 files, six of which are non-idempotent DDL. With it,
+// whichever gets in second finds the work already recorded and applies nothing.
+//
+// A failed migration is fatal, as next door. A service running against a
+// half-migrated schema answers 500 to some endpoints and 200 to others, which is
+// harder to diagnose than a container that will not start.
 func runServe(ctx context.Context, log *slog.Logger) error {
 	// Checked before anything touches the network: an empty embedded set means
 	// this binary would report "schema up to date" against an empty database.
@@ -53,8 +56,8 @@ func runServe(ctx context.Context, log *slog.Logger) error {
 	}
 
 	// The request-serving pool. Separate from the migration connection, and
-	// without multi-statement support — see package db for why that split is
-	// load-bearing rather than tidy.
+	// without multi-statement support — see logservice-go's package db for why
+	// that split is load-bearing rather than tidy.
 	pool, err := db.Open(cfg)
 	if err != nil {
 		return err
@@ -67,8 +70,8 @@ func runServe(ctx context.Context, log *slog.Logger) error {
 
 	apiKey := os.Getenv("API_KEY")
 	if apiKey == "" {
-		// Once, loudly, at startup — the Bun service warned here too. Not per
-		// request: a fleet of gateways would turn it into the whole log.
+		// Once, loudly, at startup. Not per request: a fleet of gateways would
+		// turn it into the whole log.
 		log.Warn("API_KEY is not set — every request will be accepted, including from anything that can reach this port")
 	}
 
@@ -111,6 +114,11 @@ func migrateOnStart(ctx context.Context, cfg db.Config, log *slog.Logger) error 
 }
 
 // checkFields compares the search allowlists against the live schema.
+//
+// Copied from logservice-go's cmd rather than shared: it is twenty-five lines of
+// startup policy about how loudly to complain, not a piece of the query engine.
+// What it checks — query.Searcher.CheckFields — is shared, which is the part
+// that could drift.
 //
 // The two directions are treated differently on purpose, because they mean
 // different things:
@@ -156,6 +164,10 @@ func checkFields(ctx context.Context, pool *sql.DB, log *slog.Logger) error {
 // 0.0.0.0 because this is a container service other hosts reach — the edge
 // gateways POST their audit events to it across the network. Binding loopback
 // would be safer and would make the product not work.
+//
+// The default is 3000, the same as logservice-go's: both listen on 3000 INSIDE
+// their container, and the dev compose file publishes this one on 3001. Keeping
+// the in-container port identical is what makes a cutover an image-tag edit.
 func listenAddr() string {
 	return net.JoinHostPort("0.0.0.0", strconv.Itoa(envInt("PORT", 3000)))
 }

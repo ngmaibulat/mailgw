@@ -2,7 +2,8 @@ package api
 
 import (
 	"encoding/json"
-	"net/http"
+
+	"github.com/gofiber/fiber/v3"
 
 	"github.com/ngmaibulat/mailgw/logservice-go/query"
 	"github.com/ngmaibulat/mailgw/logservice-go/store"
@@ -11,15 +12,18 @@ import (
 
 // handleRoot is the health check the compose stacks and the e2e suite use.
 // Open, and answering a fixed body.
-func (s *Server) handleRoot(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, bodyOK)
+func (s *Server) handleRoot(c fiber.Ctx) error {
+	return writeJSON(c, fiber.StatusOK, bodyOK)
 }
 
 // handleNotFound reproduces the Bun catch-all: plain text, not JSON.
-func (s *Server) handleNotFound(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusNotFound)
-	_, _ = w.Write([]byte(notFoundBody))
+//
+// It is both the catch-all route and what errorHandler falls back to for
+// Fiber's 404/405/501, so a wrong method and an unknown path are byte-identical
+// — which is what the Bun service did and what logservice-go does.
+func (s *Server) handleNotFound(c fiber.Ctx) error {
+	c.Set(fiber.HeaderContentType, "text/plain; charset=utf-8")
+	return c.Status(fiber.StatusNotFound).SendString(notFoundBody)
 }
 
 // handlePostConnection records a connect-stage event.
@@ -31,27 +35,24 @@ func (s *Server) handleNotFound(w http.ResponseWriter, _ *http.Request) {
 // A malformed JSON body is the one refusal, and it is a 400: an unparseable body
 // can never become parseable, which is precisely the condition mailgw-go's 4xx
 // rule is for.
-func (s *Server) handlePostConnection(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(w, r)
+func (s *Server) handlePostConnection(c fiber.Ctx) error {
+	body, err := readBody(c)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, bodyFail)
-		return
+		return writeJSON(c, fiber.StatusBadRequest, bodyFail)
 	}
 
-	var c store.Connection
-	if err := json.Unmarshal(body, &c); err != nil {
+	var conn store.Connection
+	if err := json.Unmarshal(body, &conn); err != nil {
 		s.log().Warn("malformed connection event", "err", err)
-		writeJSON(w, http.StatusBadRequest, bodyFail)
-		return
+		return writeJSON(c, fiber.StatusBadRequest, bodyFail)
 	}
 
-	ctx, cancel := dbCtx(r)
+	ctx, cancel := dbCtx(c)
 	defer cancel()
-	if err := s.store().InsertConnection(ctx, c); err != nil {
-		s.fail500(w, r, err)
-		return
+	if err := s.store().InsertConnection(ctx, conn); err != nil {
+		return s.fail500(c, err)
 	}
-	writeJSON(w, http.StatusOK, bodyOK)
+	return writeJSON(c, fiber.StatusOK, bodyOK)
 }
 
 // handlePostQueue records a queue event as a Transaction row.
@@ -59,27 +60,24 @@ func (s *Server) handlePostConnection(w http.ResponseWriter, r *http.Request) {
 // It writes ONLY the Transaction row. The connect-stage Connection row is
 // already written by /api/connection; the Bun handler's commented-out
 // insertConnection call is the scar from when this double-inserted.
-func (s *Server) handlePostQueue(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(w, r)
+func (s *Server) handlePostQueue(c fiber.Ctx) error {
+	body, err := readBody(c)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, bodyFail)
-		return
+		return writeJSON(c, fiber.StatusBadRequest, bodyFail)
 	}
 
 	var q store.Queue
 	if err := json.Unmarshal(body, &q); err != nil {
 		s.log().Warn("malformed queue event", "err", err)
-		writeJSON(w, http.StatusBadRequest, bodyFail)
-		return
+		return writeJSON(c, fiber.StatusBadRequest, bodyFail)
 	}
 
-	ctx, cancel := dbCtx(r)
+	ctx, cancel := dbCtx(c)
 	defer cancel()
 	if err := s.store().InsertTransaction(ctx, q); err != nil {
-		s.fail500(w, r, err)
-		return
+		return s.fail500(c, err)
 	}
-	writeJSON(w, http.StatusOK, bodyOK)
+	return writeJSON(c, fiber.StatusOK, bodyOK)
 }
 
 // handlePostDelivery records one recipient's delivery outcome. The only
@@ -89,11 +87,14 @@ func (s *Server) handlePostQueue(w http.ResponseWriter, r *http.Request) {
 // service: the reason goes to the log, where an operator can see it, and not to
 // a caller who could use it to map the schema. The gateway would not read it
 // either — it checks the status and nothing else.
-func (s *Server) handlePostDelivery(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(w, r)
+//
+// Note what is NOT used here: Fiber v3's c.Bind(). Its errors would reach
+// errorHandler and become Fiber's own 400 shape, and on /filter/md5 the same
+// reflex would turn a bad body into a deferred message.
+func (s *Server) handlePostDelivery(c fiber.Ctx) error {
+	body, err := readBody(c)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, bodyFail)
-		return
+		return writeJSON(c, fiber.StatusBadRequest, bodyFail)
 	}
 
 	d, err := validate.ParseDelivery(body)
@@ -102,17 +103,15 @@ func (s *Server) handlePostDelivery(w http.ResponseWriter, r *http.Request) {
 		// losing its audit trail permanently, and this line is the only place
 		// that says so.
 		s.log().Warn("delivery event rejected", "err", err)
-		writeJSON(w, http.StatusBadRequest, bodyFail)
-		return
+		return writeJSON(c, fiber.StatusBadRequest, bodyFail)
 	}
 
-	ctx, cancel := dbCtx(r)
+	ctx, cancel := dbCtx(c)
 	defer cancel()
 	if err := s.store().InsertDelivery(ctx, d); err != nil {
-		s.fail500(w, r, err)
-		return
+		return s.fail500(c, err)
 	}
-	writeJSON(w, http.StatusOK, bodyOK)
+	return writeJSON(c, fiber.StatusOK, bodyOK)
 }
 
 // handleFilterMD5 answers the attachment blocklist check.
@@ -124,12 +123,13 @@ func (s *Server) handlePostDelivery(w http.ResponseWriter, r *http.Request) {
 // genuinely could not be consulted.
 //
 // A body that is not an array is treated as an empty list, exactly as the Bun
-// handler's `Array.isArray(body) ? body : []` did — NOT a 400.
-func (s *Server) handleFilterMD5(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(w, r)
+// handler's `Array.isArray(body) ? body : []` did — NOT a 400. An oversized body
+// is the one place readBody's error becomes a 500 rather than a 400, for the
+// same reason: this endpoint has no 4xx that is safe.
+func (s *Server) handleFilterMD5(c fiber.Ctx) error {
+	body, err := readBody(c)
 	if err != nil {
-		s.fail500(w, r, err)
-		return
+		return s.fail500(c, err)
 	}
 
 	var list []store.Attachment
@@ -138,11 +138,10 @@ func (s *Server) handleFilterMD5(w http.ResponseWriter, r *http.Request) {
 		// that starts refusing bodies it used to accept would defer mail
 		// silently.
 		s.log().Warn("filter/md5 body is not an attachment array, allowing", "err", err)
-		writeJSON(w, http.StatusOK, map[string]string{"action": "allow"})
-		return
+		return writeJSON(c, fiber.StatusOK, map[string]string{"action": "allow"})
 	}
 
-	ctx, cancel := dbCtx(r)
+	ctx, cancel := dbCtx(c)
 	defer cancel()
 
 	digests := make([]string, 0, len(list))
@@ -154,8 +153,7 @@ func (s *Server) handleFilterMD5(w http.ResponseWriter, r *http.Request) {
 
 	blocked, err := s.store().BlockedMD5s(ctx, digests)
 	if err != nil {
-		s.fail500(w, r, err)
-		return
+		return s.fail500(c, err)
 	}
 
 	// The message blocks if ANY attachment does.
@@ -179,63 +177,61 @@ func (s *Server) handleFilterMD5(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"action": overall})
+	return writeJSON(c, fiber.StatusOK, map[string]string{"action": overall})
 }
 
 // The four searches. Each parses `q`, runs a COUNT and a page, and returns the
 // {status,total,records} envelope the console's grids read.
 
-func (s *Server) handleSearchConnection(w http.ResponseWriter, r *http.Request) {
-	s.search(w, r, query.TableConnection, query.ConnectionFields)
+func (s *Server) handleSearchConnection(c fiber.Ctx) error {
+	return s.search(c, query.TableConnection, query.ConnectionFields)
 }
 
-func (s *Server) handleSearchDelivery(w http.ResponseWriter, r *http.Request) {
-	s.search(w, r, query.TableDelivery, query.DeliveryFields)
+func (s *Server) handleSearchDelivery(c fiber.Ctx) error {
+	return s.search(c, query.TableDelivery, query.DeliveryFields)
 }
 
-func (s *Server) handleSearchTransaction(w http.ResponseWriter, r *http.Request) {
-	s.search(w, r, query.TableTransaction, query.TransactionFields)
+func (s *Server) handleSearchTransaction(c fiber.Ctx) error {
+	return s.search(c, query.TableTransaction, query.TransactionFields)
 }
 
-func (s *Server) handleSearchHashLookup(w http.ResponseWriter, r *http.Request) {
-	q := s.parseQ(r)
-	ctx, cancel := dbCtx(r)
+func (s *Server) handleSearchHashLookup(c fiber.Ctx) error {
+	q := s.parseQ(c)
+	ctx, cancel := dbCtx(c)
 	defer cancel()
 
 	res, err := s.searcher().SearchHashLookups(ctx, q)
 	if err != nil {
-		s.fail500(w, r, err)
-		return
+		return s.fail500(c, err)
 	}
-	writeJSON(w, http.StatusOK, res)
+	return writeJSON(c, fiber.StatusOK, res)
 }
 
-func (s *Server) search(w http.ResponseWriter, r *http.Request, table string, allowed map[string]struct{}) {
-	q := s.parseQ(r)
-	ctx, cancel := dbCtx(r)
+func (s *Server) search(c fiber.Ctx, table string, allowed map[string]struct{}) error {
+	q := s.parseQ(c)
+	ctx, cancel := dbCtx(c)
 	defer cancel()
 
 	res, err := s.searcher().SearchTable(ctx, table, allowed, q)
 	if err != nil {
-		s.fail500(w, r, err)
-		return
+		return s.fail500(c, err)
 	}
-	writeJSON(w, http.StatusOK, res)
+	return writeJSON(c, fiber.StatusOK, res)
 }
 
 // parseQ decodes the `q` parameter and logs a clamped page size.
 //
 // A malformed `q` is never an error — it yields the defaults — so there is
 // nothing to report to the caller. The clamp is logged at Debug because it is
-// the one place this service now behaves differently from the Bun one, and an
+// the one place this service behaves differently from the Bun one, and an
 // operator investigating "my export only returned 1000 rows" needs somewhere to
 // find out why. The `q` value itself is NOT logged: it carries sender and
 // recipient addresses.
-func (s *Server) parseQ(r *http.Request) query.Query {
-	q := query.Parse(r.URL.Query().Get("q"))
+func (s *Server) parseQ(c fiber.Ctx) query.Query {
+	q := query.Parse(c.Query("q"))
 	if _, _, clamped := q.LimitOffset(); clamped {
 		s.log().Debug("search page size clamped",
-			"path", r.URL.Path, "max", query.MaxLimit)
+			"path", c.Path(), "max", query.MaxLimit)
 	}
 	return q
 }
